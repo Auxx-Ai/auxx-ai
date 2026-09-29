@@ -22,10 +22,10 @@
 // | `create`, `update`                          | edit on `return`         |
 // | `createLine`, `updateLine`                  | edit on `return_line`    |
 // | `expandSalvageNode`, `setSalvageNodeQuantity`, `setSalvageNodeStatus`, `setSalvagePercent`, `splitSalvageNode` | edit on `return_part_line` |
+// | `writeSalvage`, `reverseSalvage`            | edit on `return_part_line` AND edit on `return` |
 //
-// ⚠️ Accepted for v1: `stock_movement` is records-gated too, so anyone who can
-// create a return can also restock parts. Support and warehouse get identical
-// authority; tightening it means a new permission key, which is scope.
+// ⚠️ Accepted for v1: salvage movements are gated on the return, so anyone who can
+// edit a return can also restock parts. Tightening it means a new permission key.
 //
 // 🛑 **Nothing here writes a stock movement.** The salvage writer is step 7 and
 // is gated on the chain ending at task 50 - a `return_part_line` records a
@@ -510,7 +510,7 @@ export const returnRouter = createTRPCRouter({
    * Step 7: turn this line's salvage decisions into `return_in` movements.
    *
    * 🛑 The only procedure in this router that writes to the APPEND-ONLY
-   * LEDGER, which is why it asserts `stock_movement` as well as
+   * LEDGER, which is why it asserts edit on the `return` as well as
    * `return_part_line`. Everything else here records a decision that can be
    * edited; this one cannot be taken back, only reversed.
    *
@@ -531,7 +531,7 @@ export const returnRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'return_part_line'))
-      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'stock_movement'))
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'return'))
 
       const result = await writeSalvageMovements(ctx.db, organizationId, userId, {
         returnLineId: parseRecordId(input.returnLineRecordId).entityInstanceId,
@@ -561,7 +561,7 @@ export const returnRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'return_part_line'))
-      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'stock_movement'))
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'return'))
 
       const result = await reverseSalvageMovement(ctx.db, organizationId, userId, {
         partLineId: parseRecordId(input.partLineRecordId).entityInstanceId,

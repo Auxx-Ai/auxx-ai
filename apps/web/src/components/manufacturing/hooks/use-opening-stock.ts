@@ -312,11 +312,10 @@ export function useOpeningStock() {
   )
 
   const partDefId = useResourceProperty('part', 'id')
-  // Asked separately from the page's `part` gate: `stock_movement` carries its own grant.
-  const movementDefId = useResourceProperty('stock_movement', 'id')
   const { canEditEntity } = useAccess()
   const canSetKind = partDefId ? canEditEntity(partDefId) : false
-  const canOpenStock = movementDefId ? canEditEntity(movementDefId) : false
+  // `runSetCounts` asserts the same edit on `part`.
+  const canOpenStock = canSetKind
 
   const { getSetting } = useSettings({ scope: 'GENERAL' })
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'

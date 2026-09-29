@@ -12,8 +12,7 @@
  * movement yet and recovering parts before shipping relieves them would make
  * the inventory number worse rather than better (section 6.1). So there is no
  * import of `inventory/receiving/`, `inventory/builds/` or `inventory/movements/` here, and
- * `return_part_line_unit_cost` and `return_part_line_movement` are never
- * written: they are that writer's output.
+ * `return_part_line_unit_cost` is never written: it is that writer's output.
  *
  * Two guards from the pure modules are enforced on the way in, and both are
  * cross-record checks no single screen can make:

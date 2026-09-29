@@ -57,45 +57,47 @@ const ROLLUP_ACTOR = ''
  * unchanged total short-circuits the write, the realtime publish AND the
  * order-level pass. That short-circuit is what makes a batched receipt cheap
  * (see {@link recalculatePurchaseOrderLineRollups}): the batch writes the
- * quantities first, so the per-movement lifecycle rules that follow find their
- * line already correct and do nothing. Getting there first is the whole
- * mechanism — there is no suppression flag to leak, and a batch that never runs
- * simply leaves the per-movement passes to do the work exactly as before.
+ * quantities first, so the per-row passes that follow find their line already
+ * correct and do nothing.
  *
- * ⚠️ Both run POST-COMMIT, off the lifecycle record rules — never inside the
- * caller's transaction. Like `recalculatePartQoH`, the SUM below runs against the
- * module-level `database` connection and cannot see uncommitted rows, so a
- * writer must use `skipEvents: true` and call the recalculation explicitly after
- * `COMMIT` if it needs the roll-up to include its own write.
+ * ⚠️ Both run POST-COMMIT, never inside the caller's transaction: the SUM runs on the
+ * module-level `database` connection and cannot see uncommitted rows. Receipts are settled
+ * by `settleStockMovements` after commit.
  */
-interface RollupSpec {
+interface RollupSpecBase {
+  /** The purchase order line field the SUM is written to. */
+  targetAttr: SystemAttribute
+  /**
+   * What kind of evidence this roll-up carries, for the order-level pass. Declared, not inferred
+   * from `targetAttr`: only RECEIPT evidence may pull a `draft` order forward to `issued`.
+   */
+  evidence: PurchaseOrderStatusEvidence
+}
+
+/** Summed from `StockMovement.quantity` over the rows naming the line. */
+interface MovementRollupSpec extends RollupSpecBase {
+  source: 'stock_movement'
+}
+
+/** Summed from an entity's number field over the child rows pointing at the line. */
+interface EntityRollupSpec extends RollupSpecBase {
+  source: 'entity'
   /** The child entity whose rows are summed. */
   childEntityType: string
   /** The child's numeric field that is summed. */
   quantityAttr: SystemAttribute
   /** The child's relationship field pointing at the purchase order line. */
   lineRelAttr: SystemAttribute
-  /** The purchase order line field the SUM is written to. */
-  targetAttr: SystemAttribute
   /**
-   * What kind of evidence this roll-up carries, for the order-level pass.
-   *
-   * Declared rather than inferred from `targetAttr`: only RECEIPT evidence may
-   * pull a `draft` order forward to `issued`, and a string comparison at the
-   * call site is one careless edit away from letting a bill do it. See
-   * {@link recalculatePurchaseOrderStatuses}.
-   */
-  evidence: PurchaseOrderStatusEvidence
-  /**
-   * The child's own parent document, when a VOIDED parent must take its rows out
-   * of the sum (73 D4). A voided bill's lines stay in the table; the units they
-   * charge for return to billable, which is what makes void + re-bill a
-   * correction rather than a dead end.
+   * The child's own parent document, when a VOIDED parent must take its rows out of the sum
+   * (73 D4): the units a voided bill charged for return to billable.
    */
   parent?: ParentVoidSpec
   /** A second child entity whose quantities are SUBTRACTED from the roll-up. */
   minus?: MinusSpec
 }
+
+type RollupSpec = MovementRollupSpec | EntityRollupSpec
 
 /** The child's parent document and the one status value that means it never happened. */
 interface ParentVoidSpec {
@@ -120,11 +122,9 @@ interface MinusSpec {
   parent: ParentVoidSpec
 }
 
-/** Receipts: SUM(`stock_movement_quantity`) over the movements pointing at the line. */
-const RECEIVED_ROLLUP: RollupSpec = {
-  childEntityType: 'stock_movement',
-  quantityAttr: 'stock_movement_quantity',
-  lineRelAttr: 'stock_movement_purchase_order_line',
+/** Receipts: SUM(`quantity`) over the movements naming the line, reversals included. */
+const RECEIVED_ROLLUP: MovementRollupSpec = {
+  source: 'stock_movement',
   targetAttr: 'purchase_order_line_quantity_received',
   evidence: 'receipt',
 }
@@ -137,7 +137,8 @@ const RECEIVED_ROLLUP: RollupSpec = {
  * it was credited for, so `received 8, billed 10` sits in the exception queue
  * for ever. A voided credit's lines are excluded: the credit never happened.
  */
-const BILLED_ROLLUP: RollupSpec = {
+const BILLED_ROLLUP: EntityRollupSpec = {
+  source: 'entity',
   childEntityType: 'vendor_bill_line',
   quantityAttr: 'vendor_bill_line_quantity_billed',
   lineRelAttr: 'vendor_bill_line_purchase_order_line',
@@ -160,10 +161,10 @@ const BILLED_ROLLUP: RollupSpec = {
   },
 }
 
-/** The three fields one roll-up needs, or `undefined` when the org lacks one. */
+/** The fields one roll-up needs, or `undefined` when the org lacks one. */
 interface RollupFields {
-  quantityFieldId: string
-  lineRelFieldId: string
+  /** The entity child's two fields; absent for a `StockMovement` roll-up. */
+  child?: { quantityFieldId: string; lineRelFieldId: string }
   targetFieldId: string
   targetFieldType: StoredFieldType
   /** Absent when the org has not materialised the child's parent fields yet. */
@@ -190,15 +191,19 @@ async function resolveRollupFields(
   organizationId: string,
   spec: RollupSpec
 ): Promise<RollupFields | undefined> {
+  const attrs: SystemAttribute[] =
+    spec.source === 'entity'
+      ? [spec.quantityAttr, spec.lineRelAttr, spec.targetAttr]
+      : [spec.targetAttr]
   const fields = await getOrgCache()
     .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>([spec.quantityAttr, spec.lineRelAttr, spec.targetAttr])
+    .bySystemAttributes<SystemAttribute>(attrs)
 
-  const quantityField = fields[spec.quantityAttr]
-  const lineRelField = fields[spec.lineRelAttr]
   const targetField = fields[spec.targetAttr]
+  const quantityField = spec.source === 'entity' ? fields[spec.quantityAttr] : undefined
+  const lineRelField = spec.source === 'entity' ? fields[spec.lineRelAttr] : undefined
 
-  if (!quantityField || !lineRelField || !targetField) {
+  if (!targetField || (spec.source === 'entity' && (!quantityField || !lineRelField))) {
     logger.warn('Missing custom fields for purchase order line roll-up', {
       target: spec.targetAttr,
       quantityField: !!quantityField,
@@ -208,9 +213,11 @@ async function resolveRollupFields(
     return undefined
   }
 
+  if (spec.source === 'stock_movement') {
+    return { targetFieldId: targetField.id, targetFieldType: targetField.type }
+  }
   return {
-    quantityFieldId: quantityField.id,
-    lineRelFieldId: lineRelField.id,
+    child: { quantityFieldId: quantityField!.id, lineRelFieldId: lineRelField!.id },
     targetFieldId: targetField.id,
     targetFieldType: targetField.type,
     ...(spec.parent ? { parent: await resolveParentVoidFields(organizationId, spec.parent) } : {}),
@@ -350,31 +357,9 @@ export async function recalculatePurchaseOrderLineRollup(
   const fields = await resolveRollupFields(organizationId, spec)
   if (!fields) return
 
-  // Single self-join, the `recalculateQoHForPart` shape: SUM the child's quantity
-  // where the child's line relationship points at this line. The line's CURRENT
-  // stored total rides along as an uncorrelated scalar subquery — it costs one
-  // index lookup inside a statement that was already being issued, where reading
-  // it separately would cost a whole round trip.
-  const [sumRow] = await database
-    .select({
-      total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
-      current: storedTotalSql(organizationId, purchaseOrderLineInstanceId, fields.targetFieldId),
-    })
-    // Driven from the line rows with entityId-only joins; see inventory/costing/dated-reads.ts.
-    .from(sql`"FieldValue" fv_line`)
-    .innerJoin(
-      schema.FieldValue,
-      sql`${schema.FieldValue.entityId} = fv_line."entityId"
-        AND ${schema.FieldValue.fieldId} = ${fields.quantityFieldId}`
-    )
-    .where(
-      and(
-        sql`fv_line."organizationId" = ${organizationId}
-          AND fv_line."fieldId" = ${fields.lineRelFieldId}
-          AND fv_line."relatedEntityId" = ${purchaseOrderLineInstanceId}`,
-        notUnderVoidParent(fields.parent)
-      )
-    )
+  // The line's CURRENT stored total rides along as a scalar subquery: one index lookup inside a
+  // statement already being issued, where reading it separately would cost a round trip.
+  const sumRow = await readLineTotalWithStored(organizationId, purchaseOrderLineInstanceId, fields)
 
   const credited = fields.minus
     ? (
@@ -603,6 +588,19 @@ async function readTotalsByLine(
   lineIds: string[],
   fields: RollupFields
 ): Promise<Map<string, number>> {
+  if (!fields.child) {
+    const t = schema.StockMovement
+    const rows = await database
+      .select({
+        lineId: t.purchaseOrderLineId,
+        total: sql<string>`COALESCE(SUM(${t.quantity}), 0)`,
+      })
+      .from(t)
+      .where(and(eq(t.organizationId, organizationId), inArray(t.purchaseOrderLineId, lineIds)))
+      .groupBy(t.purchaseOrderLineId)
+    return new Map(rows.map((row) => [row.lineId as string, Number(row.total ?? 0)]))
+  }
+
   const idList = sql.join(
     lineIds.map((id) => sql`${id}`),
     sql`, `
@@ -618,12 +616,12 @@ async function readTotalsByLine(
     .innerJoin(
       schema.FieldValue,
       sql`${schema.FieldValue.entityId} = fv_line."entityId"
-        AND ${schema.FieldValue.fieldId} = ${fields.quantityFieldId}`
+        AND ${schema.FieldValue.fieldId} = ${fields.child.quantityFieldId}`
     )
     .where(
       and(
         sql`fv_line."organizationId" = ${organizationId}
-          AND fv_line."fieldId" = ${fields.lineRelFieldId}
+          AND fv_line."fieldId" = ${fields.child.lineRelFieldId}
           AND fv_line."relatedEntityId" IN (${idList})`,
         notUnderVoidParent(fields.parent)
       )
@@ -631,6 +629,41 @@ async function readTotalsByLine(
     .groupBy(sql`fv_line."relatedEntityId"`)
 
   return new Map(rows.map((row) => [row.lineId, Number(row.total ?? 0)]))
+}
+
+/** One line's summed children and its stored total, in one statement. */
+async function readLineTotalWithStored(
+  organizationId: string,
+  lineId: string,
+  fields: RollupFields
+): Promise<{ total: string; current: number | null } | undefined> {
+  const current = storedTotalSql(organizationId, lineId, fields.targetFieldId)
+  if (!fields.child) {
+    const t = schema.StockMovement
+    const [row] = await database
+      .select({ total: sql<string>`COALESCE(SUM(${t.quantity}), 0)`, current })
+      .from(t)
+      .where(and(eq(t.organizationId, organizationId), eq(t.purchaseOrderLineId, lineId)))
+    return row
+  }
+  const [row] = await database
+    .select({ total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`, current })
+    // Driven from the line rows with entityId-only joins; see inventory/costing/dated-reads.ts.
+    .from(sql`"FieldValue" fv_line`)
+    .innerJoin(
+      schema.FieldValue,
+      sql`${schema.FieldValue.entityId} = fv_line."entityId"
+        AND ${schema.FieldValue.fieldId} = ${fields.child.quantityFieldId}`
+    )
+    .where(
+      and(
+        sql`fv_line."organizationId" = ${organizationId}
+          AND fv_line."fieldId" = ${fields.child.lineRelFieldId}
+          AND fv_line."relatedEntityId" = ${lineId}`,
+        notUnderVoidParent(fields.parent)
+      )
+    )
+  return row
 }
 
 /** The stored roll-up total of every line in the set, keyed by line. */
@@ -681,7 +714,7 @@ function publishRollupValues(
  * a freight-only bill line) and is a silent no-op, not a warning.
  */
 function buildRollupTrigger(
-  spec: RollupSpec,
+  spec: EntityRollupSpec,
   /** The CHILD's own pointer at the order line — the netting child's differs from the spec's. */
   lineRelAttr: SystemAttribute = spec.lineRelAttr
 ): EntityTriggerHandler {
@@ -711,10 +744,6 @@ function buildRollupTrigger(
     await recalculatePurchaseOrderLineRollup(organizationId, lineInstanceId, spec)
   }
 }
-
-/** Re-SUM `purchase_order_line_quantity_received` after a stock movement create/delete. */
-export const recalculatePurchaseOrderLineReceived: EntityTriggerHandler =
-  buildRollupTrigger(RECEIVED_ROLLUP)
 
 /** Re-SUM `purchase_order_line_quantity_billed` after a vendor bill line create/delete. */
 export const recalculatePurchaseOrderLineBilled: EntityTriggerHandler =
@@ -756,11 +785,8 @@ export const PURCHASE_ORDER_LINE_ROLLUPS = {
 // bill, and `purchase_order_billing_status` is classified from the same stale
 // figure.
 //
-// ⚠️ The receipt roll-up deliberately does NOT get an edit door. `stock_movement`
-// declares every field `updatable: false` and a correction is a reversal, so
-// there is no legitimate edit to catch. (That capability is advisory rather than
-// enforced at the write path — but the answer to a movement being edited is to
-// stop the edit, not to re-derive around it.)
+// The receipt roll-up has no edit door: `StockMovement` is append-only and a correction is a
+// reversal, which the movement seam settles like any other write.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** `dirty-parents` key for the billed roll-up. The marked record IS the parent. */

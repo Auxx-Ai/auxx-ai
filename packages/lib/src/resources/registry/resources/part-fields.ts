@@ -295,7 +295,7 @@ export const PART_FIELDS = defineResourceFields({
    * chain is already denominated in, finally named.
    *
    * 🛑 It lives on the part, not on the line, and that is the whole design.
-   * `part_quantity_on_hand`, `stock_movement_quantity`, `subpart` BOM quantities,
+   * `part_quantity_on_hand`, `StockMovement.quantity`, `subpart` BOM quantities,
    * `purchase_order_line_quantity_ordered` and `_quantity_received` are all bare
    * numbers that only reconcile because they share one implied unit. Putting a
    * unit on the purchasing LINE instead (the `line_item` shape) would let a line
@@ -680,32 +680,6 @@ export const PART_FIELDS = defineResourceFields({
     placeholder: 'Enter factor',
     description:
       'Overrides the variability factor MRP sizes red safety with. Empty uses the default',
-  },
-
-  // Reverse relationship: stockMovements (one-to-many from stock_movement.part)
-  stockMovements: {
-    id: toFieldId('stockMovements'),
-    key: 'stockMovements',
-    label: 'Stock Movements',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'part_stock_movements',
-    showInPanel: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'stock_movement:part' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'cascade',
-      isInverse: true,
-    },
-    description: 'Stock movements for this part',
   },
 
   // Reverse relationship: vendorParts (one-to-many from vendor_part.part)

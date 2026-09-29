@@ -173,7 +173,7 @@ export function allocateCapitalisedCost(
 
 /**
  * Landed UNIT cost per line - a RATE, kept at `RATE_DECIMALS` - the number that
- * is written to `stock_movement.unitCost` when a purchase order is received
+ * is written to `StockMovement.unitCostMinor` when a purchase order is received
  * (build plan section 4.3).
  *
  * `(lineTotal + allocated share) / quantity`, rounded to a RATE's five

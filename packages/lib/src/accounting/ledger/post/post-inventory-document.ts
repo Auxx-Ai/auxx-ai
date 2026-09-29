@@ -1,6 +1,6 @@
 // packages/lib/src/accounting/ledger/post/post-inventory-document.ts
 //
-// Post one inventory document from its already-valued `stock_movement` rows.
+// Post one inventory document from its already-valued `StockMovement` rows.
 //
 // The writers post inside their own transaction with everything in hand; two
 // callers do not: the pricer (a row valued after its document was written,
@@ -13,16 +13,13 @@
 import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { UnprocessableEntityError } from '../../../errors'
-import {
-  getBuild,
-  readBuildMovements,
-  requireBuildMovementContext,
-} from '../../../inventory/builds/build-queries'
+import { getBuild, readBuildMovements } from '../../../inventory/builds/build-queries'
 import { readStandardCost } from '../../../inventory/costing/standard-cost-queries'
 import { computeExtendedCost } from '../../../inventory/movements/client'
+import { readMovementsByIds, type StockMovementRow } from '../../../inventory/movements/reads'
 import { sumReliefCogsSplit } from '../../../inventory/relief/cogs-split'
 import { StockMovementCostBasis, StockMovementType } from '../../../resources/registry/enum-values'
-import { readSystemRecords, systemFields } from '../../../resources/system-records'
+import { readSystemRecords } from '../../../resources/system-records'
 import { loadFulfillmentFieldContext } from '../../sales/fulfillments/fields'
 import type {
   InventoryDocumentKind,
@@ -39,9 +36,9 @@ import {
 
 const logger = createScopedLogger('postings:inventory-document')
 
-/** One valued `stock_movement` row, as the document poster reads it. A pending row must never reach here. */
+/** One valued movement, as the document poster reads it. A pending row must never reach here. */
 export interface InventoryDocumentRow {
-  movementId: string
+  id: string
   partInstanceId: string | null
   /** A `StockMovementType` value. */
   type: string | null
@@ -49,7 +46,7 @@ export interface InventoryDocumentRow {
   /** SIGNED, integer minor units. */
   extendedCost: number
   /** The frozen inventory ROLE. */
-  glAccount: string | null
+  glRole: string | null
   occurredAt: Date
   fulfillmentLineId?: string | null
   buildId?: string | null
@@ -131,16 +128,16 @@ export function inventoryDocumentKind(
 }
 
 function toLine(row: InventoryDocumentRow): InventoryMovementLine {
-  if (!row.glAccount) {
+  if (!row.glRole) {
     throw new UnprocessableEntityError(
-      `Stock movement ${row.movementId} carries no frozen inventory account and cannot be posted`,
-      { movementId: row.movementId }
+      `Stock movement ${row.id} carries no frozen inventory account and cannot be posted`,
+      { movementId: row.id }
     )
   }
   const line: InventoryMovementLine = {
-    id: row.movementId,
+    id: row.id,
     extendedCostMinor: row.extendedCost,
-    glAccountRole: row.glAccount,
+    glAccountRole: row.glRole,
   }
   // A receipt against a supplier row accrued `grni` at the agreed price and the adders beside it.
   if (row.type === StockMovementType.RECEIVE && row.vendorUnitPrice != null) {
@@ -187,12 +184,7 @@ export async function postInventoryDocumentInTx(
       throw new UnprocessableEntityError(`Build ${buildId} was not found`, { buildId })
     }
     // The document is the build, whatever subset of its legs the caller holds.
-    const legs = await readBuildMovements(
-      db,
-      organizationId,
-      await requireBuildMovementContext(organizationId),
-      buildId
-    )
+    const legs = await readBuildMovements(db, organizationId, buildId)
     if (legs.some((leg) => leg.extendedCost == null)) {
       throw new UnprocessableEntityError(
         'This build still has a leg waiting for a standard cost, so its entry cannot be posted yet',
@@ -207,12 +199,12 @@ export async function postInventoryDocumentInTx(
         .filter((leg) => leg.extendedCost !== 0)
         .map((leg) =>
           toLine({
-            movementId: leg.movementId,
+            id: leg.movementId,
             partInstanceId: leg.partId,
             type: leg.type,
             quantity: leg.quantity,
             extendedCost: leg.extendedCost as number,
-            glAccount: leg.glAccount,
+            glRole: leg.glRole,
             occurredAt: first.occurredAt,
           })
         ),
@@ -225,7 +217,7 @@ export async function postInventoryDocumentInTx(
     return postInventoryMovementInTx(tx, {
       ...base,
       kind,
-      subject: { sourceKind: 'stock_movement', sourceId: first.movementId },
+      subject: { sourceKind: 'stock_movement', sourceId: first.id },
       ...(parents ? { parents: saleDocumentParents(parents.fulfillmentId, parents.orderId) } : {}),
       cogsSplit: await readSaleCogsSplit(db, organizationId, rows),
       movements,
@@ -235,7 +227,7 @@ export async function postInventoryDocumentInTx(
   return postInventoryMovementInTx(tx, {
     ...base,
     kind,
-    subject: { sourceKind: 'stock_movement', sourceId: first.movementId },
+    subject: { sourceKind: 'stock_movement', sourceId: first.id },
     movements,
   })
 }
@@ -253,7 +245,7 @@ export async function postInventoryDocument(
   if (post && post.status !== 'posted' && post.status !== 'already_posted') {
     logger.warn('An inventory document was not accepted by the ledger', {
       organizationId,
-      movementIds: rows.map((row) => row.movementId),
+      movementIds: rows.map((row) => row.id),
       status: post.status,
       error: post.error,
     })
@@ -331,25 +323,6 @@ export async function readFulfillmentLineParents(
   return out
 }
 
-/** The attributes {@link readInventoryDocumentRows} needs; a caller building its own context uses the same list. */
-export const INVENTORY_DOCUMENT_ATTRIBUTES = [
-  'stock_movement_part',
-  'stock_movement_type',
-  'stock_movement_quantity',
-  'stock_movement_unit_cost',
-  'stock_movement_extended_cost',
-  'stock_movement_cost_basis',
-  'stock_movement_gl_account',
-  'stock_movement_occurred_at',
-  'stock_movement_fulfillment_line',
-  'stock_movement_build',
-  'stock_movement_vendor_unit_price',
-  'stock_movement_freight_accrued',
-  'stock_movement_duties_accrued',
-] as const
-
-export type InventoryDocumentAttribute = (typeof INVENTORY_DOCUMENT_ATTRIBUTES)[number]
-
 /** A stored row with its basis, so a caller can tell a pending row from a valued one before posting. */
 export interface StoredInventoryDocumentRow extends Omit<InventoryDocumentRow, 'extendedCost'> {
   unitCost: number | null
@@ -358,55 +331,44 @@ export interface StoredInventoryDocumentRow extends Omit<InventoryDocumentRow, '
   pending: boolean
 }
 
-/** The `stock_movement` def and the fields the document poster reads, or `null` on an unprovisioned org. */
-export async function loadInventoryDocumentContext(
-  db: Database | Transaction,
-  organizationId: string
-) {
-  return systemFields(db, organizationId, 'stock_movement', INVENTORY_DOCUMENT_ATTRIBUTES, {
-    required: ['stock_movement_part', 'stock_movement_quantity', 'stock_movement_cost_basis'],
-  })
-}
-
-/** These movements as the poster reads them, in ledger (`createdAt`) order; a row with no date is dated its `createdAt`. */
+/** These movements as the poster reads them, in ledger (`effectiveAt`) order. */
 export async function readInventoryDocumentRows(
   db: Database | Transaction,
   organizationId: string,
   movementIds: readonly string[]
 ): Promise<StoredInventoryDocumentRow[]> {
   if (movementIds.length === 0) return []
-  const ctx = await loadInventoryDocumentContext(db, organizationId)
-  if (!ctx) return []
-  const records = await readSystemRecords(db, organizationId, ctx, { ids: movementIds })
-  return records.map((record) => {
-    const occurredAt = record.date('stock_movement_occurred_at')
-    const costBasis = record.option('stock_movement_cost_basis')
-    return {
-      movementId: record.id,
-      partInstanceId: record.related('stock_movement_part'),
-      type: record.option('stock_movement_type'),
-      quantity: record.number('stock_movement_quantity') ?? 0,
-      unitCost: record.number('stock_movement_unit_cost'),
-      extendedCost: record.number('stock_movement_extended_cost'),
-      costBasis,
-      pending: costBasis === StockMovementCostBasis.PENDING,
-      glAccount: record.text('stock_movement_gl_account'),
-      occurredAt: occurredAt ? new Date(occurredAt) : record.createdAt,
-      fulfillmentLineId: record.related('stock_movement_fulfillment_line'),
-      buildId: record.related('stock_movement_build'),
-      vendorUnitPrice: record.number('stock_movement_vendor_unit_price'),
-      freightAccrued: record.number('stock_movement_freight_accrued'),
-      dutiesAccrued: record.number('stock_movement_duties_accrued'),
-    }
-  })
+  const rows = await readMovementsByIds(db, organizationId, movementIds)
+  return rows.map(toInventoryDocumentRow)
+}
+
+/** A `StockMovement` row as the document poster reads it. */
+export function toInventoryDocumentRow(row: StockMovementRow): StoredInventoryDocumentRow {
+  return {
+    id: row.id,
+    partInstanceId: row.partId,
+    type: row.type,
+    quantity: row.quantity,
+    unitCost: row.unitCostMinor,
+    extendedCost: row.extendedCostMinor,
+    costBasis: row.costBasis,
+    pending: row.costBasis === StockMovementCostBasis.PENDING,
+    glRole: row.glRole,
+    occurredAt: row.effectiveAt,
+    fulfillmentLineId: row.fulfillmentLineId,
+    buildId: row.buildId,
+    vendorUnitPrice: row.vendorUnitPriceMinor,
+    freightAccrued: row.freightAccruedMinor,
+    dutiesAccrued: row.dutiesAccruedMinor,
+  }
 }
 
 /** A stored row that is valued, as the poster takes it. Throws on a pending or costless row. */
 export function valuedDocumentRow(row: StoredInventoryDocumentRow): InventoryDocumentRow {
   if (row.pending || row.extendedCost == null) {
     throw new UnprocessableEntityError(
-      `Stock movement ${row.movementId} has no cost yet and cannot be posted`,
-      { movementId: row.movementId }
+      `Stock movement ${row.id} has no cost yet and cannot be posted`,
+      { movementId: row.id }
     )
   }
   return { ...row, extendedCost: row.extendedCost }

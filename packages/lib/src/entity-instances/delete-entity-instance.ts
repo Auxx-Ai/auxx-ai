@@ -7,6 +7,8 @@ import { err, ok } from 'neverthrow'
 import { withAccountingCommitLock } from '../accounting/ledger/post/accounting-commit-lock'
 import { sweepEntityFieldValues } from '../field-values/sweep-entity-references'
 import { releaseRecordFileAssets } from '../files/assets/release-record-assets'
+import type { DeleteMovementsForInput } from '../inventory/movements/delete-movements'
+import type { StockMovementTouched } from '../inventory/movements/types'
 import { sweepResourceAccessForInstances } from '../resource-access/sweep-instances'
 
 /** Parameters for deleting an entity instance */
@@ -37,6 +39,26 @@ export interface DeleteEntityInstancesParams {
  * the caller's.
  */
 const DELETE_CHUNK = 500
+
+/** The definitions whose `StockMovement` rows go with them (plan 20 S9), by the column that names them. */
+const MOVEMENT_PARENT_COLUMNS: Record<string, keyof DeleteMovementsForInput> = {
+  part: 'partIds',
+  build: 'buildIds',
+  purchase_order_line: 'purchaseOrderLineIds',
+  fulfillment_line: 'fulfillmentLineIds',
+}
+
+/** The chunk's movement parents, or null when it holds none. */
+function movementParentsOf(
+  targets: ReadonlyArray<{ id: string; entityType: string | null }>
+): DeleteMovementsForInput | null {
+  const parents: Record<string, string[]> = {}
+  for (const target of targets) {
+    const column = target.entityType ? MOVEMENT_PARENT_COLUMNS[target.entityType] : undefined
+    if (column) (parents[column] ??= []).push(target.id)
+  }
+  return Object.keys(parents).length > 0 ? parents : null
+}
 
 /**
  * Permanently delete a SET of entity instances, their field values, and every
@@ -119,6 +141,18 @@ export async function deleteEntityInstances(params: DeleteEntityInstancesParams)
             )
           )
 
+        // The table's parent FKs are `no action`: the movements go first, and their surviving parts
+        // and lines are settled below, once this chunk has committed. Lazy: this module sits under the
+        // crud barrel, whose evaluation order the inventory graph would disturb.
+        let touched: StockMovementTouched | null = null
+        const parents = movementParentsOf(targets)
+        if (parents) {
+          const { deleteMovementsFor } = await import('../inventory/movements/delete-movements')
+          const removed = await deleteMovementsFor(tx, organizationId, parents)
+          if (removed.isErr()) throw removed.error
+          touched = removed.value.touched
+        }
+
         const byType = new Map<string | null, string[]>()
         const resolved = new Set<string>()
         for (const target of targets) {
@@ -172,13 +206,19 @@ export async function deleteEntityInstances(params: DeleteEntityInstancesParams)
           )
           .returning({ id: schema.EntityInstance.id })
 
-        return deleted.length
+        return { count: deleted.length, touched }
       }),
       'delete-entity-instances'
     )
 
     if (result.isErr()) return err(result.error)
-    count += result.value
+    count += result.value.count
+    if (result.value.touched) {
+      const { settleAfterMovementDelete } = await import(
+        '../inventory/movements/settle-after-delete'
+      )
+      await settleAfterMovementDelete(organizationId, result.value.touched)
+    }
   }
 
   return ok({ success: true, count })

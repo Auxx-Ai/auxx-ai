@@ -3,71 +3,53 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  materialised: new Set<string>(),
-  executeRows: [] as Array<{ id: string | null }>,
-  distinctRows: [] as Array<{ partId: string | null }>,
-  statements: 0,
+  partDefId: 'def_part' as string | undefined,
+  queries: [] as Array<{ sql: string; params: unknown[] }>,
+  rows: [] as unknown[][],
 }))
 
-vi.mock('../../../resources/system-records', () => ({
-  systemFieldMap: async (_db: unknown, _org: string, attrs: readonly string[]) =>
-    Object.fromEntries(attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])),
-}))
+vi.mock('@auxx/database', async () => {
+  const actual = await vi.importActual<typeof import('@auxx/database')>('@auxx/database')
+  const { drizzle } = await import('drizzle-orm/pg-proxy')
+  const database = drizzle(async (sql, params) => {
+    h.queries.push({ sql, params })
+    return { rows: h.rows }
+  })
+  return { database, schema: actual.schema }
+})
+vi.mock('../../../cache', () => ({ getCachedEntityDefId: async () => h.partDefId }))
 
+import { database } from '@auxx/database'
 import { readPartsWithInitialMovement, readPartsWithMovements } from '../movement-coverage'
 
-function chain(rows: unknown[]) {
-  const link: Record<string, unknown> = {}
-  link.from = () => link
-  link.innerJoin = () => link
-  link.where = () => link
-  // biome-ignore lint/suspicious/noThenProperty: stands in for an awaitable drizzle builder
-  link.then = (resolve: (r: unknown[]) => unknown) => Promise.resolve(rows).then(resolve)
-  return link
-}
-
-const db = {
-  execute: async () => {
-    h.statements += 1
-    return { rows: h.executeRows }
-  },
-  selectDistinct: () => {
-    h.statements += 1
-    return chain(h.distinctRows)
-  },
-} as never
+const db = database as never
 
 beforeEach(() => {
-  h.materialised = new Set(['stock_movement_part', 'stock_movement_type'])
-  h.executeRows = []
-  h.distinctRows = []
-  h.statements = 0
+  h.partDefId = 'def_part'
+  h.queries = []
+  h.rows = []
 })
 
 describe('readPartsWithMovements', () => {
-  it('answers every moved part in one statement, whatever the movement count', async () => {
-    h.executeRows = [{ id: 'part_1' }, { id: 'part_2' }, { id: null }]
+  it('probes each part for a movement in one statement', async () => {
+    h.rows = [['part_1'], ['part_2']]
     expect(await readPartsWithMovements(db, 'org_1')).toEqual(new Set(['part_1', 'part_2']))
-    expect(h.statements).toBe(1)
+    expect(h.queries).toHaveLength(1)
+    expect(h.queries[0]?.sql).toContain('exists (select "id" from "StockMovement"')
+    expect(h.queries[0]?.params).toContain('def_part')
   })
 
-  it('reads nothing and reports no part as moved without the movement part link', async () => {
-    h.materialised.delete('stock_movement_part')
-    h.executeRows = [{ id: 'part_1' }]
+  it('reads nothing on an org with no part definition', async () => {
+    h.partDefId = undefined
     expect(await readPartsWithMovements(db, 'org_1')).toEqual(new Set())
-    expect(h.statements).toBe(0)
+    expect(h.queries).toHaveLength(0)
   })
 })
 
 describe('readPartsWithInitialMovement', () => {
   it('answers the parts that carry an initial', async () => {
-    h.distinctRows = [{ partId: 'part_1' }, { partId: null }]
+    h.rows = [['part_1']]
     expect(await readPartsWithInitialMovement(db, 'org_1')).toEqual(new Set(['part_1']))
-  })
-
-  it('reads nothing without the movement type field', async () => {
-    h.materialised.delete('stock_movement_type')
-    expect(await readPartsWithInitialMovement(db, 'org_1')).toEqual(new Set())
-    expect(h.statements).toBe(0)
+    expect(h.queries[0]?.params).toContain('initial')
   })
 })

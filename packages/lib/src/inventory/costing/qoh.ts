@@ -55,52 +55,30 @@ export async function batchRecalculateQoH(
   }
 
   const fields = await systemFieldMap(undefined, organizationId, [
-    'stock_movement_quantity',
-    'stock_movement_part',
-    'stock_movement_adjust_subparts',
     'part_quantity_on_hand',
     'part_reorder_point',
     'part_stock_status',
   ] as const)
 
-  const qtyField = fields.stock_movement_quantity
-  const partRelField = fields.stock_movement_part
-  const flagField = fields.stock_movement_adjust_subparts
   const qohField = fields.part_quantity_on_hand
   const reorderPointField = fields.part_reorder_point
   const statusField = fields.part_stock_status
 
-  if (!qtyField || !partRelField || !qohField) return
+  if (!qohField) return
 
-  // 1. Grouped SUM: one query for all parts
-  //    Excludes movements where adjust_subparts=true
-  //    Driven from the part rows with entityId-only joins; see dated-reads.ts aggregatePerPart.
+  // 1. One grouped SUM for all parts; an unexploded `adjustSubparts` row is not on hand.
+  const t = schema.StockMovement
   const sumRows = await database
-    .select({
-      partId: sql<string>`fv_part."relatedEntityId"`,
-      total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
-    })
-    .from(sql`"FieldValue" fv_part`)
-    .innerJoin(
-      schema.FieldValue,
-      sql`${schema.FieldValue.entityId} = fv_part."entityId"
-        AND ${schema.FieldValue.fieldId} = ${qtyField.id}`
-    )
-    .leftJoin(
-      sql`"FieldValue" fv_flag`,
-      sql`fv_flag."entityId" = fv_part."entityId"
-        AND fv_flag."fieldId" = ${flagField?.id ?? ''}`
-    )
+    .select({ partId: t.partId, total: sql<string>`COALESCE(SUM(${t.quantity}), 0)` })
+    .from(t)
     .where(
-      sql`fv_part."organizationId" = ${organizationId}
-        AND fv_part."fieldId" = ${partRelField.id}
-        AND fv_part."relatedEntityId" IN (${sql.join(
-          unique.map((id) => sql`${id}`),
-          sql`, `
-        )})
-        AND (fv_flag."valueBoolean" IS NULL OR fv_flag."valueBoolean" = false)`
+      and(
+        eq(t.organizationId, organizationId),
+        inArray(t.partId, unique),
+        eq(t.adjustSubparts, false)
+      )
     )
-    .groupBy(sql`fv_part."relatedEntityId"`)
+    .groupBy(t.partId)
 
   const qohByPart = new Map<string, number>()
   for (const row of sumRows) {

@@ -35,7 +35,7 @@
 // backfill for assembled parts, before this so fewer rows wait.
 
 import { database as db, schema } from '@auxx/database'
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { requireCachedEntityDefId } from '../src/cache'
 import { backfillFulfillmentRelief } from '../src/inventory/relief'
 
@@ -106,17 +106,15 @@ async function countAttribute(organizationId: string, attribute: string): Promis
   return row?.n ?? 0
 }
 
-/** `sale` movements the org holds right now, by movement type. */
+/** `sale` movements the org holds right now. */
 async function countSaleMovements(organizationId: string): Promise<number> {
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
-    .from(schema.FieldValue)
-    .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
+    .from(schema.StockMovement)
     .where(
       and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.CustomField.systemAttribute, 'stock_movement_type'),
-        inArray(schema.FieldValue.optionId, ['sale'])
+        eq(schema.StockMovement.organizationId, organizationId),
+        eq(schema.StockMovement.type, 'sale')
       )
     )
   return row?.n ?? 0

@@ -21,7 +21,7 @@ export {
   readUsageBuckets,
   readWhereUsedShares,
 } from './reads'
-export { classifyFacts, MOVEMENT_FACT_PICK, rebuildMovementFacts } from './rebuild'
+export { classifyFacts, rebuildMovementFacts } from './rebuild'
 export type { MovementFactInput } from './writes'
 export {
   deleteMovementFacts,

@@ -9,9 +9,8 @@
 // correctly reports that month as **`open`**. That is why the posted-entry check
 // reads `GlPosting` directly and why it is tested against an `open` strip.
 //
-// "This build HAS BEEN reversed" and the movement cascade are no longer here:
-// they are `onDelete: 'restrict'` on `build_reversed_by` and `onDelete:
-// 'cascade'` on `build_movements`, run by the delete engine.
+// "This build HAS BEEN reversed" is `onDelete: 'restrict'` on `build_reversed_by`;
+// the movements go with the build in `deleteEntityInstances` (plans/mrp/20 S9).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntityPreDeleteEvent } from '../../types'
@@ -76,8 +75,9 @@ function event(values: Record<string, unknown> = {}): EntityPreDeleteEvent {
   }
 }
 
-function movement(id: string, occurredAt: string | null, createdAt = new Date('2026-08-15')) {
-  return { id, occurredAt, createdAt }
+/** A movement row as the guard's select shapes it; `accountingDate` is `effectiveAt`. */
+function movement(id: string, occurredAt: string) {
+  return { id, accountingDate: new Date(occurredAt) }
 }
 
 function settings(values: Record<string, string | null>): void {
@@ -88,11 +88,6 @@ function settings(values: Record<string, string | null>): void {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.getCachedEntityDefId.mockResolvedValue('movement-def')
-  h.bySystemAttributes.mockResolvedValue({
-    stock_movement_build: { id: 'f-build' },
-    stock_movement_occurred_at: { id: 'f-occurred' },
-  })
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.postedPeriodRows.mockResolvedValue([])
   h.movementRows.mockResolvedValue([])
@@ -128,13 +123,6 @@ describe('guardBuildDelete: settled period', () => {
     h.postedPeriodRows.mockResolvedValue([{ periodKey: '2026-08' }])
 
     await expect(guardBuildDelete(event())).rejects.toThrow(/reverse the build/i)
-  })
-
-  it('falls back to createdAt when a movement has no occurredAt', async () => {
-    h.movementRows.mockResolvedValue([movement('m1', null, new Date('2026-07-20'))])
-    h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: '2026-07' })
-
-    await expect(guardBuildDelete(event())).rejects.toThrow(/2026-07/)
   })
 })
 

@@ -353,8 +353,8 @@ export function TariffsSettingsPage() {
    * Remove a code.
    *
    * ✅ The confirm says what removal does NOT do, because that is the part
-   * somebody about to click it will worry about: a `stock_movement` freezes its
-   * cost when it is written and is `updatable: false`, so nothing already valued
+   * somebody about to click it will worry about: a stock movement freezes its
+   * cost when it is written and is append-only, so nothing already valued
    * moves. What changes is forward-looking - offers still pointing here fall
    * back to no duty at all.
    */

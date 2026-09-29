@@ -8,9 +8,8 @@
 // correctly reports that month as **`open`**. That is why the posted-entry check
 // reads `GlPosting` directly and why it is tested against an `open` strip.
 //
-// The BOM, supplier-price and movement cascades this guard once ran by hand are
-// now `onDelete: 'cascade'` on the registry fields and belong to the delete
-// engine; nothing here deletes anything.
+// Nothing here deletes anything: open-period movements go with the part in
+// `deleteEntityInstances` (plans/mrp/20 S9).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntityPreDeleteEvent } from '../../types'
@@ -81,9 +80,9 @@ function event(): EntityPreDeleteEvent {
   }
 }
 
-/** A movement row as the drizzle select shapes it. */
-function movement(id: string, occurredAt: string | null, createdAt = new Date('2026-08-15')) {
-  return { id, occurredAt, createdAt }
+/** A movement row as the guard's select shapes it; `accountingDate` is `effectiveAt`. */
+function movement(id: string, occurredAt: string) {
+  return { id, accountingDate: new Date(occurredAt) }
 }
 
 /** Settings, keyed the way `settledMovementPeriods` reads them. */
@@ -105,11 +104,6 @@ const BOOKS_OPEN = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.getCachedEntityDefId.mockResolvedValue('v9xn5fhvb68jja0wcvog5gl4')
-  h.bySystemAttributes.mockResolvedValue({
-    stock_movement_part: { id: 'fld_part' },
-    stock_movement_occurred_at: { id: 'fld_occurred' },
-  })
   h.movementRows.mockReturnValue([])
   h.postedPeriodRows.mockReturnValue([])
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
@@ -185,32 +179,9 @@ describe('guardPartDelete: open books', () => {
 
     await expect(guardPartDelete(event())).resolves.toBeUndefined()
   })
-
-  it('falls back to createdAt when the movement carries no accounting date', async () => {
-    h.movementRows.mockReturnValue([movement('mv1', null, new Date('2026-08-15T18:00:00Z'))])
-    h.postedPeriodRows.mockReturnValue(posted('2026-08'))
-
-    await expect(guardPartDelete(event())).rejects.toThrow(/2026-08/)
-  })
 })
 
-describe('guardPartDelete: provisioning edge cases', () => {
-  it('is a no-op for an org with no stock movement definition', async () => {
-    h.getCachedEntityDefId.mockResolvedValue(undefined)
-
-    await expect(guardPartDelete(event())).resolves.toBeUndefined()
-    expect(h.resolvePeriodLock).not.toHaveBeenCalled()
-  })
-
-  it('is a no-op when the movement part field has not been provisioned', async () => {
-    h.bySystemAttributes.mockResolvedValue({
-      stock_movement_part: null,
-      stock_movement_occurred_at: { id: 'fld_occurred' },
-    })
-
-    await expect(guardPartDelete(event())).resolves.toBeUndefined()
-  })
-
+describe('guardPartDelete: no movements', () => {
   it('skips the settled-period read entirely for a part with no movements', async () => {
     h.movementRows.mockReturnValue([])
 

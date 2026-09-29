@@ -5,10 +5,8 @@
 // writer it is NULL forever, exactly the failure `purchase-order-line-rollups.test.ts`
 // pins for the buy side.
 //
-// The SQL-level exclusion of `return_in` movements (brief §1's 🛑) cannot be pinned by the
-// FIFO-queue mock this file uses, because that mock trusts whatever total is queued rather
-// than executing the query's join predicates. That exclusion is pinned separately in
-// `fulfillment-line-rollups-scope.test.ts`, which runs the real query against fixture rows.
+// The SQL-level exclusion of `return_in` movements cannot be pinned by the FIFO-queue mock this
+// file uses; `fulfillment-line-rollups.int.test.ts` runs the real query.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -44,6 +42,12 @@ vi.mock('@auxx/database', () => ({
       relatedEntityId: 'relatedEntityId',
     },
     CustomField: { id: 'id', systemAttribute: 'systemAttribute' },
+    StockMovement: {
+      organizationId: 'organizationId',
+      fulfillmentLineId: 'fulfillmentLineId',
+      type: 'type',
+      quantity: 'quantity',
+    },
   },
 }))
 vi.mock('../../../cache', () => ({
@@ -62,57 +66,23 @@ vi.mock('../../../realtime', () => ({
   publishFieldValueUpdates: h.publishFieldValueUpdates,
 }))
 
-import type { EntityTriggerEvent } from '../../types'
 import {
-  FULFILLMENT_LINE_RELIEF_ATTRS,
   recalculateFulfillmentLineQuantityRelieved,
   recalculateFulfillmentLineQuantityRelievedBatch,
-  recalculateFulfillmentLineRelieved,
 } from '../fulfillment-line-rollups'
 
 const LINE = 'fline-1'
-
-function event(
-  values: Record<string, unknown>,
-  overrides: Partial<EntityTriggerEvent> = {}
-): EntityTriggerEvent {
-  return {
-    action: 'created',
-    entitySlug: 'stock-movements',
-    entityType: '',
-    entityDefinitionId: 'smdef',
-    entityInstanceId: 'sm-1',
-    organizationId: 'org_1',
-    userId: 'usr_1',
-    values,
-    ...overrides,
-  } as unknown as EntityTriggerEvent
-}
 
 beforeEach(() => {
   vi.clearAllMocks()
   h.dbResults = []
   h.bySystemAttributes.mockResolvedValue({
-    stock_movement_quantity: { id: 'fld-qty', type: 'NUMBER' },
-    stock_movement_type: { id: 'fld-type', type: 'SINGLE_SELECT' },
-    stock_movement_fulfillment_line: { id: 'fld-line', type: 'RELATIONSHIP' },
     fulfillment_line_quantity_relieved: { id: 'fld-relieved', type: 'NUMBER' },
   })
   h.createFieldValueContext.mockReturnValue({ organizationId: 'org_1' })
   h.requireCachedEntityDefId.mockResolvedValue('flinedef')
   h.setValueWithType.mockResolvedValue([])
   h.publishFieldValueUpdates.mockResolvedValue(undefined)
-})
-
-describe('the attribute names this module is built on', () => {
-  it('names the sell-side fields, never the buy-side ones', () => {
-    expect(FULFILLMENT_LINE_RELIEF_ATTRS).toEqual({
-      quantity: 'stock_movement_quantity',
-      type: 'stock_movement_type',
-      lineRel: 'stock_movement_fulfillment_line',
-      target: 'fulfillment_line_quantity_relieved',
-    })
-  })
 })
 
 describe('recalculateFulfillmentLineQuantityRelieved - the sign', () => {
@@ -198,13 +168,8 @@ describe('recalculateFulfillmentLineQuantityRelieved - the stored total short-ci
 })
 
 describe('recalculateFulfillmentLineQuantityRelieved - missing fields', () => {
-  it('writes nothing when the org lacks one of the four fields', async () => {
-    h.bySystemAttributes.mockResolvedValue({
-      stock_movement_quantity: { id: 'fld-qty', type: 'NUMBER' },
-      // stock_movement_type missing
-      stock_movement_fulfillment_line: { id: 'fld-line', type: 'RELATIONSHIP' },
-      fulfillment_line_quantity_relieved: { id: 'fld-relieved', type: 'NUMBER' },
-    })
+  it('writes nothing when the org lacks the relieved field', async () => {
+    h.bySystemAttributes.mockResolvedValue({})
 
     await recalculateFulfillmentLineQuantityRelieved('org_1', LINE)
 
@@ -335,52 +300,6 @@ describe('the batched roll-up', () => {
 
   it('is a no-op for an empty set', async () => {
     await recalculateFulfillmentLineQuantityRelievedBatch('org_1', [])
-    expect(h.setValueWithType).not.toHaveBeenCalled()
-  })
-})
-
-describe('recalculateFulfillmentLineRelieved - the create/delete trigger', () => {
-  it('re-SUMs the line named in the threaded event values', async () => {
-    h.dbResults.push([{ total: '-4' }])
-
-    await recalculateFulfillmentLineRelieved(event({ stock_movement_fulfillment_line: LINE }))
-
-    expect(h.setValueWithType).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ recordId: `flinedef:${LINE}`, value: { type: 'number', value: 4 } })
-    )
-  })
-
-  it('accepts a RecordId-shaped relationship value as well as a bare instance id', async () => {
-    h.dbResults.push([{ total: '-4' }])
-
-    await recalculateFulfillmentLineRelieved(
-      event({ stock_movement_fulfillment_line: `flinedef:${LINE}` })
-    )
-
-    expect(h.setValueWithType).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ recordId: `flinedef:${LINE}` })
-    )
-  })
-
-  it('falls back to the movement’s own field value when the event carried none - the delete path', async () => {
-    h.dbResults.push([{ relatedEntityId: LINE }]) // the fallback lookup
-    h.dbResults.push([{ total: '-1' }]) // the SUM
-
-    await recalculateFulfillmentLineRelieved(event({}, { action: 'deleted' }))
-
-    expect(h.setValueWithType).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ value: { type: 'number', value: 1 } })
-    )
-  })
-
-  it('is a silent no-op for a movement with no fulfillment line - a receipt, an adjustment, a build', async () => {
-    h.dbResults.push([]) // fallback lookup finds nothing
-
-    await recalculateFulfillmentLineRelieved(event({}))
-
     expect(h.setValueWithType).not.toHaveBeenCalled()
   })
 })

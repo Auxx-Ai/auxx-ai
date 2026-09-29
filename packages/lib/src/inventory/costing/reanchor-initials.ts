@@ -6,28 +6,19 @@
  * older than it arrives, or the replay no longer reads N on D, it is re-dated to the day before
  * the earliest other movement and re-quantified to `N − net(D)`. Runs in front of the QoH SUM,
  * so every writer already calls it after commit; idempotent, so its own rewrite is a no-op.
- *
- * Writes on the quiet automation lane, like `fillPendingCost`: no doors fire, and the caller
- * (`batchRecalculateQoH`) is the one that re-SUMs.
+ * The caller (`batchRecalculateQoH`) is the one that re-SUMs.
  */
 
 import { type Database, database, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { dayKeyInZone, previousDayKey, startOfDayInstant } from '@auxx/utils/calendar-day'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
-import { getOrgCache, requireCachedEntityDefId } from '../../cache'
-import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
-import { quietSession } from '../../resources/crud/write-origin'
-import { type RecordId, toRecordId } from '../../resources/resource-id'
 import { updateMovementFactAnchor } from '../movements/fact/writes'
 import { type PartInitial, readPartInitials } from '../movements/initial-queries'
+import { reanchorInitialMovement } from '../movements/update-movements'
 import { readEarliestMovementAt, readPartNetThrough } from './dated-reads'
 
 const logger = createScopedLogger('costing:reanchor-initials')
-
-/** The prose recorded on every silent re-anchor. Greppable, and the audit trail. */
-export const REANCHOR_INITIAL_REASON =
-  'an older movement arrived, so the count anchor is re-dated and re-quantified to keep the replay reading the counted quantity on the count day'
 
 export interface ReanchoredInitial {
   movementId: string
@@ -144,24 +135,10 @@ async function reanchor(organizationId: string, partIds: string[]): Promise<Rean
   })
   if (moves.length === 0) return []
 
-  const movementDefId = await requireCachedEntityDefId(organizationId, 'stock_movement')
-  const userId = await getOrgCache().get(organizationId, 'systemUser')
   const moved: ReanchoredInitial[] = []
   await database.transaction(async (tx) => {
-    const crud = new UnifiedCrudHandler(
-      organizationId,
-      userId,
-      tx as unknown as Database,
-      undefined,
-      {
-        session: quietSession(REANCHOR_INITIAL_REASON),
-      }
-    )
     for (const { initial, plan } of moves) {
-      await crud.update(toRecordId(movementDefId, initial.movementId) as RecordId, {
-        stock_movement_occurred_at: plan.occurredAt.toISOString(),
-        stock_movement_quantity: plan.quantity,
-      })
+      await reanchorInitialMovement(tx, organizationId, initial.movementId, plan)
       await anchorSeam.onInitialReanchored(tx, initial.movementId, plan)
       moved.push({
         movementId: initial.movementId,

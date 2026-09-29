@@ -13,7 +13,6 @@ import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-z
 import { requestAccountingRecovery } from '../../accounting/work-items/recovery'
 import { getCachedEntityDefId, onCacheEvent } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
-import { getRealtimeService, publishRecordsInvalidated } from '../../realtime'
 import { recordNumbering } from '../../records/record-numbering'
 import { batchRecalculateQoH } from '../costing/qoh'
 import { backflushBuilds } from './backflush'
@@ -253,21 +252,12 @@ export async function publishBackflushRunFailed(
 
 /** Coarse frames for clients that missed per-build ones (a worker killed after a commit). */
 async function announce(organizationId: string, buildIds: string[], partIds: string[]) {
-  const [buildDefId, partDefId, movementDefId] = await Promise.all([
+  const [buildDefId, partDefId] = await Promise.all([
     getCachedEntityDefId(organizationId, 'build'),
     getCachedEntityDefId(organizationId, 'part'),
-    getCachedEntityDefId(organizationId, 'stock_movement'),
   ])
   if (buildDefId) publishQuietBuildWrites(organizationId, buildDefId, buildIds)
   if (partDefId) publishQuietBuildWrites(organizationId, partDefId, partIds)
-  if (!movementDefId) return
-  try {
-    await publishRecordsInvalidated(getRealtimeService(), organizationId, {
-      entityDefinitionIds: [movementDefId],
-    })
-  } catch {
-    // Best effort, as `publishQuietBuildWrites`.
-  }
 }
 
 /** Why a backflush is refused while kinds conflict with parts lists. */

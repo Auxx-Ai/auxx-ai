@@ -13,7 +13,7 @@ interface Leg {
   quantity: number
   unitCost: number | null
   extendedCost: number | null
-  glAccount: string | null
+  glRole: string | null
 }
 
 const h = vi.hoisted(() => ({
@@ -29,7 +29,6 @@ vi.mock('../build-queries', () => ({
   getBuild: async () => ({ isErr: () => false, value: h.build }),
   readBuildMovements: async () => h.legs,
   requireBuildContext: async () => ({ defId: 'def_build', fields: {} }),
-  requireBuildMovementContext: async () => ({ defId: 'def_mv', partDefId: 'def_part', fields: {} }),
 }))
 vi.mock('../complete-build', () => ({ publishBuildUpdate: h.publish }))
 vi.mock('../write-lane', () => ({ buildWriteSession: () => ({ kind: 'quiet' }) }))
@@ -66,7 +65,7 @@ function leg(
     quantity,
     unitCost,
     extendedCost,
-    glAccount: type === 'build_produce' ? 'inventory_finished_goods' : 'inventory_raw_materials',
+    glRole: type === 'build_produce' ? 'inventory_finished_goods' : 'inventory_raw_materials',
   }
 }
 
@@ -130,9 +129,9 @@ describe('finishPricedBuild', () => {
       db,
       ORG,
       [
-        expect.objectContaining({ movementId: 'mv_c1', buildId: 'build_1', extendedCost: -2_000 }),
-        expect.objectContaining({ movementId: 'mv_c2', buildId: 'build_1', extendedCost: -500 }),
-        expect.objectContaining({ movementId: 'mv_p', buildId: 'build_1', extendedCost: 4_000 }),
+        expect.objectContaining({ id: 'mv_c1', buildId: 'build_1', extendedCost: -2_000 }),
+        expect.objectContaining({ id: 'mv_c2', buildId: 'build_1', extendedCost: -500 }),
+        expect.objectContaining({ id: 'mv_p', buildId: 'build_1', extendedCost: 4_000 }),
       ],
       { actorUserId: 'user_system' }
     )

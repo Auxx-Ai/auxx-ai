@@ -15,7 +15,7 @@
 
 import { database } from '@auxx/database'
 import { sql } from 'drizzle-orm'
-// Relative import on purpose — see the note in backfill-po-line-rollups.ts.
+// Relative import on purpose: `generate-exports.ts` gives packages/lib no subpath for this module.
 import { stampOrderShipmentTotals } from '../src/accounting/sales/fulfillments/stamp-totals'
 
 const ORG_ARG = (() => {

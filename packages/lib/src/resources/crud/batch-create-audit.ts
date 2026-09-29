@@ -24,7 +24,6 @@ export interface BatchCreateAudit {
  * new value and the caller's bypass, so it holds per value in a batch as per record.
  */
 export const BATCH_CREATE_AUDITS: Readonly<Record<string, BatchCreateAudit>> = {
-  stock_movement: { systemHooks: {}, fieldPreHooks: [], entityPreCreateHooks: 0 },
   build: {
     systemHooks: { build_number: { range: 'build' } },
     fieldPreHooks: ['build_status'],

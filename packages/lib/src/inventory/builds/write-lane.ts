@@ -1,60 +1,15 @@
 // packages/lib/src/inventory/builds/write-lane.ts
 
-/**
- * The ONE place that decides which write lane a build's ledger writes take.
- *
- * plans/products/build/01-build-plan.md section 3.5 trap 2.
- *
- * ## The choice
- *
- * `quietSession` — plan 04 section 3's C4/C5 mode: doors stay shut on purpose,
- * and the reason is typed, greppable and checkable rather than a comment nobody
- * can enforce. Its default origin is `automation`, so `sessionLane` resolves to
- * `'silent'` (no bus event, no realtime frame, no dedup enqueue) and the session
- * carries no `collector`, so neither dispatch door opens. Completion also sets `coveredBy`,
- * which shuts the field-value layer's display-column and inverse frames; see `isCoveredQuiet`.
- *
- * ## Why not the three alternatives
- *
- * - **`skipEvents: true`** (what the plan originally said) is not merely
- *   `@deprecated`, it is **insufficient**. There are two doors onto
- *   `explodeBomMovement` and it closes only one. Door A is the per-write
- *   fan-out, gated by `derivePublishEvents`. Door B is the sync manifest:
- *   `createEntity` calls `syncCollectorOf(ctx.session)` and `recordCreated(...)`
- *   in a block gated on **neither** `publishEvents`, `txScope`, nor
- *   `skipEvents`. A `sync`-origin session with `skipEvents: true` is still
- *   captured, and the manifest consumer dispatches the native rules from it.
- * - **`seedSession`** reaches the same silent lane, but its reason string would
- *   be a lie: a build completion is production automation, not a seeder or a
- *   data migration. The door matrix justifies the seed column with "seeded data
- *   is shaped by the seeder, not by rules", which is not why a build is silent.
- * - **`absorbedSession`** requires a named aggregator that actually announces
- *   the movements on their behalf, and there is none — claiming one that does
- *   not exist is the B-16 defect `silent-write-conformance.test.ts` exists to
- *   catch.
- *
- * ## 🛑 What this lane makes load-bearing
- *
- * Silencing the rule silences BOTH halves of `mfg-stock-movements-created`, and
- * the second half is `recalculatePartQoH`, which fires regardless of the
- * `adjustSubparts` flag. So the single post-commit `batchRecalculateQoH` is not
- * an optimisation — it is the **only** thing that recalculates quantity on hand
- * for a build's movements, and it must cover the produced part and every
- * consumed part.
- *
- * ⚠️ `adjustSubparts: false` stays on every row regardless of the lane.
- * `explodeBomMovement` guards on that flag as its third statement, before any
- * query, and the create-time values are threaded rather than refetched, so a
- * `false` reaches that guard on every lane. It is the belt that keeps this safe
- * if the lane is ever changed.
- */
+// The one place that decides the write lane for a build's own entity rows. `quietSession` (not
+// `skipEvents`, `seedSession` or `absorbedSession`): builds are production automation that announce
+// their own writes after commit through `publishBuildUpdate` and `publishQuietBuildWrites`.
 
 import { getRealtimeService, publishRecordsChanged } from '../../realtime'
 import { quietSession, type WriteSession } from '../../resources/crud/write-origin'
 
 /** The prose recorded on every silent build write. Greppable, and the audit trail. */
 export const BUILD_WRITE_LANE_REASON =
-  'build completion posts its own consume/produce ledger and recalculates QoH after commit'
+  'build completion posts its own consume/produce ledger and announces its rows after commit'
 
 /**
  * The quiet session for build writes that do not announce every row they touch (reversal,
@@ -65,51 +20,17 @@ export function buildWriteSession(): WriteSession {
 }
 
 /**
- * The completion's session: `completeBuild` announces the build, its movements and their parts
- * through {@link publishQuietBuildWrites} after commit, so per-record frames are shut too.
+ * The completion's session: `completeBuild` announces the build through
+ * {@link publishQuietBuildWrites} after commit, so per-record frames are shut too.
  */
 export function buildCompletionSession(): WriteSession {
   return quietSession(BUILD_WRITE_LANE_REASON, { coveredBy: 'publishQuietBuildWrites' })
 }
 
 /**
- * Announce rows a build wrote silently — the ONE frame per def that replaces
- * the per-write frames {@link buildWriteSession} suppresses.
- *
- * The lane above is right to silence 51 `record:created` frames and wrong to
- * leave the rows unannounced. Two surfaces prove it: `build-ledger-card` reads
- * the movements through the ordinary `record.listFiltered` query, so with no
- * frame it renders "Nothing posted yet" until the drawer is remounted; and a
- * REVERSAL creates a whole `build` row on the same lane, so the builds list
- * never learns the reversal happened. `publishBuildUpdate` already does this
- * for a completion's build row; this covers everything else.
- *
- * Tier-2 (`records:changed`, plan events/03 §7b) rather than tier-1, because
- * that is what the tier exists for: a bulk-shaped write that suppressed its
- * per-record frames. The client (`use-resource-sync`) coalesces the frame into
- * one list invalidate per def, and its other two lanes short-circuit — freshly
- * written rows are in neither the record store nor the value store, so nothing
- * is fetched that is not already on screen. The row VALUES then arrive in the
- * card's own second wave (`useSystemValuesForRecords`), which is why a ledger
- * row can render its id before its cost.
- *
- * 🛑 No `excludeSocketId`, deliberately, and unlike `bulkArchiveEntities`. The
- * tab that completed the build is the one most likely to have the ledger open,
- * and it is excluded from its own tier-1 frames everywhere else — excluding it
- * here would silence the exact surface this call exists to repair.
- *
- * ⚠️ A quiet lane normally emits nothing because a finalize pass announces on
- * its behalf. `quietSession` carries no `txScope` and no collector, so a build
- * has no finalize pass — it announces its own writes, here and in
- * `publishBuildUpdate`. Do not "restore" the silence.
- *
- * Fire-and-forget, after the commit: a Pusher hiccup must never fail a build
- * whose ledger is already written.
- *
- * @param organizationId The org whose record channel receives the frame.
- * @param entityDefinitionId The def the rows belong to — one def per call, since
- *   a `records:changed` frame is addressed to that def's own record channel.
- * @param recordIds Bare `EntityInstance` ids — never composite `RecordId`s.
+ * Announce rows a build wrote silently: one tier-2 `records:changed` frame per def, fire and
+ * forget after the commit. No `excludeSocketId`: the tab that completed the build is the one most
+ * likely to have it open.
  */
 export function publishQuietBuildWrites(
   organizationId: string,

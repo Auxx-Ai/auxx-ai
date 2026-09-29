@@ -9,88 +9,32 @@
  * service class (`docs/lib-module-guide.md` section 5).
  *
  * There are no permission checks here. The router asserts read access on the
- * `stock_movement` def and passes the narrowed filters down; a lib read that
+ * part and passes the narrowed filters down; a lib read that
  * decided visibility for itself would have to be kept in step with the router
  * forever (`docs/lib-module-guide.md` section 6).
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, desc, eq, gte, isNull, lte, type SQL, sql } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
+import { and, desc, eq, gte, lte, type SQL } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
-import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
 import { VENDOR_PART_FIELDS } from '../../resources/registry/resources/vendor-part-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
-import {
-  readSystemRecords,
-  type SystemFieldContext,
-  type SystemInstanceRow,
-  type SystemRecord,
-  systemFieldMap,
-  systemFields,
-  systemInstanceColumns,
-  systemRecordScope,
-  systemValueJoin,
-} from '../../resources/system-records'
+import { readSystemRecords, systemFieldMap, systemFields } from '../../resources/system-records'
 import { isUsableStoredStandard } from '../costing/client'
 import { resolveOfferTariff } from '../costing/vendor-cost'
+import type { StockMovementRow } from '../movements/reads'
 import { loadTariffSchedule } from '../tariffs/tariff-schedule'
 import type { ReceiptCostInputs } from './client'
 import { guard } from './guard'
 import type { ListReceiptsFilters, ReceiptRow } from './types'
 
-/**
- * Every field a receipt row is assembled from.
- *
- * The cost and provenance attributes are only materialised once entity migration
- * 108 has run for the org, so every one of them is treated as optional below —
- * an org mid-migration must read its old movements, not 500.
- */
-const RECEIPT_PICK = pickSystemAttributes(STOCK_MOVEMENT_FIELDS, [
-  'stock_movement_type',
-  'stock_movement_part',
-  'stock_movement_quantity',
-  'stock_movement_reference',
-  'stock_movement_unit_cost',
-  'stock_movement_extended_cost',
-  'stock_movement_vendor_unit_price',
-  'stock_movement_vendor_part',
-  'stock_movement_gl_account',
-  'stock_movement_occurred_at',
-  'stock_movement_purchase_order_line',
-] as const)
-
-type ReceiptAttribute = (typeof RECEIPT_PICK)[number]
-
 const DEFAULT_LIMIT = 50
 
-/** The `stock_movement` def and fields, or `null` when the org has no ledger — or no `type` to tell a receipt from a scrap. */
-function loadFieldContext(
-  db: Database,
-  organizationId: string
-): Promise<SystemFieldContext<ReceiptAttribute> | null> {
-  // Without a `type` field there is no way to tell a receipt from a scrap, and a
-  // read that guessed would report shipments as purchases.
-  return systemFields(db, organizationId, 'stock_movement', RECEIPT_PICK, {
-    required: ['stock_movement_type'],
-  })
-}
-
 /**
- * List `receive` movements, newest accounting date first.
- *
- * Ordering is `COALESCE(occurredAt, createdAt)` and not either column alone.
- * `occurredAt` is the truth but is NULL on every movement written before entity
- * migration 108, and those rows are never backfilled (build plan section 2.5) —
- * so ordering on it alone silently sorts the entire pre-migration ledger to one
- * end of the list, and ordering on `createdAt` alone puts a receipt dated last
- * month above one dated last year purely because it was keyed later.
- *
- * Pagination is applied in SQL, in the same statement as the ordering, so a
- * caller asking for page two gets page two of the ordered set rather than page
- * two of an arbitrary set that was then sorted.
+ * List `receive` movements, newest `effectiveAt` first, paged in SQL so page two is page two of
+ * the ordered set.
  */
 export async function listReceipts(
   db: Database,
@@ -99,128 +43,41 @@ export async function listReceipts(
 ): Promise<Result<ReceiptRow[], Error>> {
   return guard(
     async () => {
-      const ctx = await loadFieldContext(db, organizationId)
-      if (!ctx) return []
+      const t = schema.StockMovement
+      const where: SQL[] = [eq(t.organizationId, organizationId), eq(t.type, 'receive')]
+      if (filters.since) where.push(gte(t.effectiveAt, filters.since))
+      if (filters.until) where.push(lte(t.effectiveAt, filters.until))
+      if (filters.partInstanceId) where.push(eq(t.partId, filters.partInstanceId))
+      if (filters.vendorPartId) where.push(eq(t.vendorPartId, filters.vendorPartId))
 
-      const { defId, fields } = ctx
-      const limit = filters.limit ?? DEFAULT_LIMIT
-      const offset = filters.offset ?? 0
-
-      const typeValue = alias(schema.FieldValue, 'receipt_type')
-      const occurredValue = alias(schema.FieldValue, 'receipt_occurred')
-
-      // The accounting date, with the documented fallback. Built once and used
-      // for both the ORDER BY and the since/until window so a row can never be
-      // filtered by one date and sorted by another.
-      const accountingDate = fields.stock_movement_occurred_at
-        ? sql<Date>`COALESCE(${occurredValue.valueDate}, ${schema.EntityInstance.createdAt})`
-        : sql<Date>`${schema.EntityInstance.createdAt}`
-
-      const where: SQL[] = [
-        systemRecordScope(organizationId, defId),
-        // A SINGLE_SELECT stores its chosen value in `optionId`; for a
-        // system-seeded enum that id IS the value ('receive').
-        eq(typeValue.optionId, 'receive'),
-      ]
-
-      if (filters.since) where.push(gte(accountingDate, filters.since))
-      if (filters.until) where.push(lte(accountingDate, filters.until))
-
-      let query = db
-        .select(systemInstanceColumns)
-        .from(schema.EntityInstance)
-        .innerJoin(typeValue, systemValueJoin(typeValue, fields.stock_movement_type!.id))
-        .$dynamic()
-
-      if (fields.stock_movement_occurred_at) {
-        query = query.leftJoin(
-          occurredValue,
-          systemValueJoin(occurredValue, fields.stock_movement_occurred_at.id)
-        )
-      }
-
-      if (filters.partInstanceId && fields.stock_movement_part) {
-        const partValue = alias(schema.FieldValue, 'receipt_part')
-        query = query.innerJoin(
-          partValue,
-          relationJoin(partValue, fields.stock_movement_part.id, filters.partInstanceId)
-        )
-      }
-
-      if (filters.vendorPartId && fields.stock_movement_vendor_part) {
-        const vendorPartValue = alias(schema.FieldValue, 'receipt_vendor_part')
-        query = query.innerJoin(
-          vendorPartValue,
-          relationJoin(vendorPartValue, fields.stock_movement_vendor_part.id, filters.vendorPartId)
-        )
-      }
-
-      const rows = await query
+      const rows = await db
+        .select()
+        .from(t)
         .where(and(...where))
-        .orderBy(desc(accountingDate), desc(schema.EntityInstance.createdAt))
-        .limit(limit)
-        .offset(offset)
-
-      if (rows.length === 0) return []
-      return hydrateReceipts(db, organizationId, ctx, rows)
+        .orderBy(desc(t.effectiveAt), desc(t.createdAt), desc(t.id))
+        .limit(filters.limit ?? DEFAULT_LIMIT)
+        .offset(filters.offset ?? 0)
+      return rows.map(toReceiptRow)
     },
     'Failed to list receipts',
     { organizationId, filters }
   )
 }
 
-/**
- * Join predicate for "this movement's <relation> points at <instanceId>".
- *
- * The alias OBJECT rather than its name, so drizzle emits the table reference as
- * an identifier — a hand-written `sql` fragment interpolating a table binds it as
- * a parameter instead, which is a mistake this codebase has already paid for once.
- */
-function relationJoin(
-  table: ReturnType<typeof alias<typeof schema.FieldValue, string>>,
-  fieldId: string,
-  relatedEntityId: string
-): SQL | undefined {
-  return and(systemValueJoin(table, fieldId), eq(table.relatedEntityId, relatedEntityId))
-}
-
-/**
- * Turn a page of movement rows into full rows.
- *
- * The alternative — a join per attribute on the paging query — multiplies the
- * row count by the number of multi-valued fields and makes `LIMIT` mean
- * something other than "this many movements".
- */
-async function hydrateReceipts(
-  db: Database,
-  organizationId: string,
-  ctx: SystemFieldContext<ReceiptAttribute>,
-  instances: SystemInstanceRow[]
-): Promise<ReceiptRow[]> {
-  const records = await readSystemRecords(db, organizationId, ctx, { instances })
-  return records.map((record) => toReceiptRow(ctx, record))
-}
-
-function toReceiptRow(
-  ctx: SystemFieldContext<ReceiptAttribute>,
-  record: SystemRecord<ReceiptAttribute>
-): ReceiptRow {
-  const occurredAt = record.date('stock_movement_occurred_at')
-  const createdAt = record.createdAt
+function toReceiptRow(row: StockMovementRow): ReceiptRow {
   return {
-    movementId: record.id,
-    recordId: `${ctx.defId}:${record.id}`,
-    partInstanceId: record.related('stock_movement_part'),
-    quantity: record.number('stock_movement_quantity') ?? 0,
-    unitCost: record.number('stock_movement_unit_cost'),
-    extendedCost: record.number('stock_movement_extended_cost'),
-    vendorUnitPrice: record.number('stock_movement_vendor_unit_price'),
-    vendorPartId: record.related('stock_movement_vendor_part'),
-    glAccount: record.text('stock_movement_gl_account'),
-    purchaseOrderLineId: record.related('stock_movement_purchase_order_line'),
-    reference: record.text('stock_movement_reference'),
-    occurredAt: occurredAt ? new Date(occurredAt) : createdAt,
-    createdAt,
+    movementId: row.id,
+    partInstanceId: row.partId,
+    quantity: row.quantity,
+    unitCost: row.unitCostMinor,
+    extendedCost: row.extendedCostMinor,
+    vendorUnitPrice: row.vendorUnitPriceMinor,
+    vendorPartId: row.vendorPartId,
+    glRole: row.glRole,
+    purchaseOrderLineId: row.purchaseOrderLineId,
+    reference: row.reference,
+    occurredAt: row.effectiveAt,
+    createdAt: row.createdAt,
   }
 }
 
@@ -249,9 +106,7 @@ export async function getPartReceiptHistory(
  * the supplier row when this is null, and `receiveStock` refuses to write at all
  * (build plan section 3.2: never write a receipt at zero cost).
  *
- * Movements with a NULL `unitCost` are skipped rather than ending the search:
- * every pre-migration receipt has one, and stopping at the first would make this
- * return null for every org with any history at all.
+ * Movements with a NULL `unitCost` (pending) are skipped rather than ending the search.
  */
 export async function getLastReceiptCost(
   db: Database,

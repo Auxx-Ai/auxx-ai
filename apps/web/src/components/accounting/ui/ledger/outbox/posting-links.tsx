@@ -6,6 +6,7 @@ import { RecordBadge } from '~/components/resources/ui/record-badge'
 import type { RouterOutputs } from '~/trpc/react'
 import { MovementBadge } from '../../movement-badge'
 import { LedgerSourceLink } from '../ledger-source-link'
+import { StockMovementBadge } from '../stock-movement-badge'
 
 /**
  * One row of badges, one badge row tall: a badge that does not fit wraps onto a
@@ -24,12 +25,9 @@ export function PostingLinks({ sources }: { sources: PostingSource[] }) {
     <span className={BADGE_ROW_CLASS}>
       {sources.map((source) =>
         source.recordId ? (
-          <RecordBadge
-            key={source.id}
-            recordId={source.recordId}
-            size='sm'
-            showResourceLabel={source.sourceKind === 'stock_movement'}
-          />
+          <RecordBadge key={source.id} recordId={source.recordId} size='sm' />
+        ) : source.stockMovement ? (
+          <StockMovementBadge key={source.id} movement={source.stockMovement} size='sm' />
         ) : source.movement ? (
           <MovementBadge key={source.id} movement={source.movement} size='sm' detail='compact' />
         ) : (

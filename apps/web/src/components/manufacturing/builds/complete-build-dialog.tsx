@@ -21,7 +21,7 @@
 //    somebody typed is an absolute quantity for the WHOLE run and stays put.
 //    Zero is a legal answer — the line is dropped, not written at zero.
 // 2. **Off-BOM additions.** A part that is not on the bill of materials at all
-//    can be added, and its movement carries `stock_movement_qty_per_unit = NULL`
+//    can be added, and its movement carries `qtyPerUnit = NULL`
 //    — the documented marker for a floor substitution, so the usage cross-check
 //    can see it later instead of it being silent. The rows say so on screen too.
 // 3. **Scrap, priced.** B7: scrapped units consume material and produce no
@@ -269,20 +269,12 @@ export function CompleteBuildDialog({
         ...(calendarDayKey(completedAt) ? { day: calendarDayKey(completedAt)! } : {}),
         notes: notes || undefined,
       })
-      // The BUILD row only. `completeBuild` publishes its own field-value frame
-      // for it, but the acting tab is excluded from its own realtime events, so
-      // this tab still has to invalidate the two `builds.*` reads and the
-      // generic record list.
-      //
-      // The ledger is NOT this tab's job: the movements are written on the quiet
-      // lane, and `publishBuildMovements` announces them with one tier-2
-      // `records:changed` frame that every tab receives — including this one, it
-      // passes no `excludeSocketId`. Invalidating them from here would aim at
-      // the `stock_movement` def, not `build`, and would still miss the store
-      // list cache that `useRecordList` checks before it fetches.
+      // The acting tab is excluded from its own realtime events, so it invalidates
+      // the build reads, the generic record list and the parts' movement lists.
       await Promise.all([
         utils.builds.get.invalidate({ buildId }),
         utils.builds.list.invalidate(),
+        utils.purchasing.listMovements.invalidate(),
         buildDefId
           ? utils.record.listFiltered.invalidate({ entityDefinitionId: buildDefId })
           : Promise.resolve(),

@@ -44,16 +44,11 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
   const utils = api.useUtils()
 
   const buildDefId = useResourceProperty('build', 'id')
-  const movementDefId = useResourceProperty('stock_movement', 'id')
   const openBatchRun = useOpenBatchRun()
 
-  // The client mirror of what `builds.startUndoBackflush` asserts (§11.5). Undo
-  // cancels AND reverses, and the reversal arm appends stock movements, so it
-  // takes both halves: edit on `build` and edit on `stock_movement`. The server
-  // enforces regardless; this only avoids a click-then-403.
+  // The client mirror of what `builds.startUndoBackflush` asserts (§11.5): edit on `build`.
   const { canEditEntity } = useAccess()
-  const canUndoRun =
-    !!buildDefId && canEditEntity(buildDefId) && !!movementDefId && canEditEntity(movementDefId)
+  const canUndoRun = !!buildDefId && canEditEntity(buildDefId)
 
   const build = api.builds.get.useQuery(
     { buildId: entityInstanceId },
@@ -80,6 +75,7 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
       utils.builds.get.invalidate(),
       utils.builds.list.invalidate(),
       utils.builds.getBatchRun.invalidate(),
+      utils.purchasing.listMovements.invalidate(),
       buildDefId
         ? utils.record.listFiltered.invalidate({ entityDefinitionId: buildDefId })
         : Promise.resolve(),

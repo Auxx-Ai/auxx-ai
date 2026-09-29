@@ -6,16 +6,16 @@ import { type Database, schema } from '@auxx/database'
 import { getTestDb } from '@auxx/test-utils'
 import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { deleteEntityInstances } from '../../../../entity-instances/delete-entity-instance'
 import {
   type BuildFixture,
-  listMovementInstanceIds,
+  listMovementIds,
   seedBuildOrg,
 } from '../../../builds/__tests__/support/build-fixture'
 import { createBuild, startBuild } from '../../../builds/build-mutations'
 import { completeBuild } from '../../../builds/complete-build'
+import { deleteMovementsFor } from '../../delete-movements'
 import { deleteMovementFacts, insertMovementFacts, updateMovementFactAnchor } from '../writes'
-import { insertMovementInstances } from './support/movement-instances'
+import { newMovementIds } from './support/movement-instances'
 
 vi.mock('../../../../events/publisher', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
@@ -111,25 +111,22 @@ describe('writeStockMovements writes the mirror', () => {
       quantityProduced: QUANTITY,
     })
     expect(done.isErr()).toBe(true)
-    expect(await listMovementInstanceIds(f.organizationId, f.movementDefId)).toEqual([])
+    expect(await listMovementIds(f.organizationId)).toEqual([])
     expect(await facts()).toEqual([])
   })
 
-  it('deleting the movement instance cascades to its mirror row', async () => {
+  it('deleting a build’s movements through the seam removes their mirror rows', async () => {
     const buildId = await inProgressBuild()
     const done = await completeBuild(db(), f.organizationId, f.userId, {
       buildId,
       quantityProduced: QUANTITY,
     })
     if (done.isErr()) throw done.error
-    const [first, ...rest] = done.value.movementIds
-    const deleted = await deleteEntityInstances({
-      ids: [first as string],
-      organizationId: f.organizationId,
-      db: db(),
-    })
+    const deleted = await db().transaction((tx) =>
+      deleteMovementsFor(tx, f.organizationId, { buildIds: [buildId] })
+    )
     if (deleted.isErr()) throw deleted.error
-    expect((await facts()).map((row) => row.id).sort()).toEqual([...rest].sort())
+    expect(await facts()).toEqual([])
   })
 })
 
@@ -145,7 +142,7 @@ describe('the mirror writers', () => {
   }
 
   beforeEach(async () => {
-    const [id] = await insertMovementInstances(db(), f.organizationId, f.movementDefId)
+    const [id] = newMovementIds()
     row.id = id as string
   })
 

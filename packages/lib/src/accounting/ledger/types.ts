@@ -33,7 +33,7 @@ export const POSTING_TYPES = [
   'month_end_reversal',
   // MIGRATION step 5. ONE entry per inventory DOCUMENT - a fulfillment, a goods
   // receipt, an adjustment, a build, a return, an opening run - at the frozen
-  // `stock_movement_extended_cost` of the movements it links as members. The
+  // `StockMovement.extendedCostMinor` of the movements it links as members. The
   // document kind travels in the built envelope, not in a second posting type,
   // because every kind claims, exports and reverses identically (TARGET §5).
   'inventory_movement',

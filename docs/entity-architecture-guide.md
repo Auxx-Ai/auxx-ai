@@ -182,8 +182,9 @@ Code: `packages/lib/src/field-values/` and `packages/lib/src/resources/`.
 
 ### Resource registry — `resources/registry/`
 
-- **Static registry** (`field-registry.ts`): `RESOURCE_TABLE_REGISTRY` (metadata for system tables —
-  contact, ticket, thread, user, inbox, …) and `RESOURCE_FIELD_REGISTRY` (their built-in fields).
+- **Static registry** (`field-registry.ts`): `RESOURCE_TABLE_REGISTRY` (metadata for table-backed
+  system resources — thread, user, message, participant, dataset, article, …; contact and ticket
+  are entity definitions) and `RESOURCE_FIELD_REGISTRY` (their built-in fields).
   `SYSTEM_FIELD_KEYS` is the set of all static keys.
 - **ResourceRegistryService** (`resource-registry-service.ts`): merges the static registry with the org's
   DB `CustomField` rows into unified `Resource`s via `mergeSystemAndCustomFields`. After merge, a
@@ -237,8 +238,8 @@ variants. Uses ResourceRegistryService + FieldValueService internally.
 
 `bulkCreate` runs `createEntitiesBatch` (`create-entities-batch.ts`) inside a savepoint when the
 def and session qualify: one instance insert, one value insert, one inverse sync per field, one
-flush for N records, storing what N `createEntity` calls store. Eligible: `stock_movement`,
-`build` and user-authored defs whose hooks pass `batch-create-audit.ts` (no unique field, no
+flush for N records, storing what N `createEntity` calls store. Eligible: `build` and
+user-authored defs whose hooks pass `batch-create-audit.ts` (no unique field, no
 NAME/FILE display, no avatar), on a quiet or sync session. A failed batch rolls back and the
 items are created one by one, so one bad item is one error.
 

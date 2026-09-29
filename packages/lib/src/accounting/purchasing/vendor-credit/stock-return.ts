@@ -15,15 +15,17 @@
  */
 
 import type { Database, Transaction } from '@auxx/database'
-import { requireCachedEntityDefId } from '../../../cache'
 import { UnprocessableEntityError } from '../../../errors'
 import { isServicePartKind } from '../../../inventory/costing/client'
 import { readStandardCost } from '../../../inventory/costing/standard-cost-queries'
-import { type StockMovementInput, writeStockMovements } from '../../../inventory/movements'
+import {
+  type StockMovementInput,
+  type StockMovementTouched,
+  writeStockMovements,
+} from '../../../inventory/movements'
 import { resolveInventoryRoleForPartKind } from '../../../inventory/movements/client'
 import { readPartKind } from '../../../inventory/receiving/receipt-queries'
 import { StockMovementType } from '../../../resources/registry/enum-values'
-import { systemDefId } from '../../../resources/system-records'
 import type { InventoryMovementLine } from '../../ledger/builders/inventory-movement'
 import type { InTxPostResult } from '../../ledger/post/post-entry'
 import { postInventoryMovementInTx } from '../../ledger/post/post-inventory-movement'
@@ -145,6 +147,8 @@ export interface WrittenVendorCreditStockReturns {
   movementIds: string[]
   affectedPartIds: string[]
   purchaseOrderLineIds: string[]
+  /** For `settleStockMovements` after the credit's commit. */
+  touched: StockMovementTouched
   post: InTxPostResult | null
 }
 
@@ -162,14 +166,13 @@ export async function writeVendorCreditStockReturns(
 ): Promise<WrittenVendorCreditStockReturns> {
   const { organizationId, userId, vendorCreditInstanceId, number, occurredAt, returns } = input
   if (returns.length === 0) {
-    return { movementIds: [], affectedPartIds: [], purchaseOrderLineIds: [], post: null }
-  }
-
-  const txDb = tx as unknown as Database
-  const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-  const movementDefId = await systemDefId(txDb, organizationId, 'stock_movement')
-  if (!movementDefId) {
-    throw new UnprocessableEntityError('This organization has no stock_movement entity definition')
+    return {
+      movementIds: [],
+      affectedPartIds: [],
+      purchaseOrderLineIds: [],
+      touched: { partIds: [], purchaseOrderLineIds: [], fulfillmentLineIds: [], buildIds: [] },
+      post: null,
+    }
   }
 
   const inputs: StockMovementInput[] = returns.map((item) => ({
@@ -178,7 +181,7 @@ export async function writeVendorCreditStockReturns(
     quantity: -item.quantity,
     unitCost: item.standardUnitCost,
     costBasis: 'standard',
-    glAccount: item.glAccountRole,
+    glRole: item.glAccountRole,
     occurredAt,
     reason: 'Returned to vendor',
     reference: number,
@@ -187,10 +190,7 @@ export async function writeVendorCreditStockReturns(
       : {}),
   }))
 
-  const written = await writeStockMovements(
-    { db: txDb, organizationId, userId, movementDefId, partDefId, lane: { kind: 'plain' } },
-    inputs
-  )
+  const written = await writeStockMovements({ db: tx, organizationId, userId }, inputs)
   if (written.isErr()) throw written.error
   const records = written.value.records
 
@@ -202,14 +202,14 @@ export async function writeVendorCreditStockReturns(
     // A $0-standard row still carries its `grni` debit, so it stays unless both are zero.
     .filter(
       ({ record, item }) =>
-        record.glAccount &&
+        record.glRole &&
         record.extendedCost != null &&
         (record.extendedCost !== 0 || item.grniReliefMinor !== 0)
     )
     .map(({ record, item }) => ({
-      id: record.movementId,
+      id: record.id,
       extendedCostMinor: record.extendedCost as number,
-      glAccountRole: record.glAccount as string,
+      glAccountRole: record.glRole as string,
       grniReliefMinor: item.grniReliefMinor,
     }))
 
@@ -218,7 +218,7 @@ export async function writeVendorCreditStockReturns(
     kind: 'return_to_vendor',
     // The FIRST movement anchors the claim, the receipt's shape; every movement
     // — itself included — is linked as a member by the poster.
-    subject: { sourceKind: 'stock_movement', sourceId: records[0]!.movementId },
+    subject: { sourceKind: 'stock_movement', sourceId: records[0]!.id },
     parents: [{ sourceKind: 'vendor_credit', sourceId: vendorCreditInstanceId }],
     occurredAt,
     movements,
@@ -227,8 +227,8 @@ export async function writeVendorCreditStockReturns(
   })
 
   return {
-    movementIds: records.map((record) => record.movementId),
-    affectedPartIds: written.value.affectedPartIds,
+    movementIds: records.map((record) => record.id),
+    affectedPartIds: written.value.touched.partIds,
     purchaseOrderLineIds: [
       ...new Set(
         returns
@@ -236,6 +236,7 @@ export async function writeVendorCreditStockReturns(
           .filter((id): id is string => id !== null)
       ),
     ],
+    touched: written.value.touched,
     post,
   }
 }

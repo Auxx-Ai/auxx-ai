@@ -9,13 +9,13 @@ const INSERT_CHUNK = 500
 
 type Db = Database | Transaction
 
-/** One mirror row, keyed by the `stock_movement` instance id; link ids are bare instance ids. */
+/** One mirror row, keyed by the `StockMovement` id; link ids are bare instance ids. */
 export interface MovementFactInput {
   id: string
   partId: string
   type: string
   quantity: number
-  /** `stock_movement_occurred_at`; `null` falls back to `createdAt`. */
+  /** The movement's `occurredAt`; `null` falls back to `createdAt`. */
   occurredAt: Date | null
   /** The movement instance's `createdAt`. */
   createdAt: Date
@@ -60,7 +60,7 @@ export async function insertMovementFacts(
   return inserted
 }
 
-/** Remove the mirror rows of deleted `stock_movement` instances. */
+/** Remove the mirror rows of deleted stock movements. */
 export async function deleteMovementFacts(tx: Db, ids: readonly string[]): Promise<void> {
   for (const chunk of chunkArray([...new Set(ids)], INSERT_CHUNK)) {
     await tx

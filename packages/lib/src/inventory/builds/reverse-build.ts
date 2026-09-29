@@ -1,50 +1,14 @@
 // packages/lib/src/inventory/builds/reverse-build.ts
 
 /**
- * `reverseBuild` - the inverse of {@link completeBuild}.
+ * `reverseBuild` - the inverse of {@link completeBuild}. plans/products/build/01-build-plan.md
+ * section 3.4, README B6.
  *
- * plans/products/build/01-build-plan.md section 3.4, README B6.
- *
- * 🛑 **A completed build is never edited or deleted. It is reversed** by a
- * second build whose movements are the originals' with the sign flipped,
- * carrying the **ORIGINAL's** frozen costs and not today's. A period that has
- * been posted must never change shape, and every field on `stock_movement` is
- * `updatable: false` precisely so that a cost frozen years ago can still be
- * trusted.
- *
- * ## Why this does not reuse `receiving/reverse-movement.ts`
- *
- * That function exists, it is good, and it is the wrong shape here - four ways,
- * each of which would be a silent defect rather than a compile error:
- *
- * 1. **It re-types the row.** Its `REVERSAL_TYPE_BY_ORIGINAL` map deliberately
- *    sends `build_consume` and `build_produce` to `adjust`, with the reasoning
- *    written out in place: undoing a `build_consume` standalone is not a
- *    production run, and labelling it `build_produce` would put a manufacturing
- *    event in the ledger that never happened. That reasoning is right for one
- *    movement corrected on its own and wrong for B6, where the negation belongs
- *    to a reversing BUILD and the pair must be recognisable as one.
- * 2. **It cannot set `stock_movement_build`.** The reversing rows would be
- *    orphaned from the reversing build, `build_movements` would be empty, and
- *    a second reversal would have nothing to read back.
- * 3. **It does not copy `qty_per_unit`**, so the as-built BOM snapshot - the
- *    whole point of that column - is lost on the negation.
- * 4. **It is one movement, on the inline lane, outside any transaction.** A
- *    51-row build would become 51 independently-refusable operations and 51 full
- *    quantity-on-hand re-SUMs, and a failure half way through would leave a
- *    ledger that is neither the build nor its reversal.
- *
- * What IS reused is its two refusals, verbatim in spirit - a build is reversed
- * at most once, and a reversal is never itself reversed - plus the shared
- * `stock-movements.writeStockMovements` (plans/money/tasks/50-batch-inventory-relief.md
- * §2), whose `computeExtendedCost` fallback is what keeps a reversal identical
- * in magnitude to the run it undoes. Every reversing movement also points its
- * `stock_movement_reverses_movement` at the row it negates, which is what makes
- * `reverseMovement`'s own already-reversed guard refuse to correct a movement
- * that this function has already undone.
- *
- * No permission checks. The router asserts (`docs/lib-module-guide.md`
- * section 6).
+ * A completed build is never edited or deleted; a second build negates its movements at the
+ * ORIGINAL's frozen costs. Not `reverseMovement`: that re-types build legs to `adjust`, carries no
+ * `buildId` or `qtyPerUnit`, and writes one row outside any transaction. Each negation points its
+ * `reversesMovementId` at the row it undoes, so the unique index refuses a second correction.
+ * No permission checks (`docs/lib-module-guide.md` section 6).
  */
 
 import type { Database, Transaction } from '@auxx/database'
@@ -58,20 +22,22 @@ import { BadRequestError, ConflictError, UnprocessableEntityError } from '../../
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { BuildStatus, StockMovementCostBasis } from '../../resources/registry/enum-values'
 import { toRecordId } from '../../resources/resource-id'
-import { type StockMovementInput, writeStockMovements } from '../movements'
+import {
+  type StockMovementInput,
+  type StockMovementTouched,
+  settleStockMovements,
+  writeStockMovements,
+} from '../movements'
 import { BUILD_STATUS_BYPASS, requireDefId } from './build-mutations'
 import {
   assertBuildStatus,
   type BuildContext,
-  type BuildMovementContext,
   hasBuildReversal,
   lockBuild,
   readBuildMovements,
   requireBuildContext,
-  requireBuildMovementContext,
 } from './build-queries'
 import { canReverseBuild } from './client'
-import { recalculateAfterCommit } from './complete-build'
 import { guard } from './guard'
 import type { BuildRecord, ReverseBuildInput, ReverseBuildResult } from './types'
 import { buildWriteSession, publishQuietBuildWrites } from './write-lane'
@@ -95,8 +61,7 @@ const logger = createScopedLogger('builds:reverse')
  * 4. Write ONE new build plus one negated movement per original movement, in a
  *    single transaction, carrying the originals' frozen costs verbatim.
  *
- * Then, after the commit, one batched quantity-on-hand recalculation - the same
- * rule, and the same reason, as `completeBuild`.
+ * Then, after the commit, `settleStockMovements`, as `completeBuild` does.
  */
 export async function reverseBuild(
   db: Database,
@@ -106,9 +71,9 @@ export async function reverseBuild(
 ): Promise<Result<ReverseBuildResult, Error>> {
   return guard(
     async () => {
-      const [ctx, movementCtx] = await Promise.all([
+      const [ctx, partDefId] = await Promise.all([
         requireBuildContext(organizationId),
-        requireBuildMovementContext(organizationId),
+        requireDefId(organizationId, 'part'),
       ])
 
       if (!ctx.fields.build_reversal_of) {
@@ -120,11 +85,11 @@ export async function reverseBuild(
       }
 
       const occurredAt = input.occurredAt ?? new Date()
-      const result = await db.transaction(async (tx) =>
-        writeReversal(tx, organizationId, userId, { ctx, movementCtx, input, occurredAt })
+      const { result, touched } = await db.transaction(async (tx) =>
+        writeReversal(tx, organizationId, userId, { ctx, partDefId, input, occurredAt })
       )
 
-      await recalculateAfterCommit(organizationId, result.recalculatedPartIds)
+      await settleStockMovements(organizationId, touched)
 
       // B6's undo reaches the ledger as a REVERSAL of the original build's own
       // entry, never a second opposite entry: the reversal carries the frozen
@@ -143,14 +108,7 @@ export async function reverseBuild(
           movementIds: result.movementIds,
         })
       }
-      // Two frames, two defs - a reversal writes on BOTH.
-      //
-      // The movements, so the reversing build's own ledger renders. And the
-      // `build` ROW, which `completeBuild` never has to announce because its row
-      // already exists and `publishBuildUpdate` carries the field changes: a
-      // reversal CREATES a build, on the quiet lane, so without this frame no
-      // open builds list ever learns the reversal happened.
-      publishQuietBuildWrites(organizationId, movementCtx.defId, result.movementIds)
+      // A reversal CREATES a build on the quiet lane; without this no open builds list learns of it.
       publishQuietBuildWrites(organizationId, ctx.defId, [result.buildId])
 
       logger.info('Reversed build', {
@@ -169,7 +127,7 @@ export async function reverseBuild(
 
 interface WriteReversalArgs {
   ctx: BuildContext
-  movementCtx: BuildMovementContext
+  partDefId: string
   input: ReverseBuildInput
   occurredAt: Date
 }
@@ -179,8 +137,8 @@ async function writeReversal(
   organizationId: string,
   userId: string,
   args: WriteReversalArgs
-): Promise<ReverseBuildResult> {
-  const { ctx, movementCtx, input, occurredAt } = args
+): Promise<{ result: ReverseBuildResult; touched: StockMovementTouched }> {
+  const { ctx, partDefId, input, occurredAt } = args
   const txDb = tx as unknown as Database
 
   // Step 1.
@@ -205,16 +163,14 @@ async function writeReversal(
     )
   }
 
-  const movements = await readBuildMovements(txDb, organizationId, movementCtx, original.buildId)
+  const movements = await readBuildMovements(tx, organizationId, original.buildId)
   if (movements.length === 0) {
     throw new UnprocessableEntityError(
       'This build wrote no stock movements, so there is nothing to reverse'
     )
   }
 
-  // Step 4.
-  // The same quiet lane the completion takes, for the same reasons - see
-  // `write-lane.ts` and `complete-build.ts`'s header.
+  // Step 4. The same quiet lane the completion takes; see `write-lane.ts`.
   const reversalSession = buildWriteSession()
   const crud = new UnifiedCrudHandler(organizationId, userId, txDb, undefined, {
     session: reversalSession,
@@ -231,16 +187,11 @@ async function writeReversal(
 
   const reversalBuild = await crud.create(
     ctx.defId,
-    reversalBuildValues(ctx, movementCtx, original, input, occurredAt, orderDefId)
+    reversalBuildValues(ctx, partDefId, original, input, occurredAt, orderDefId)
   )
   const reversalRecordId = toRecordId(ctx.defId, reversalBuild.instance.id)
 
-  // One negated `stock_movement` per original, through the shared
-  // `stock-movements.writeStockMovements`
-  // (plans/money/tasks/50-batch-inventory-relief.md §2). No live,
-  // order-dependent computation runs between rows here (unlike
-  // `complete-build.ts`'s produce row), so the whole batch goes through in one
-  // call.
+  // One negated movement per original, in one batch.
   const movementInputs: StockMovementInput[] = movements.map((movement) => {
     const quantity = -movement.quantity
     return {
@@ -259,44 +210,31 @@ async function writeReversal(
       // `standard` cost is still a `standard`, and re-deciding it here would
       // let a reversal disagree with the movement it is a copy of.
       costBasis: movement.costBasis ?? StockMovementCostBasis.STANDARD,
-      glAccount: movement.glAccount ?? undefined,
+      glRole: movement.glRole ?? undefined,
       occurredAt,
       // Copied, not recomputed. The as-built snapshot describes the run that
       // happened, and the reversal describes the same run.
       qtyPerUnit: movement.qtyPerUnit,
       reason: input.reason,
       links: {
-        buildId: reversalRecordId,
-        // Points at the row it negates, so `reverseMovement`'s already-reversed
-        // guard refuses to correct a movement this build has already undone.
+        buildId: reversalBuild.instance.id,
         reversesMovementId: movement.movementId,
       },
     }
   })
 
-  const written = await writeStockMovements(
-    {
-      db: txDb,
-      organizationId,
-      userId,
-      movementDefId: movementCtx.defId,
-      partDefId: movementCtx.partDefId,
-      lane: { kind: 'quiet', session: reversalSession, bypassFieldGuards: BUILD_STATUS_BYPASS },
-      // The SAME handler the reversal `build` row was created through -
-      // `build-event.test.ts` pins exactly one bypass-carrying
-      // `UnifiedCrudHandler` construction per reversal.
-      handler: crud,
-    },
-    movementInputs
-  )
+  const written = await writeStockMovements({ db: tx, organizationId, userId }, movementInputs)
   if (written.isErr()) throw written.error
 
   return {
-    buildId: reversalBuild.instance.id,
-    recordId: reversalRecordId,
-    reversalOfBuildId: original.buildId,
-    movementIds: written.value.records.map((record) => record.movementId),
-    recalculatedPartIds: written.value.affectedPartIds,
+    result: {
+      buildId: reversalBuild.instance.id,
+      recordId: reversalRecordId,
+      reversalOfBuildId: original.buildId,
+      movementIds: written.value.records.map((record) => record.id),
+      recalculatedPartIds: written.value.touched.partIds,
+    },
+    touched: written.value.touched,
   }
 }
 
@@ -317,7 +255,7 @@ async function writeReversal(
  */
 function reversalBuildValues(
   ctx: BuildContext,
-  movementCtx: BuildMovementContext,
+  partDefId: string,
   original: BuildRecord,
   input: ReverseBuildInput,
   occurredAt: Date,
@@ -328,7 +266,7 @@ function reversalBuildValues(
     build_reversal_of: toRecordId(ctx.defId, original.buildId),
   }
   if (original.partId) {
-    values.build_part = toRecordId(movementCtx.partDefId, original.partId)
+    values.build_part = toRecordId(partDefId, original.partId)
   }
   const negate = (value: number | null): number | undefined => (value == null ? undefined : -value)
 

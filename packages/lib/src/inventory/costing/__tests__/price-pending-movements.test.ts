@@ -15,7 +15,7 @@ interface LedgerRow {
   unitCost: number | null
   extendedCost: number | null
   costBasis: string | null
-  glAccount: string | null
+  glRole: string | null
   occurredAt: string
   fulfillmentLineId?: string
   buildId?: string
@@ -72,26 +72,6 @@ vi.mock('../../../accounting/sales/fulfillments/fields', () => ({
   }),
 }))
 vi.mock('../../../resources/system-records', () => ({
-  systemFields: async () => ({ defId: 'def_mv', fields: {} }),
-  findSystemRecordIdsByValue: async (
-    _db: unknown,
-    _org: string,
-    _ctx: unknown,
-    criteria: Array<{ attribute: string; option?: string[]; related?: string[] }>
-  ) => {
-    const rows = h.ledger.filter((row) =>
-      criteria.every((criterion) => {
-        if (criterion.attribute === 'stock_movement_cost_basis')
-          return criterion.option!.includes(row.costBasis ?? '')
-        if (criterion.attribute === 'stock_movement_part')
-          return criterion.related!.includes(row.partId)
-        if (criterion.attribute === 'stock_movement_build')
-          return criterion.related!.includes(row.buildId ?? '')
-        return false
-      })
-    )
-    return new Map([['key', rows.map((row) => row.id)]])
-  },
   readSystemRecords: async (
     _db: unknown,
     _org: string,
@@ -99,43 +79,47 @@ vi.mock('../../../resources/system-records', () => ({
     options: { ids: string[] }
   ) =>
     options.ids.flatMap((id): unknown[] => {
-      if (ctx.defId === 'def_line') {
-        const fulfillmentId = h.lineFulfillment.get(id)
-        return fulfillmentId ? [{ id, related: () => fulfillmentId }] : []
-      }
-      if (ctx.defId === 'def_ful') {
-        const orderId = h.fulfillmentOrder.get(id)
-        return orderId ? [{ id, related: () => orderId }] : []
-      }
-      const row = h.ledger.find((candidate) => candidate.id === id)
-      if (!row) return []
-      return [
-        {
-          id,
-          createdAt: new Date(row.occurredAt),
-          related: (attribute: string) =>
-            attribute === 'stock_movement_part'
-              ? row.partId
-              : attribute === 'stock_movement_fulfillment_line'
-                ? (row.fulfillmentLineId ?? null)
-                : attribute === 'stock_movement_build'
-                  ? (row.buildId ?? null)
-                  : null,
-          option: (attribute: string) =>
-            attribute === 'stock_movement_type' ? row.type : row.costBasis,
-          number: (attribute: string) =>
-            attribute === 'stock_movement_quantity'
-              ? row.quantity
-              : attribute === 'stock_movement_unit_cost'
-                ? row.unitCost
-                : attribute === 'stock_movement_extended_cost'
-                  ? row.extendedCost
-                  : null,
-          text: () => row.glAccount,
-          date: () => row.occurredAt,
-        },
-      ]
+      const parent =
+        ctx.defId === 'def_line' ? h.lineFulfillment.get(id) : h.fulfillmentOrder.get(id)
+      return parent ? [{ id, related: () => parent }] : []
     }),
+}))
+/** A fixture row as the `StockMovement` table returns it. */
+function tableRow(row: LedgerRow) {
+  return {
+    id: row.id,
+    partId: row.partId,
+    type: row.type,
+    quantity: row.quantity,
+    unitCostMinor: row.unitCost,
+    extendedCostMinor: row.extendedCost,
+    costBasis: row.costBasis,
+    glRole: row.glRole,
+    effectiveAt: new Date(row.occurredAt),
+    fulfillmentLineId: row.fulfillmentLineId ?? null,
+    buildId: row.buildId ?? null,
+    vendorUnitPriceMinor: null,
+    freightAccruedMinor: null,
+    dutiesAccruedMinor: null,
+  }
+}
+vi.mock('../../movements/reads', () => ({
+  readPendingMovements: async (
+    _db: unknown,
+    _org: string,
+    scope: { partIds?: string[]; buildIds?: string[] }
+  ) =>
+    h.ledger
+      .filter(
+        (row) =>
+          row.costBasis === 'pending' &&
+          (scope.partIds
+            ? scope.partIds.includes(row.partId)
+            : scope.buildIds!.includes(row.buildId ?? ''))
+      )
+      .map(tableRow),
+  readMovementsByIds: async (_db: unknown, _org: string, ids: string[]) =>
+    h.ledger.filter((row) => ids.includes(row.id)).map(tableRow),
 }))
 vi.mock('../../movements/fill-pending-cost', () => ({ fillPendingCost: h.fillPendingCost }))
 vi.mock('../standard-cost-queries', () => ({
@@ -167,7 +151,6 @@ vi.mock('../../builds/price-build', () => ({ finishPricedBuild: h.finishPricedBu
 vi.mock('../../builds/build-queries', () => ({
   getBuild: async () => ({ isErr: () => false, value: null }),
   readBuildMovements: async () => [],
-  requireBuildMovementContext: async () => ({}),
 }))
 // `postInventoryMovementInTx` is real; its own collaborators are stubbed as in its test.
 vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
@@ -212,7 +195,7 @@ function pending(
     unitCost: null,
     extendedCost: null,
     costBasis: 'pending',
-    glAccount: 'inventory_finished_goods',
+    glRole: 'inventory_finished_goods',
     occurredAt: '2026-08-18T12:00:00.000Z',
     ...extra,
   }
@@ -264,7 +247,7 @@ beforeEach(() => {
           quantity: row.quantity,
           unitCost: row.unitCost,
           extendedCost: row.extendedCost,
-          glAccount: row.glAccount,
+          glRole: row.glRole,
           occurredAt: new Date(row.occurredAt),
         }
       }),
@@ -335,8 +318,8 @@ describe('a first standard values every pending row of the part', () => {
 
   it('posts an adjust against count variance and an initial as an opening', async () => {
     h.ledger = [
-      pending('mv_adj', 'part_a', 'adjust', 3, { glAccount: 'inventory_raw_materials' }),
-      pending('mv_init', 'part_a', 'initial', 5, { glAccount: 'inventory_raw_materials' }),
+      pending('mv_adj', 'part_a', 'adjust', 3, { glRole: 'inventory_raw_materials' }),
+      pending('mv_init', 'part_a', 'initial', 5, { glRole: 'inventory_raw_materials' }),
     ]
 
     await pricePendingMovements(db, ORG, ['part_a'])
@@ -480,7 +463,7 @@ describe('what the pricer leaves alone', () => {
           quantity: 1,
           unitCost: 1_000,
           extendedCost: 1_000,
-          glAccount: 'inventory_finished_goods',
+          glRole: 'inventory_finished_goods',
           occurredAt: new Date('2026-08-18T12:00:00.000Z'),
         },
       ],

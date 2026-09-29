@@ -14,9 +14,8 @@ const state = vi.hoisted(() => ({
   items: [] as Record<string, unknown>[],
   refs: [] as Record<string, unknown>[],
   retried: [] as unknown[],
-  /** Records by id, as `useRecord` answers; system values by record id, as `useSystemValues` does. */
+  /** Records by id, as `useRecord` answers. */
   records: {} as Record<string, { displayName: string }>,
-  values: {} as Record<string, Record<string, unknown>>,
 }))
 
 vi.mock('~/components/resources', () => ({
@@ -27,11 +26,12 @@ vi.mock('~/components/resources', () => ({
     isNotFound: false,
   }),
 }))
-vi.mock('~/components/resources/hooks/use-system-values', () => ({
-  useSystemValues: (recordId: string | null) => ({
-    values: (recordId && state.values[recordId]) || {},
-    isLoading: false,
-  }),
+vi.mock('../stock-movement-badge', () => ({
+  useStockMovementHref: (movement: { id: string; partId: string } | null) =>
+    movement ? `/app/parts/${movement.partId}?tab=inventory&movement=${movement.id}` : null,
+  StockMovementBadge: ({ movement }: { movement: { id: string } }) => (
+    <span data-testid='movement-badge'>{movement.id}</span>
+  ),
 }))
 vi.mock('~/components/resources/ui/record-badge', () => ({
   RecordBadge: ({ recordId, link }: { recordId: string; link?: boolean }) => (
@@ -215,7 +215,6 @@ beforeEach(() => {
   state.refs = []
   state.retried = []
   state.records = {}
-  state.values = {}
 })
 
 /** A parked item under a part, as `ledger.listBlockedItems` hands it back. */
@@ -314,17 +313,20 @@ describe('BlockedPanel', () => {
         recordDefinitionId: 'def-fulfillment',
       }),
       priceItem({ sourceKind: 'build', sourceId: 'b1' }),
-      priceItem({ sourceKind: 'stock_movement', sourceId: 'm1' }),
+      priceItem({
+        sourceKind: 'stock_movement',
+        sourceId: 'm1',
+        movement: {
+          partId: 'part_1',
+          type: 'adjust',
+          quantity: -3,
+          reason: 'Recount',
+          reference: null,
+          occurredAt: new Date('2026-09-10T09:00:00Z'),
+        },
+      }),
     ]
     state.records = { 'def-build:b1': { displayName: 'BLD-0007' } }
-    state.values = {
-      'def-stock_movement:m1': {
-        stock_movement_type: 'adjust',
-        stock_movement_quantity: -3,
-        stock_movement_reason: 'Recount',
-        stock_movement_occurred_at: '2026-09-10T09:00:00Z',
-      },
-    }
     const onSelectShipment = vi.fn()
     const onSelectRecord = vi.fn()
     renderPanel({ onSelectShipment, onSelectRecord, activeRecordId: 'def-build:b1' })
@@ -346,12 +348,14 @@ describe('BlockedPanel', () => {
     fireEvent.click(screen.getByLabelText('Open BLD-0007'))
     expect(onSelectRecord).toHaveBeenCalledWith('def-build:b1')
 
-    // The count row reads its type, signed quantity and reason off the movement, dated when it happened.
+    // The count row reads its type, signed quantity and reason off the movement, dated when it
+    // happened, and opens its part's Inventory tab at the row.
     const countRow = screen.getByText('-3 · Recount').closest('div')!
     expect(countRow.querySelector('[data-testid=type]')?.textContent).toBe('Adjustment')
     expect(countRow.querySelector('[data-testid=date]')?.textContent).toBe('Sep 10, 2026')
+    expect(countRow.querySelector('[data-testid=movement-badge]')?.textContent).toBe('m1')
     fireEvent.click(screen.getByLabelText('Open -3 · Recount'))
-    expect(onSelectRecord).toHaveBeenCalledWith('def-stock_movement:m1')
+    expect(routerPush).toHaveBeenCalledWith('/app/parts/part_1?tab=inventory&movement=m1')
 
     const types = screen.getAllByTestId('type').map((node) => node.textContent)
     expect(types).toEqual(expect.arrayContaining(['Shipment', 'Build', 'Adjustment']))

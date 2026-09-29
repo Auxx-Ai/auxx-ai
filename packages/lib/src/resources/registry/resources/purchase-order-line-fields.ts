@@ -346,35 +346,6 @@ export const PURCHASE_ORDER_LINE_FIELDS = defineResourceFields({
     },
   },
 
-  // Reverse relationship: stockMovements (from stock_movement.purchaseOrderLine).
-  // The `stock_movement` side lands with phase 1; until it does,
-  // `linkNewRelationships` leaves this unlinked and links it when the
-  // counterpart appears.
-  stockMovements: {
-    id: toFieldId('stockMovements'),
-    key: 'stockMovements',
-    label: 'Stock Movements',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'purchase_order_line_stock_movements',
-    systemSortOrder: 'aC',
-    showInPanel: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'stock_movement:purchaseOrderLine' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'cascade',
-      isInverse: true,
-    },
-  },
-
   // Reverse relationship: vendorBillLines (from vendor_bill_line.purchaseOrderLine).
   // The `vendor_bill_line` side lands with phase 4; until it does,
   // `linkNewRelationships` leaves this unlinked and links it when the

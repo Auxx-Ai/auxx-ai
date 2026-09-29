@@ -408,32 +408,19 @@ describe('reads', () => {
       return row!.id
     }
     const buildDef = await def('build')
-    const movementDef = await def('stock_movement')
-    const field = async (
-      entityDefinitionId: string,
-      systemAttribute: string,
-      type: 'SINGLE_SELECT' | 'NUMBER' | 'DATETIME'
-    ) => {
-      const [row] = await db()
-        .insert(schema.CustomField)
-        .values({
-          organizationId,
-          entityDefinitionId,
-          systemAttribute,
-          name: systemAttribute,
-          type,
-          isCustom: false,
-          updatedAt: new Date(),
-        })
-        .returning({ id: schema.CustomField.id })
-      return row!.id
-    }
-    const fields = {
-      type: await field(movementDef, 'stock_movement_type', 'SINGLE_SELECT'),
-      quantity: await field(movementDef, 'stock_movement_quantity', 'NUMBER'),
-      occurredAt: await field(movementDef, 'stock_movement_occurred_at', 'DATETIME'),
-      completedAt: await field(buildDef, 'build_completed_at', 'DATETIME'),
-    }
+    const partDef = await def('part')
+    const [completedAt] = await db()
+      .insert(schema.CustomField)
+      .values({
+        organizationId,
+        entityDefinitionId: buildDef,
+        systemAttribute: 'build_completed_at',
+        name: 'build_completed_at',
+        type: 'DATETIME',
+        isCustom: false,
+        updatedAt: new Date(),
+      })
+      .returning({ id: schema.CustomField.id })
     const record = async (entityDefinitionId: string, displayName: string | null) => {
       const [row] = await db()
         .insert(schema.EntityInstance)
@@ -447,31 +434,36 @@ describe('reads', () => {
         .returning({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
       return row!
     }
-    const value = (
-      entityDefinitionId: string,
-      entityId: string,
-      fieldId: string,
-      data: Partial<typeof schema.FieldValue.$inferInsert>
-    ) =>
-      db()
-        .insert(schema.FieldValue)
-        .values({ organizationId, entityDefinitionId, entityId, fieldId, ...data })
+    const movement = async (values: Partial<typeof schema.StockMovement.$inferInsert>) => {
+      const [row] = await db()
+        .insert(schema.StockMovement)
+        .values({ organizationId, partId: part.id, type: 'adjust', quantity: 1, ...values })
+        .returning({ id: schema.StockMovement.id, createdAt: schema.StockMovement.createdAt })
+      return row!
+    }
 
     const build = await record(buildDef, 'B-0007')
-    await value(buildDef, build.id, fields.completedAt, { valueDate: '2026-03-20T09:00:00.000Z' })
-    const nameless = await record(movementDef, null)
-    await value(movementDef, nameless.id, fields.type, { optionId: 'adjust' })
-    await value(movementDef, nameless.id, fields.quantity, { valueNumber: -3 })
-    await value(movementDef, nameless.id, fields.occurredAt, {
-      valueDate: '2026-03-15T12:00:00.000Z',
+    await db().insert(schema.FieldValue).values({
+      organizationId,
+      entityDefinitionId: buildDef,
+      entityId: build.id,
+      fieldId: completedAt!.id,
+      valueDate: '2026-03-20T09:00:00.000Z',
     })
-    const named = await record(movementDef, 'Receive · 5')
+    const part = await record(partDef, 'Cable')
+    const dated = await movement({
+      type: 'adjust',
+      quantity: -3,
+      reason: 'Recount',
+      occurredAt: new Date('2026-03-15T12:00:00.000Z'),
+    })
+    const undated = await movement({ type: 'receive', quantity: 5 })
 
     const refused = (sourceKind: string, sourceId: string) =>
       park({ sourceKind, sourceId, stage: 'price', reasonCode: 'REFUSED' })
     await refused('build', build.id)
-    await refused('stock_movement', nameless.id)
-    await refused('stock_movement', named.id)
+    await refused('stock_movement', dated.id)
+    await refused('stock_movement', undated.id)
     await refused('fulfillment', 'ful_1')
 
     const group = { reasonCode: 'REFUSED', role: null, railId: null, glAccountId: null }
@@ -484,17 +476,18 @@ describe('reads', () => {
       recordDefinitionId: buildDef,
       documentDate: new Date('2026-03-20T09:00:00.000Z'),
     })
-    expect(byId.get(nameless.id)).toMatchObject({
+    expect(byId.get(dated.id)).toMatchObject({
       label: 'Adjustment · -3',
-      recordDefinitionId: movementDef,
+      recordDefinitionId: null,
       documentDate: new Date('2026-03-15T12:00:00.000Z'),
+      movement: { partId: part.id, type: 'adjust', quantity: -3, reason: 'Recount' },
     })
-    // A named count keeps its display name and, with no occurred-at, falls back to its creation.
-    expect(byId.get(named.id)).toMatchObject({
-      label: 'Receive · 5',
-      documentDate: named.createdAt,
+    // With no occurred-at a movement is dated by its creation (`effectiveAt`).
+    expect(byId.get(undated.id)).toMatchObject({
+      label: 'Receive · +5',
+      documentDate: undated.createdAt,
     })
-    expect(byId.get('ful_1')).toMatchObject({ label: null, documentDate: null })
+    expect(byId.get('ful_1')).toMatchObject({ label: null, documentDate: null, movement: null })
   })
 
   it('counts the woken rows of a group as due', async () => {

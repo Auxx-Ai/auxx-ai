@@ -3,12 +3,13 @@
 /**
  * `purchasing/landed-cost/reads.ts` — 73 §7.2's worked shipment, read back.
  *
- * `systemFields` / `readSystemRecords` are mocked rather than driven through a
- * fake `FieldValue` join: what this module does is join three readings and
- * apportion, and a real join would test `readSystemRecords` instead.
+ * `systemFields` / `readSystemRecords` and the `StockMovement` select are faked:
+ * what this module does is join three readings and apportion, not the reads.
  */
 
 import type { Database } from '@auxx/database'
+import type { SQL } from 'drizzle-orm'
+import { PgDialect } from 'drizzle-orm/pg-core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../../resources/system-records', () => ({
@@ -31,7 +32,44 @@ import {
   readLandedCostByVendorPart,
 } from '../reads'
 
-const db = {} as Database
+/** A receipt row as the `StockMovement` select shapes it. */
+interface Receipt {
+  purchaseOrderLineId: string | null
+  vendorPartId: string | null
+  freightMinor: number
+  dutiesMinor: number
+  tariffRate: number
+}
+
+function receipt(cells: Partial<Receipt>): Receipt {
+  return {
+    purchaseOrderLineId: null,
+    vendorPartId: null,
+    freightMinor: 0,
+    dutiesMinor: 0,
+    tariffRate: 0,
+    ...cells,
+  }
+}
+
+/** Receipts the movement read answers with, by the column it filters on. */
+const movements = { byLine: [] as Receipt[], byVendorPart: [] as Receipt[] }
+const dialect = new PgDialect()
+const db = {
+  select: () => {
+    let rows: Receipt[] = []
+    const chain = {
+      from: () => chain,
+      where: (condition: SQL) => {
+        const byVendorPart = dialect.sqlToQuery(condition).sql.includes('"vendorPartId" in')
+        rows = byVendorPart ? movements.byVendorPart : movements.byLine
+        return chain
+      },
+      orderBy: async () => rows,
+    }
+    return chain
+  },
+} as unknown as Database
 const FREIGHT_ACCOUNT = 'acct_freight_accrual'
 const DUTIES_ACCOUNT = 'acct_duties_accrual'
 
@@ -65,7 +103,6 @@ const CONTEXTS: Record<string, { defId: string; fields: Record<string, { id: str
       vendor_bill_line_gl_account: { id: 'f_account' },
     },
   },
-  stock_movement: { defId: 'def_stock_movement', fields: {} },
   purchase_order_line: { defId: 'def_purchase_order_line', fields: {} },
 }
 
@@ -73,20 +110,23 @@ const CONTEXTS: Record<string, { defId: string; fields: Record<string, { id: str
  * Route each `readSystemRecords` call by the `by.attribute` it was given, which
  * is what actually distinguishes the four reads this module makes.
  */
-function route(rows: Record<string, ReturnType<typeof makeRecord>[]>) {
+function route(rows: Record<string, unknown[]>) {
+  movements.byLine = (rows.movementsByLine ?? []) as Receipt[]
   vi.mocked(readSystemRecords).mockImplementation((async (
     _db: unknown,
     _org: unknown,
     _ctx: unknown,
     options: any
   ) => {
-    const key = options?.by?.attribute ?? 'ids'
+    const key: string = options?.by?.attribute ?? 'ids'
     return (rows[key] ?? []) as never
   }) as never)
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  movements.byLine = []
+  movements.byVendorPart = []
   vi.mocked(readClearedByAccount).mockResolvedValue(new Map())
   vi.mocked(systemFields).mockImplementation(
     (async (_db: unknown, _org: unknown, entityType: string) =>
@@ -141,12 +181,12 @@ describe('readLandedCostByBill', () => {
           vendor_bill_line_gl_account: FREIGHT_ACCOUNT,
         }),
       ],
-      stock_movement_purchase_order_line: [
-        record('sm_1', {
-          stock_movement_purchase_order_line: 'pol_1',
-          stock_movement_freight_accrued: 1_000,
-          stock_movement_duties_accrued: 3_000,
-          stock_movement_tariff_rate: 25,
+      movementsByLine: [
+        receipt({
+          purchaseOrderLineId: 'pol_1',
+          freightMinor: 1_000,
+          dutiesMinor: 3_000,
+          tariffRate: 25,
         }),
       ],
     })
@@ -177,7 +217,7 @@ describe('readLandedCostByBill', () => {
     route({
       vendor_bill_line_vendor_bill: [record('vbl_expense', { vendor_bill_line_line_total: 9_900 })],
       vendor_bill_line_landed_bill: [],
-      stock_movement_purchase_order_line: [],
+      movementsByLine: [],
     })
 
     const result = await readLandedCostByBill(db, 'org_1', 'vb_expense')
@@ -197,7 +237,7 @@ describe('readLandedCostByBill', () => {
           vendor_bill_line_gl_account: 'acct_office_supplies',
         }),
       ],
-      stock_movement_purchase_order_line: [],
+      movementsByLine: [],
     })
 
     const result = await readLandedCostByBill(db, 'org_1', 'vb_goods')
@@ -216,6 +256,15 @@ describe('readLandedCostByVendorPart', () => {
    * freight splits by value alone, so ours takes half.
    */
   it('derives its share of the shipment by value x rate for duty and by value for freight', async () => {
+    const ours = receipt({
+      purchaseOrderLineId: 'pol_ours',
+      vendorPartId: 'vp_ours',
+      freightMinor: 1_000,
+      dutiesMinor: 3_000,
+      tariffRate: 25,
+    })
+    movements.byVendorPart = [ours]
+    movements.byLine = [ours]
     vi.mocked(readSystemRecords).mockImplementation((async (
       _db: unknown,
       _org: unknown,
@@ -223,17 +272,6 @@ describe('readLandedCostByVendorPart', () => {
       options: any
     ) => {
       const attribute = options?.by?.attribute
-      if (attribute === 'stock_movement_vendor_part') {
-        return [
-          record('sm_1', {
-            stock_movement_purchase_order_line: 'pol_ours',
-            stock_movement_vendor_part: 'vp_ours',
-            stock_movement_freight_accrued: 1_000,
-            stock_movement_duties_accrued: 3_000,
-            stock_movement_tariff_rate: 25,
-          }),
-        ] as never
-      }
       if (attribute === 'vendor_bill_line_purchase_order_line') {
         return [record('vbl_ours', { vendor_bill_line_vendor_bill: 'vb_goods' })] as never
       }
@@ -258,16 +296,6 @@ describe('readLandedCostByVendorPart', () => {
           record('vbl_duty', {
             vendor_bill_line_line_total: 3_000,
             vendor_bill_line_gl_account: DUTIES_ACCOUNT,
-          }),
-        ] as never
-      }
-      if (attribute === 'stock_movement_purchase_order_line') {
-        return [
-          record('sm_1', {
-            stock_movement_purchase_order_line: 'pol_ours',
-            stock_movement_freight_accrued: 1_000,
-            stock_movement_duties_accrued: 3_000,
-            stock_movement_tariff_rate: 25,
           }),
         ] as never
       }
@@ -319,11 +347,11 @@ describe('the remaining, with the cleared read off the postings (74 D4)', () => 
           vendor_bill_line_gl_account: FREIGHT_ACCOUNT,
         }),
       ],
-      stock_movement_purchase_order_line: [
-        record('sm_1', {
-          stock_movement_purchase_order_line: 'pol_1',
-          stock_movement_freight_accrued: 1_000,
-          stock_movement_duties_accrued: 0,
+      movementsByLine: [
+        receipt({
+          purchaseOrderLineId: 'pol_1',
+          freightMinor: 1_000,
+          dutiesMinor: 0,
         }),
       ],
       // The by-id read: the carrier bill's own line, as the remaining read sees it.
@@ -374,7 +402,7 @@ describe('the remaining, with the cleared read off the postings (74 D4)', () => 
     route({
       vendor_bill_line_vendor_bill: [],
       vendor_bill_line_landed_bill: [],
-      stock_movement_purchase_order_line: [],
+      movementsByLine: [],
       ids: [
         record('vbl_storage', {
           vendor_bill_line_landed_bill: 'vb_goods',

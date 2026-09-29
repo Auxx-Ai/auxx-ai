@@ -9,14 +9,14 @@ import { pgTable, QueryBuilder, text, timestamp } from 'drizzle-orm/pg-core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface StoredRow {
-  movementId: string
+  id: string
   partInstanceId: string
   type: string
   quantity: number
   extendedCost: number | null
   costBasis: string | null
   pending: boolean
-  glAccount: string
+  glRole: string
   occurredAt: Date
   fulfillmentLineId?: string | null
   buildId?: string | null
@@ -32,25 +32,11 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('@auxx/database', async () => {
-  const { pgTable, text, timestamp, doublePrecision, boolean } = await import('drizzle-orm/pg-core')
+  const { pgTable, text } = await import('drizzle-orm/pg-core')
+  const actual = await vi.importActual<typeof import('@auxx/database')>('@auxx/database')
   return {
     schema: {
-      FieldValue: pgTable('FieldValue', {
-        entityId: text().notNull(),
-        fieldId: text().notNull(),
-        organizationId: text().notNull(),
-        optionId: text(),
-        valueNumber: doublePrecision(),
-        valueDate: timestamp({ withTimezone: true }),
-        valueBoolean: boolean(),
-      }),
-      EntityInstance: pgTable('EntityInstance', {
-        id: text().primaryKey(),
-        organizationId: text().notNull(),
-        entityDefinitionId: text().notNull(),
-        archivedAt: timestamp({ withTimezone: true }),
-        createdAt: timestamp({ withTimezone: true }).notNull(),
-      }),
+      StockMovement: actual.schema.StockMovement,
       GlPostingSource: pgTable('GlPostingSource', {
         organizationId: text().notNull(),
         glPostingId: text().notNull(),
@@ -66,11 +52,6 @@ vi.mock('@auxx/database', async () => {
   }
 })
 vi.mock('../../../../cache', () => ({ getOrgCache: () => ({ get: async () => 'user_system' }) }))
-vi.mock('../../../../resources/system-records', () => ({
-  systemDefId: async () => 'def_mv',
-  systemFieldMap: async (_db: unknown, _org: string, attrs: string[]) =>
-    Object.fromEntries(attrs.map((attr) => [attr, { id: `f_${attr}` }])),
-}))
 vi.mock('../../../../settings/read', () => ({
   readOrganizationSettings: async () => h.settings,
 }))
@@ -111,16 +92,16 @@ const db = {
 
 const ORG = 'org_1'
 
-function stored(movementId: string, extra: Partial<StoredRow> = {}): StoredRow {
+function stored(id: string, extra: Partial<StoredRow> = {}): StoredRow {
   return {
-    movementId,
+    id,
     partInstanceId: 'part_1',
     type: 'adjust',
     quantity: 2,
     extendedCost: 2_000,
     costBasis: 'standard',
     pending: false,
-    glAccount: 'inventory_raw_materials',
+    glRole: 'inventory_raw_materials',
     occurredAt: new Date('2026-08-01T00:00:00Z'),
     ...extra,
   }
@@ -142,18 +123,22 @@ describe('the candidate statement', () => {
     const { sql, params } = h.captured.at(-1)!
     // Dated after the cutover month's last day.
     expect(params).toContain('2026-06-30')
-    expect(sql).toMatch(/"valueDate"::date > \$\d+/)
+    expect(sql).toMatch(/"occurredAt"::date > \$\d+/)
     // A pending row, a return to the vendor and a row already in a posted entry are excluded.
-    expect(sql.match(/not in \(select/gi)).toHaveLength(3)
+    expect(sql).toMatch(/"costBasis" IS DISTINCT FROM \$\d+/)
+    expect(sql).toMatch(/"type" <> \$\d+/)
+    expect(sql.match(/not in \(select/gi)).toHaveLength(1)
     expect(params).toContain('pending')
     expect(params).toContain('return_out')
     expect(params).toContain('member')
     expect(params).toContain('posted')
     expect(params).toContain('stock_movement')
-    // Valued: a cost row that is not null and not zero.
-    expect(sql).toMatch(/"valueNumber" is not null and "movement_cost"\."valueNumber" <> \$\d+/)
+    // Valued: a cost that is not null and not zero.
     expect(sql).toMatch(
-      /order by "FieldValue"\."valueDate" asc, "EntityInstance"\."createdAt" asc limit \$\d+/
+      /"extendedCostMinor" is not null and "StockMovement"\."extendedCostMinor" <> \$\d+/
+    )
+    expect(sql).toMatch(
+      /order by "StockMovement"\."occurredAt" asc, "StockMovement"\."createdAt" asc limit \$\d+/
     )
     expect(params).toContain(7)
   })
@@ -212,7 +197,7 @@ describe('what it posts', () => {
 
     expect(counts).toEqual({ scanned: 5, posted: 3, failed: 0 })
     const documents = h.postDocument.mock.calls.map((call) =>
-      (call[2] as unknown as StoredRow[]).map((row) => row.movementId)
+      (call[2] as unknown as StoredRow[]).map((row) => row.id)
     )
     expect(documents).toEqual([['mv_a'], ['mv_c', 'mv_p'], ['mv_s1', 'mv_s2']])
     expect(h.postDocument).toHaveBeenCalledWith(db, ORG, expect.anything(), {

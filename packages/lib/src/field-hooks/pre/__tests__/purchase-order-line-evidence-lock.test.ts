@@ -10,7 +10,7 @@ import type { FieldPreHookEvent } from '../../types'
 
 const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
-  /** Result sets, in call order: evidence probe, then the stored-value read. */
+  /** Result sets, in call order: receipt probe, bill-line probe, then the stored-value read. */
   dbResults: [] as unknown[][],
 }))
 
@@ -28,7 +28,9 @@ function makeChain() {
 vi.mock('@auxx/database', () => ({
   database: { select: () => makeChain(), selectDistinct: () => makeChain() },
   schema: {
+    StockMovement: { id: 'id', organizationId: 'organizationId', purchaseOrderLineId: 'poLine' },
     FieldValue: {
+      id: 'id',
       entityId: 'entityId',
       organizationId: 'organizationId',
       fieldId: 'fieldId',
@@ -44,18 +46,17 @@ vi.mock('../../../cache', () => ({
 const { guardEvidenceLockedLineFields } = await import('../purchase-order-line-evidence-lock')
 const { ConflictError } = await import('../../../errors')
 
-const MOVEMENT_REL = 'f-movement-rel'
 const BILL_LINE_REL = 'f-bill-line-rel'
 const QTY_FIELD = 'f-qty'
 
 /** Which evidence rows the probe finds. */
 function wireEvidence(kinds: Array<'receipt' | 'bill'>) {
   h.bySystemAttributes.mockResolvedValue({
-    stock_movement_purchase_order_line: { id: MOVEMENT_REL },
     vendor_bill_line_purchase_order_line: { id: BILL_LINE_REL },
   })
   h.dbResults = [
-    kinds.map((kind) => ({ fieldId: kind === 'receipt' ? MOVEMENT_REL : BILL_LINE_REL })),
+    kinds.includes('receipt') ? [{ id: 'mv-1' }] : [],
+    kinds.includes('bill') ? [{ id: 'fv-1' }] : [],
   ]
 }
 

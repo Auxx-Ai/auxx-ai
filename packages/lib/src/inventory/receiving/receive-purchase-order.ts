@@ -34,42 +34,27 @@
  */
 
 import type { Database } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
 import {
   exportInventoryMovement,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
-import { requireCachedEntityDefId } from '../../cache'
-import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
-import {
-  PURCHASE_ORDER_LINE_ROLLUPS,
-  recalculatePurchaseOrderLineRollups,
-} from '../../field-hooks/post/purchase-order-line-rollups'
+import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { PURCHASE_ORDER_LINE_FIELDS } from '../../resources/registry/resources/purchase-order-line-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
-import {
-  readSystemRecords,
-  type SystemRecord,
-  systemDefId,
-  systemFields,
-} from '../../resources/system-records'
+import { readSystemRecords, type SystemRecord, systemFields } from '../../resources/system-records'
 import { readPartKinds } from '../builds/build-queries'
 import { isServicePartKind } from '../costing/client'
-import { batchRecalculateQoH } from '../costing/qoh'
 import { readStandardCost } from '../costing/standard-cost-queries'
-import { type StockMovementInput, writeStockMovements } from '../movements'
+import { type StockMovementInput, settleStockMovements, writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
-import { assertCostFieldsMaterialized } from '../movements/cost-fields'
 import type { MovementRecord } from '../movements/types'
 import { computeReceiptAccrual, landedUnitEstimate, type ReceiptAccrualTerms } from './accruals'
 import { guard } from './guard'
 import { readPartKind, readVendorPartCostInputs } from './receipt-queries'
 import { setFirstStandardCostFromReceipt } from './receive-stock'
 import type { ReceivePurchaseOrderInput, ReceivePurchaseOrderLineInput } from './types'
-
-const logger = createScopedLogger('receiving:receive-purchase-order')
 
 /** The agreed price this door values a receipt at, and the order it credits the posting to. */
 const PO_LINE_PICK = pickSystemAttributes(PURCHASE_ORDER_LINE_FIELDS, [
@@ -166,17 +151,10 @@ export async function receivePurchaseOrder(
       )
       const landedEstimates = terms.map((line) => landedUnitEstimate(line))
 
-      const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-      const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
-      if (!movementDefId) {
-        throw new NotFoundError('This organization has no stock_movement entity definition')
-      }
-      await assertCostFieldsMaterialized(organizationId)
-
       // One inventory role per line, from that line's OWN part kind — the same
       // read `receiveStock` makes per line, just run once for the whole set
       // ahead of the shared transaction rather than once per its own.
-      const glAccounts = await Promise.all(
+      const glRoles = await Promise.all(
         lines.map(async (line) =>
           resolveInventoryRoleForPartKind(
             await unwrap(readPartKind(db, organizationId, line.partId))
@@ -225,8 +203,7 @@ export async function receivePurchaseOrder(
 
       // The movements and the ONE entry that raises them, together — a
       // multi-line receipt is one document, not N (TARGET §5).
-      const { written, post } = await db.transaction(async (tx) => {
-        const txDb = tx as unknown as Database
+      const { written, touched, post } = await db.transaction(async (tx) => {
         const movementInputs: StockMovementInput[] = lines.map((line, i) => ({
           partInstanceId: line.partId,
           type: 'receive',
@@ -237,7 +214,7 @@ export async function receivePurchaseOrder(
           // left the difference sitting in the inventory account with no
           // quantity behind it, forever.
           costBasis: 'standard',
-          glAccount: glAccounts[i]!,
+          glRole: glRoles[i]!,
           occurredAt,
           // The agreed price, unchanged: it is what the three-way match compares
           // the vendor's bill against, and what `grni` is credited at.
@@ -252,10 +229,7 @@ export async function receivePurchaseOrder(
           links: { vendorPartId: line.vendorPartId, purchaseOrderLineId: line.purchaseOrderLineId },
         }))
 
-        const result = await writeStockMovements(
-          { db: txDb, organizationId, userId, movementDefId, partDefId, lane: { kind: 'plain' } },
-          movementInputs
-        )
+        const result = await writeStockMovements({ db: tx, organizationId, userId }, movementInputs)
         if (result.isErr()) throw result.error
         const records = result.value.records
 
@@ -265,7 +239,7 @@ export async function receivePurchaseOrder(
           // The FIRST movement anchors the claim; every movement — itself
           // included — is linked as a `member` below, the same shape
           // `receiveStock`'s own single-movement posting already has.
-          subject: { sourceKind: 'stock_movement', sourceId: records[0]!.movementId },
+          subject: { sourceKind: 'stock_movement', sourceId: records[0]!.id },
           ...(purchaseOrderId
             ? { parents: [{ sourceKind: 'purchase_order', sourceId: purchaseOrderId }] }
             : {}),
@@ -278,56 +252,38 @@ export async function receivePurchaseOrder(
             // A $0-standard row still credits its accruals; the whole price lands in `ppv`.
             .filter(
               ({ record, accrual }) =>
-                record.glAccount &&
+                record.glRole &&
                 record.extendedCost != null &&
                 (record.extendedCost !== 0 ||
                   accrual.grniMinor + accrual.freightMinor + accrual.dutiesMinor !== 0)
             )
             .map(({ record, accrual }) => ({
-              id: record.movementId,
+              id: record.id,
               extendedCostMinor: record.extendedCost as number,
-              glAccountRole: record.glAccount as string,
+              glAccountRole: record.glRole as string,
               accrual,
             })),
           actorUserId: userId,
         })
 
-        return { written: records, post }
+        return { written: records, touched: result.value.touched, post }
       })
 
-      // Belt on the plain lane's own recalculation, which fired against a
-      // pre-commit snapshot from inside the transaction above. Swallowed for
-      // `settleLineRollups`' reason: the movements are committed, and the
-      // per-movement hook recalculates the same parts behind us.
-      try {
-        await batchRecalculateQoH(organizationId, [
-          ...new Set(written.map((r) => r.partInstanceId)),
-        ])
-      } catch (error) {
-        logger.error('Quantity on hand was not recalculated after a receipt', {
-          organizationId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
+      // QoH and the lines' received roll-ups, once for the whole receipt.
+      await settleStockMovements(organizationId, touched)
       await exportInventoryMovement(db, post)
-
-      await settleLineRollups(
-        organizationId,
-        lines.map((line) => line.purchaseOrderLineId)
-      )
 
       return written.map((record, i) => {
         const line = lines[i]!
         return {
-          movementId: record.movementId,
-          recordId: record.recordId,
+          id: record.id,
           partInstanceId: record.partInstanceId,
           quantity: record.quantity,
           unitCost: record.unitCost,
           extendedCost: record.extendedCost,
           vendorUnitPrice: unitCosts[i]!,
           vendorPartId: line.vendorPartId ?? null,
-          glAccount: record.glAccount,
+          glRole: record.glRole,
           occurredAt,
           purchaseOrderLineId: line.purchaseOrderLineId,
         } satisfies MovementRecord
@@ -356,48 +312,6 @@ async function unwrap<T>(promise: Promise<Result<T, Error>>): Promise<T> {
   const result = await promise
   if (result.isErr()) throw result.error
   return result.value
-}
-
-/**
- * Roll the whole receipt up ONCE, now that every movement is committed.
- *
- * 🛑 The 10x. `stock_movement` create fires a lifecycle rule PER ROW, and that
- * rule re-SUMs one line and then derives the whole purchase order from it. A
- * ten-line receipt therefore ran the order-level pass ten times over the same
- * order — the same parent lookup, the same line set, the same answer nine times
- * out of ten. This call knows the entire line set before the first movement was
- * written, so it does the work once: one grouped SUM, one write per line that
- * actually moved, one order-level derivation.
- *
- * ⚠️ **It suppresses nothing, and that is the design.** The per-movement rules
- * still fire behind it. They find each line's `quantity_received` already equal
- * to the SUM they compute and return before writing, so the order-level pass
- * behind them never runs. The saving comes from getting there FIRST, not from a
- * flag — there is no context to thread, nothing to leak across the queue
- * boundary those rules actually run on, and if this call never happens the old
- * per-movement path produces exactly the same result, just more slowly.
- *
- * ⚠️ A failure here is logged and swallowed. The movements are the primary fact
- * and are already committed; throwing would report a receipt that happened as a
- * receipt that failed. The lifecycle rules are the fallback and still run.
- */
-async function settleLineRollups(
-  organizationId: string,
-  purchaseOrderLineIds: string[]
-): Promise<void> {
-  try {
-    await recalculatePurchaseOrderLineRollups(
-      organizationId,
-      purchaseOrderLineIds,
-      PURCHASE_ORDER_LINE_ROLLUPS.received
-    )
-  } catch (error) {
-    logger.error('Failed to settle purchase order line roll-ups after a receipt', {
-      organizationId,
-      lineCount: purchaseOrderLineIds.length,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
 }
 
 /**

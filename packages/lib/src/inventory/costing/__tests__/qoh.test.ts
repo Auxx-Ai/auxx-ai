@@ -84,6 +84,12 @@ vi.mock('@auxx/database', () => {
         archivedAt: column('archivedAt'),
         displayName: column('displayName'),
       },
+      StockMovement: {
+        organizationId: column('organizationId'),
+        partId: column('partId'),
+        quantity: column('quantity'),
+        adjustSubparts: column('adjustSubparts'),
+      },
       FieldValue: {
         organizationId: column('organizationId'),
         entityId: column('entityId'),
@@ -117,9 +123,6 @@ vi.mock('../../../cache', () => ({
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async () => ({
-        stock_movement_quantity: { id: 'f_qty', type: 'NUMBER' },
-        stock_movement_part: { id: 'f_part', type: 'RELATIONSHIP' },
-        stock_movement_adjust_subparts: { id: 'f_flag', type: 'CHECKBOX' },
         part_quantity_on_hand: { id: 'f_qoh', type: 'NUMBER' },
         part_reorder_point: { id: 'f_rop', type: 'NUMBER' },
         part_stock_status: { id: 'f_status', type: 'SINGLE_SELECT' },

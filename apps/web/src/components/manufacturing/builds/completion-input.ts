@@ -33,7 +33,7 @@ export interface ComponentRow {
    *
    * 🛑 `null` is the **off-BOM marker**, not missing data: this part is not on
    * the bill of materials at all, so its movement will carry
-   * `stock_movement_qty_per_unit = NULL` — a floor substitution made visible
+   * `qtyPerUnit = NULL` — a floor substitution made visible
    * instead of silent (Gap C §4.1, §8.3).
    */
   qtyPerUnit: number | null

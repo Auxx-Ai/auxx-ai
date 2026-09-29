@@ -13,13 +13,12 @@ import {
   readWhereUsedShares,
 } from '../reads'
 import { insertMovementFacts } from '../writes'
-import { insertMovementInstances, seedMovementDef } from './support/movement-instances'
+import { newMovementIds } from './support/movement-instances'
 
 const db = () => getTestDb() as unknown as Database
 const ZONE = 'America/Los_Angeles'
 
 let organizationId: string
-let movementDefId: string
 
 async function fact(input: {
   partId: string
@@ -30,7 +29,7 @@ async function fact(input: {
   buildId?: string
   purchaseOrderLineId?: string
 }): Promise<string> {
-  const [id] = await insertMovementInstances(db(), organizationId, movementDefId)
+  const [id] = newMovementIds()
   if (!id) throw new Error('fixture: no movement instance')
   await insertMovementFacts(db(), organizationId, [
     {
@@ -51,7 +50,6 @@ async function fact(input: {
 beforeEach(async () => {
   const org = await createTestOrganization()
   organizationId = org.id
-  movementDefId = await seedMovementDef(db(), organizationId)
 })
 
 describe('readDailySeries', () => {

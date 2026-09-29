@@ -10,7 +10,7 @@
 //   npx dotenv -- npx tsx packages/lib/scripts/sweep-movement-accounting.ts --org <organizationId>
 
 import { database } from '@auxx/database'
-// Relative import on purpose — see the note in backfill-po-line-rollups.ts.
+// Relative import on purpose: `generate-exports.ts` gives packages/lib no subpath for this module.
 import { sweepMovementAccounting } from '../src/accounting/money/blocked-movements'
 
 const ORG_ARG = (() => {

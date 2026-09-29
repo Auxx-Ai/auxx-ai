@@ -1,5 +1,6 @@
 // packages/lib/src/resources/registry/enum-values.ts
 
+import type { StockMovementCostBasisValue, StockMovementTypeValue } from '@auxx/database/enums'
 import { GL_ACCOUNT_TYPE_META } from './gl-account-type-meta'
 import type { FieldOptionItem } from './option-helpers'
 
@@ -323,7 +324,7 @@ export const DatasetStatusEnum = {
  */
 /**
  * Stock Movement Type Enum
- * Entity-system field options for stock_movement_type
+ * Labels for the `StockMovementType` pg enum (`StockMovement.type`)
  */
 export const StockMovementType = {
   RECEIVE: 'receive',
@@ -337,11 +338,10 @@ export const StockMovementType = {
   RETURN_OUT: 'return_out',
   INITIAL: 'initial',
   /**
-   * A cost-only movement: quantity 0, a signed `extended_cost` of
+   * A cost-only movement: quantity 0, a signed `extendedCostMinor` of
    * `on-hand qty x delta standard`, one row per part per inventory role. Quantity on
    * hand is untouched; the ledger restates what the shelf is worth
-   * (73 §6.2 rule 2). The ONE movement type `values.ts` lets through at
-   * quantity 0.
+   * (73 §6.2 rule 2). The ONE movement type the table lets through at quantity 0.
    */
   REVALUE: 'revalue',
 
@@ -350,15 +350,8 @@ export const StockMovementType = {
     { value: 'ship', label: 'Ship', color: 'blue' },
     { value: 'adjust', label: 'Adjustment', color: 'amber' },
     { value: 'sale', label: 'Sale', color: 'indigo' },
-    // ⚠️ These two labels are ALSO materialized per org into `CustomField.options`
-    // at install time (`stock-movement-fields.ts`), and `ensureCustomFields` never
-    // updates an existing field's options (see migration 037). So this edit reaches
-    // only the code that reads the constant — `build-ledger-card`,
-    // `part-inventory-tab`, `part-inventory-card` — plus orgs installed from here
-    // on. The 28 existing orgs keep 'Build (consume)' / 'Build (produce)' in the
-    // movements grid and its filter dropdowns until a migration rewrites them.
-    // Deliberate: the qualifier is redundant inside a build, and still useful on a
-    // grid that mixes receipts, sales and adjustments.
+    // The qualifier is redundant inside a build, and still useful on a grid that mixes
+    // receipts, sales and adjustments.
     { value: 'build_consume', label: 'Consumed', color: 'orange' },
     { value: 'build_produce', label: 'Produced', color: 'teal' },
     { value: 'scrap', label: 'Scrap', color: 'red' },
@@ -618,6 +611,18 @@ export const StockMovementCostBasis = {
     { value: 'pending', label: 'Pending', color: 'amber' },
   ] satisfies FieldOptionItem[],
 } as const
+
+/** Type-only: breaks the build when these options drift from the `StockMovement` pgEnums. */
+type SameUnion<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false
+type ConstValues<T> = T[Exclude<keyof T, 'values'>]
+export type StockMovementEnumsInSync = [
+  SameUnion<ConstValues<typeof StockMovementType>, StockMovementTypeValue>,
+  SameUnion<ConstValues<typeof StockMovementCostBasis>, StockMovementCostBasisValue>,
+] extends [true, true]
+  ? true
+  : never
+const stockMovementEnumsInSync: StockMovementEnumsInSync = true
+void stockMovementEnumsInSync
 
 /**
  * Purchase Order Status — the ACTION axis, and nothing else

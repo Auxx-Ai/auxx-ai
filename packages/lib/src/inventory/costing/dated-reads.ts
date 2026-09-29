@@ -1,25 +1,12 @@
 // packages/lib/src/inventory/costing/dated-reads.ts
 
-/**
- * Dated reads over the movement ledger, per part (111 D23 / Q26).
- *
- * Same rows `batchRecalculateQoH` sums — `adjust_subparts = true` rows excluded — but keyed on
- * a movement date: `COALESCE(stock_movement_occurred_at, EntityInstance.createdAt)`, so a row
- * written without a date still counts from the moment it was written.
- */
+// Dated reads over the movement ledger, per part (111 D23 / Q26): the rows `batchRecalculateQoH`
+// sums (`adjustSubparts` excluded), keyed on `effectiveAt`.
 
 import { database, schema } from '@auxx/database'
-import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm'
+import { and, eq, inArray, notExists, notInArray, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { StockMovementType } from '../../resources/registry/enum-values'
-import { systemFieldMap } from '../../resources/system-records'
-
-const LEDGER_PICK = [
-  'stock_movement_quantity',
-  'stock_movement_part',
-  'stock_movement_adjust_subparts',
-  'stock_movement_occurred_at',
-] as const
 
 /** Net quantity per part over every movement dated on or before `through`. Absent parts read `0`. */
 export async function readPartNetThrough(
@@ -32,7 +19,7 @@ export async function readPartNetThrough(
   if (unique.length === 0) return result
 
   const rows = await aggregatePerPart(organizationId, unique, {
-    aggregate: (q) => sql<string>`COALESCE(SUM(${q.valueNumber}), 0)`,
+    aggregate: (q) => sql<string>`COALESCE(SUM(${q.quantity}), 0)`,
     where: (movedAt) => sql`${movedAt} <= ${through}`,
   })
   for (const row of rows) {
@@ -65,7 +52,7 @@ export async function readPartNetThroughEach(
     `ARRAY[${throughs.map((t) => `'${t.toISOString()}'`).join(',')}]::timestamptz[]`
   )
   const rows = await aggregatePerPart(organizationId, unique, {
-    aggregate: (q) => sql<string>`COALESCE(SUM(${q.valueNumber}), 0)`,
+    aggregate: (q) => sql<string>`COALESCE(SUM(${q.quantity}), 0)`,
     where: (movedAt) => sql`${movedAt} <= ${last}`,
     // Bucket k = how many bounds lie strictly before the movement (µs-exact), so `<= throughs[j]` is k <= j.
     bucket: (movedAt) =>
@@ -98,8 +85,7 @@ export async function readEarliestMovementAt(
   const excluded = [...new Set(options.excludeMovementIds ?? [])]
   const rows = await aggregatePerPart(organizationId, unique, {
     aggregate: (_q, movedAt) => sql<string | Date | null>`MIN(${movedAt})`,
-    where: (_movedAt, qty) =>
-      excluded.length > 0 ? notInArray(qty.entityId, excluded) : sql`TRUE`,
+    where: (_movedAt, qty) => (excluded.length > 0 ? notInArray(qty.id, excluded) : sql`TRUE`),
   })
   for (const row of rows) {
     if (!row.partId || row.value == null) continue
@@ -139,26 +125,25 @@ export async function readPartBuiltTotal(
   const result = new Map<string, number>(unique.map((id) => [id, 0]))
   if (unique.length === 0) return result
 
-  const fields = await systemFieldMap(undefined, organizationId, [
-    'stock_movement_type',
-    'stock_movement_reverses_movement',
-  ] as const)
-  const typeField = fields.stock_movement_type
-  const reversesField = fields.stock_movement_reverses_movement
-  if (!typeField || !reversesField) return result
-
   // A reversal is typed `adjust`, not `-build_produce`, so the produce row itself must be excluded.
+  const reversal = alias(schema.StockMovement, 'dated_reversal')
   const rows = await aggregatePerPart(organizationId, unique, {
-    aggregate: (q) => sql<string>`COALESCE(SUM(${q.valueNumber}), 0)`,
-    where: (_movedAt, q) => sql`EXISTS (
-        SELECT 1 FROM "FieldValue" t
-        WHERE t."entityId" = ${q.entityId} AND t."fieldId" = ${typeField.id}
-          AND t."optionId" = ${StockMovementType.BUILD_PRODUCE}
-      ) AND NOT EXISTS (
-        SELECT 1 FROM "FieldValue" r
-        WHERE r."organizationId" = ${organizationId} AND r."fieldId" = ${reversesField.id}
-          AND r."relatedEntityId" = ${q.entityId}
-      )`,
+    aggregate: (q) => sql<string>`COALESCE(SUM(${q.quantity}), 0)`,
+    where: (_movedAt, q) =>
+      and(
+        eq(q.type, StockMovementType.BUILD_PRODUCE),
+        notExists(
+          database
+            .select({ one: sql`1` })
+            .from(reversal)
+            .where(
+              and(
+                eq(reversal.organizationId, organizationId),
+                eq(reversal.reversesMovementId, q.id)
+              )
+            )
+        )
+      ) as SQL,
   })
   for (const row of rows) {
     if (row.partId) result.set(row.partId, Number(row.value ?? 0))
@@ -166,71 +151,36 @@ export async function readPartBuiltTotal(
   return result
 }
 
-type QuantityValue = ReturnType<typeof alias<typeof schema.FieldValue, 'dated_qty'>>
+type Movement = typeof schema.StockMovement
 
-/** One grouped aggregate over the part's counted movements; `movedAt` is the COALESCEd date. */
+/** One grouped aggregate over the part's counted movements; `movedAt` is `effectiveAt`. */
 async function aggregatePerPart<T>(
   organizationId: string,
   partIds: string[],
   shape: {
-    aggregate: (qty: QuantityValue, movedAt: SQL) => SQL<T>
-    where: (movedAt: SQL, qty: QuantityValue) => SQL
+    aggregate: (movement: Movement, movedAt: SQL) => SQL<T>
+    where: (movedAt: SQL, movement: Movement) => SQL
     /** A second grouping key per part, e.g. a date bucket. */
     bucket?: (movedAt: SQL) => SQL<number>
   }
 ): Promise<Array<{ partId: string | null; value: T; bucket?: number }>> {
-  const fields = await systemFieldMap(undefined, organizationId, LEDGER_PICK)
-  const qtyField = fields.stock_movement_quantity
-  const partField = fields.stock_movement_part
-  if (!qtyField || !partField) return []
-
-  const qty = alias(schema.FieldValue, 'dated_qty')
-  const part = alias(schema.FieldValue, 'dated_part')
-  const flag = alias(schema.FieldValue, 'dated_flag')
-  const occurred = alias(schema.FieldValue, 'dated_occurred')
-  const movedAt = sql`COALESCE(${occurred.valueDate}, ${schema.EntityInstance.createdAt})`
+  const t = schema.StockMovement
+  const movedAt = sql`${t.effectiveAt}`
   const bucket = shape.bucket?.(movedAt)
-
-  // Driven from the part rows, and the other fields joined on entityId alone: with an org
-  // predicate the planner can pick the (org, field) index and filter entityId per row, which
-  // goes quadratic when stats are stale (a fresh import) and hits the 30 s statement timeout.
   return database
     .select({
-      partId: part.relatedEntityId,
-      value: shape.aggregate(qty, movedAt),
+      partId: t.partId,
+      value: shape.aggregate(t, movedAt),
       ...(bucket ? { bucket } : {}),
     })
-    .from(part)
-    .innerJoin(
-      schema.EntityInstance,
-      and(
-        eq(schema.EntityInstance.id, part.entityId),
-        eq(schema.EntityInstance.organizationId, organizationId)
-      )
-    )
-    .innerJoin(qty, and(eq(qty.entityId, part.entityId), eq(qty.fieldId, qtyField.id)))
-    .leftJoin(
-      flag,
-      and(
-        eq(flag.entityId, part.entityId),
-        eq(flag.fieldId, fields.stock_movement_adjust_subparts?.id ?? '')
-      )
-    )
-    .leftJoin(
-      occurred,
-      and(
-        eq(occurred.entityId, part.entityId),
-        eq(occurred.fieldId, fields.stock_movement_occurred_at?.id ?? '')
-      )
-    )
+    .from(t)
     .where(
       and(
-        eq(part.fieldId, partField.id),
-        eq(part.organizationId, organizationId),
-        inArray(part.relatedEntityId, partIds),
-        sql`(${flag.valueBoolean} IS NULL OR ${flag.valueBoolean} = false)`,
-        shape.where(movedAt, qty)
+        eq(t.organizationId, organizationId),
+        inArray(t.partId, partIds),
+        eq(t.adjustSubparts, false),
+        shape.where(movedAt, t)
       )
     )
-    .groupBy(...(bucket ? [part.relatedEntityId, bucket] : [part.relatedEntityId]))
+    .groupBy(...(bucket ? [t.partId, bucket] : [t.partId]))
 }

@@ -313,34 +313,20 @@ async function restateUnmovedProvisionalStandards(
   return written
 }
 
-/** Which of `partIds` have ANY `stock_movement`, archived ones included. */
+/** Which of `partIds` have any stock movement. */
 export async function readMovedPartIds(
   db: Database,
   organizationId: string,
   partIds: readonly string[]
 ): Promise<Set<string>> {
-  const moved = new Set<string>()
   const unique = [...new Set(partIds.filter(Boolean))]
-  if (unique.length === 0) return moved
-
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['stock_movement_part'] as const)
-  const partField = fields.stock_movement_part
-  if (!partField) return moved
-
+  if (unique.length === 0) return new Set()
+  const t = schema.StockMovement
   const rows = await db
-    .selectDistinct({ partId: schema.FieldValue.relatedEntityId })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, partField.id),
-        inArray(schema.FieldValue.relatedEntityId, unique)
-      )
-    )
-  for (const row of rows) if (row.partId) moved.add(row.partId)
-  return moved
+    .selectDistinct({ partId: t.partId })
+    .from(t)
+    .where(and(eq(t.organizationId, organizationId), inArray(t.partId, unique)))
+  return new Set(rows.map((row) => row.partId))
 }
 
 function refuse(partId: string, message: string): StandardCostEntryOutcome {

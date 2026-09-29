@@ -7,12 +7,10 @@
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
+import { and, eq, inArray, isNotNull, type SQL, sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { readInventoryAccountFixTotals } from '../../accounting/ledger/reads/inventory-account-fix'
 import { findLinkedPostings } from '../../accounting/ledger/reads/list-postings'
-import { systemFields, systemValueJoin } from '../../resources/system-records'
 import { readPartKinds, readPartNames } from './build-queries'
 import { guard } from './guard'
 import {
@@ -21,12 +19,6 @@ import {
   type PartAccountDriftPlan,
   planPartAccountDrift,
 } from './movement-account-drift-plan'
-
-const MOVEMENT_PICK = [
-  'stock_movement_part',
-  'stock_movement_gl_account',
-  'stock_movement_extended_cost',
-] as const
 
 const POSTED_CHUNK = 5000
 
@@ -52,7 +44,6 @@ export interface MovementAccountDrift {
 
 /** The drift plus what fixing each part takes; the fix reads the same thing. */
 export interface MovementAccountDriftDetail {
-  accountFieldId: string | null
   parts: (MovementAccountDriftPart & { plan: PartAccountDriftPlan })[]
 }
 
@@ -84,40 +75,24 @@ export async function loadMovementAccountDrift(
   organizationId: string,
   options: { partIds?: readonly string[] } = {}
 ): Promise<MovementAccountDriftDetail> {
-  const ctx = await systemFields(undefined, organizationId, 'stock_movement', MOVEMENT_PICK)
-  const partField = ctx?.fields.stock_movement_part
-  const accountField = ctx?.fields.stock_movement_gl_account
-  const costField = ctx?.fields.stock_movement_extended_cost
-  if (!ctx || !partField || !accountField) return { accountFieldId: null, parts: [] }
   const onlyParts = options.partIds ? [...new Set(options.partIds)] : undefined
-  if (onlyParts?.length === 0) return { accountFieldId: accountField.id, parts: [] }
+  if (onlyParts?.length === 0) return { parts: [] }
 
-  const partValue = alias(schema.FieldValue, 'mad_part_v')
-  const accountValue = alias(schema.FieldValue, 'mad_account_v')
-  const movementScope = (extra: ReturnType<typeof and>[] = []) =>
+  const t = schema.StockMovement
+  const movementScope = (extra: SQL[] = []) =>
     and(
-      eq(schema.EntityInstance.organizationId, organizationId),
-      eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-      isNull(schema.EntityInstance.archivedAt),
-      ...(onlyParts ? [inArray(partValue.relatedEntityId, onlyParts)] : []),
+      eq(t.organizationId, organizationId),
+      isNotNull(t.glRole),
+      ...(onlyParts ? [inArray(t.partId, onlyParts)] : []),
       ...extra
     )
 
   // Pass 1: (part, stamped role) counts, to find the drifted pairs without loading every row.
   const pairs = await db
-    .select({
-      partId: partValue.relatedEntityId,
-      role: accountValue.valueText,
-      count: sql<string>`count(*)`,
-    })
-    .from(schema.EntityInstance)
-    .innerJoin(partValue, systemValueJoin(partValue, partField.id))
-    .innerJoin(
-      accountValue,
-      and(systemValueJoin(accountValue, accountField.id), isNotNull(accountValue.valueText))
-    )
+    .select({ partId: t.partId, role: t.glRole, count: sql<string>`count(*)` })
+    .from(t)
     .where(movementScope())
-    .groupBy(partValue.relatedEntityId, accountValue.valueText)
+    .groupBy(t.partId, t.glRole)
 
   const fixTotals = await readInventoryAccountFixTotals(db, organizationId, onlyParts)
   const candidateIds = [
@@ -146,25 +121,12 @@ export async function loadMovementAccountDrift(
   // Pass 2: the drifted rows themselves, with their frozen value.
   const movementsByPart = new Map<string, DriftedMovement[]>()
   if (driftedParts.size > 0) {
-    const costValue = alias(schema.FieldValue, 'mad_cost_v')
     const rows = await db
-      .select({
-        id: schema.EntityInstance.id,
-        partId: partValue.relatedEntityId,
-        role: accountValue.valueText,
-        extendedCost: costValue.valueNumber,
-      })
-      .from(schema.EntityInstance)
-      .innerJoin(partValue, systemValueJoin(partValue, partField.id))
-      .innerJoin(
-        accountValue,
-        and(
-          systemValueJoin(accountValue, accountField.id),
-          inArray(accountValue.valueText, [...driftedRoles])
-        )
+      .select({ id: t.id, partId: t.partId, role: t.glRole, extendedCost: t.extendedCostMinor })
+      .from(t)
+      .where(
+        movementScope([inArray(t.partId, [...driftedParts]), inArray(t.glRole, [...driftedRoles])])
       )
-      .leftJoin(costValue, systemValueJoin(costValue, costField?.id ?? '__unmaterialised__'))
-      .where(movementScope([inArray(partValue.relatedEntityId, [...driftedParts])]))
 
     const drifted = rows.filter(
       (row) => row.partId && row.role && expected.get(row.partId) !== row.role
@@ -175,14 +137,14 @@ export async function loadMovementAccountDrift(
       drifted.map((row) => row.id)
     )
     for (const row of drifted) {
-      const list = movementsByPart.get(row.partId!) ?? []
+      const list = movementsByPart.get(row.partId) ?? []
       list.push({
         id: row.id,
         role: row.role!,
         extendedCostMinor: row.extendedCost,
         posted: posted.has(row.id),
       })
-      movementsByPart.set(row.partId!, list)
+      movementsByPart.set(row.partId, list)
     }
   }
 
@@ -216,7 +178,7 @@ export async function loadMovementAccountDrift(
       plan,
     }))
     .sort((a, b) => b.movementCount - a.movementCount || a.partName.localeCompare(b.partName))
-  return { accountFieldId: accountField.id, parts }
+  return { parts }
 }
 
 /** The movements that sit in a standing entry: the close's and the catch-up sweep's test for booked. */

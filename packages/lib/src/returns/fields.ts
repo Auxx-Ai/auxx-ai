@@ -70,9 +70,8 @@ export type ReturnLineFieldContext = SystemFieldContext<ReturnLineAttribute>
 /**
  * Every `return_part_line` attribute this module touches.
  *
- * 🛑 `return_part_line_unit_cost` and `return_part_line_movement` are read but
- * never written here: they are the salvage writer's output (plan section 6.3,
- * step 7).
+ * 🛑 `return_part_line_unit_cost` is read but never written here: it is the salvage writer's
+ * output (plan section 6.3, step 7). The movement is `StockMovement.returnPartLineId`.
  */
 export const RETURN_PART_LINE_ATTRIBUTES = pickSystemAttributes(RETURN_PART_LINE_FIELDS, [
   'return_part_line_return_line',
@@ -83,7 +82,6 @@ export const RETURN_PART_LINE_ATTRIBUTES = pickSystemAttributes(RETURN_PART_LINE
   'return_part_line_salvage_percent',
   'return_part_line_unit_cost',
   'return_part_line_sort_order',
-  'return_part_line_movement',
 ] as const)
 
 export type ReturnPartLineAttribute = (typeof RETURN_PART_LINE_ATTRIBUTES)[number]

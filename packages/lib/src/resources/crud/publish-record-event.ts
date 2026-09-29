@@ -61,8 +61,6 @@ const PERSPECTIVE_EVENT_TYPES = [
 const DEFINITION_EVENT_TYPES = [
   'company:created',
   'company:deleted',
-  'stock_movement:created',
-  'stock_movement:deleted',
   'vendor_part:created',
   'vendor_part:deleted',
   'subpart:created',

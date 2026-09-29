@@ -123,8 +123,7 @@ function relationshipConfig(field: CustomFieldEntity): RelationshipConfig | null
  * **Why the child side.** A relation is two mirror `FieldValue` rows, and the
  * parent's mirror row is the one that historically went missing: the relation
  * sweep exists because 1,619 of them dangled, and the stored self-relation
- * pairs (`stock_movement_parent_movement` / `stock_movement_child_movements`,
- * `build_reversal_of` / `build_reversed_by`) only ever wrote the child's row.
+ * pairs (`build_reversal_of` / `build_reversed_by`) only ever wrote the child's row.
  * Reading `FieldValue.relatedEntityId IN (parents)` on the child's field is
  * the shape `field-hooks/pre/related-rows.ts` already reads, and it is served
  * by `FieldValue_relatedEntityId_idx`.
@@ -227,7 +226,7 @@ function asError(error: unknown): Error {
  * an archived bill still named it (`field-hooks/pre/related-rows.ts`).
  *
  * **A record is collected once.** A visited set keyed on the instance id makes
- * a self-referential cascade (`stock_movement` parent -> child) terminate and
+ * a self-referential cascade (a parent -> child pair on one def) terminate and
  * a record reachable through two parents appear once, attributed to the first
  * parent that reached it. Its `depth` is the greatest depth it was seen at.
  *

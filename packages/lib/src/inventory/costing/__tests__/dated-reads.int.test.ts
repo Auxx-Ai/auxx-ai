@@ -2,7 +2,7 @@
 //
 // `readPartNetThroughEach` (one grouped read for many days) against the per-day
 // `readPartNetThrough` it replaces in the backflush walk (plans/mrp/11 §3), on real SQL: the
-// createdAt fallback, excluded adjust_subparts rows, a movement exactly on a day's end, and
+// createdAt fallback, excluded adjustSubparts rows, a movement exactly on a day's end, and
 // book-zone days across both DST changes. Also times the full-history preview on a fixture.
 
 import type { Database } from '@auxx/database'
@@ -85,7 +85,7 @@ describe('readPartNetThroughEach', () => {
       // After the last day: excluded.
       { partId: fg, quantity: -50, occurredAt: new Date('2026-11-10T12:00:00Z') },
     ]
-    await insertRawMovements(f.organizationId, f.movementDefId, rows)
+    await insertRawMovements(f.organizationId, rows)
 
     const parts = [fg, a, b]
     const spring = await expectEqualToPerDayReads(parts, dayList('2026-03-06', '2026-03-10'))
@@ -119,7 +119,7 @@ describe('the full-history preview (plans/mrp/11 §6)', () => {
       if (i % 5 === 0)
         rows.push({ partId: b, quantity: 50, occurredAt: new Date(`${day}T09:00:00Z`) })
     })
-    await insertRawMovements(f.organizationId, f.movementDefId, rows)
+    await insertRawMovements(f.organizationId, rows)
 
     const now = new Date('2026-09-25T12:00:00Z')
     const started = performance.now()

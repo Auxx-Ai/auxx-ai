@@ -63,7 +63,6 @@ export { batchRecalculateQoH } from './qoh'
 export {
   anchorSeam,
   onInitialReanchored,
-  REANCHOR_INITIAL_REASON,
   type ReanchoredInitial,
   reanchorInitials,
 } from './reanchor-initials'

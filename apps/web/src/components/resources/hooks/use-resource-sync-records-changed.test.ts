@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   groupSummaryInvalidate: vi.fn(),
   getByIdsFetch: vi.fn<(input: any, opts: any) => Promise<any>>(async () => ({})),
   refetch: vi.fn(async () => {}),
+  listMovementsInvalidate: vi.fn(),
 }))
 
 vi.mock('~/realtime/hooks', () => ({
@@ -41,6 +42,7 @@ const utils = {
     groupSummary: { invalidate: h.groupSummaryInvalidate },
     getByIds: { fetch: h.getByIdsFetch },
   },
+  purchasing: { listMovements: { invalidate: h.listMovementsInvalidate } },
   resource: { list: { invalidate: vi.fn() } },
   entityDefinition: {
     getAll: { invalidate: vi.fn() },
@@ -54,6 +56,7 @@ vi.mock('~/trpc/react', () => ({ api: { useUtils: () => utils } }))
 const { useResourceSync } = await import('./use-resource-sync')
 const { createListKey, getRecordStoreState } = await import('../store/record-store')
 const { useFieldValueStore } = await import('../store/field-value-store')
+const { useResourceStore } = await import('../store/resource-store')
 
 const DEF_A = 'cmadefaaaaaaaaaaaaaaaaaa'
 const DEF_B = 'cmbdefbbbbbbbbbbbbbbbbbb'
@@ -88,6 +91,8 @@ beforeEach(() => {
   h.getByIdsFetch.mockClear()
   h.getByIdsFetch.mockImplementation(async () => ({}))
   h.refetch.mockClear()
+  h.listMovementsInvalidate.mockClear()
+  useResourceStore.getState().setResources([])
   getRecordStoreState().clearAll()
   useFieldValueStore.getState().clearAll()
 })
@@ -164,6 +169,30 @@ describe('records:changed — targeted catch-up', () => {
     await vi.runAllTimersAsync()
 
     expect(h.listFilteredInvalidate).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('records:changed — part movement lists', () => {
+  it('invalidates each listed part’s movement list, and nothing for another def', async () => {
+    useResourceStore
+      .getState()
+      .setResources([
+        { id: DEF_B, entityDefinitionId: DEF_B, entityType: 'part', apiSlug: 'parts', fields: [] },
+      ] as any)
+    renderHook(() => useResourceSync())
+
+    h.onRecordEvent?.('records:changed', {
+      entityDefinitionId: DEF_A,
+      entries: [{ recordId: 'r1' }],
+    })
+    expect(h.listMovementsInvalidate).not.toHaveBeenCalled()
+
+    h.onRecordEvent?.('records:changed', {
+      entityDefinitionId: DEF_B,
+      entries: [{ recordId: 'part_1' }, { recordId: 'part_2' }],
+    })
+    expect(h.listMovementsInvalidate).toHaveBeenCalledWith({ partId: 'part_1' })
+    expect(h.listMovementsInvalidate).toHaveBeenCalledWith({ partId: 'part_2' })
   })
 })
 

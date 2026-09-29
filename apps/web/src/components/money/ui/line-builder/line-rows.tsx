@@ -2125,7 +2125,7 @@ function GlAccountChip({ glAccountId, onClick }: { glAccountId: string; onClick?
  * from the line's PART rather than the line (`part_unit` — see `PART_FIELDS.unit`).
  *
  * Falls back to `each` when the part carries no unit. That is not a guess: every
- * quantity in the inventory chain — `part_quantity_on_hand`, `stock_movement_quantity`,
+ * quantity in the inventory chain — `part_quantity_on_hand`, a movement's `quantity`,
  * BOM quantities, ordered/received — is already a bare count of discrete units, so
  * `each` is the semantics those numbers ALREADY have, simply made visible. The
  * field ships `defaultValue: 'each'` and there is no backfill, so existing parts

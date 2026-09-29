@@ -4,31 +4,19 @@
  * The correction path for a stock movement
  * (plans/purchasing/05-receiving-cost-and-corrections.md section 5.1).
  *
- * Until this existed there was no way to undo a receipt at all: the ledger is
- * append-only by construction, `receiveStock` refuses a non-positive quantity by
- * design ("A negative receipt is a vendor return"), and Adjust Stock writes no
- * `purchase_order_line` - so using it to fix a keying mistake moves the part's
- * on-hand count and leaves `purchase_order_line_quantity_received` permanently
- * wrong.
+ * A reversal is a NEW, opposite row pointing at the original through
+ * `reversesMovementId`, never an edit. The PO-line roll-up re-SUMs every movement
+ * pointing at the line, so the negative row decrements `quantityReceived` for free.
  *
- * A reversal is therefore a NEW, opposite row, never an edit - which is what
- * `stock_movement_reverses_movement` was built for in entity migration 108 and
- * never wired up. The roll-up needs no change: it re-SUMs every movement
- * pointing at the line, so the negative row decrements `quantityReceived` for
- * free, and `mfg-stock-movements-created` already fires on the create.
- *
- * No permission checks: the router asserts write access on the `stock_movement`
- * def before calling, the same contract `receive-stock.ts` states.
+ * No permission checks: the router asserts edit on the part before calling.
  */
 
-import { type Database, schema } from '@auxx/database'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
 import {
   linkMovementsToPosting,
   reversePostingForMovement,
 } from '../../accounting/ledger/post/post-inventory-movement'
-import { getCachedEntityDefId } from '../../cache'
 import {
   BadRequestError,
   ConflictError,
@@ -36,57 +24,24 @@ import {
   UnprocessableEntityError,
 } from '../../errors'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
-import { systemFieldMap } from '../../resources/system-records'
 import { guard } from './guard'
-import type { MovementRecord } from './types'
-import { writeStockMovements } from './write-movements'
+import { readMovementById } from './reads'
+import type { MovementRecord, StockMovementTouched } from './types'
+import { settleStockMovements, writeStockMovements } from './write-movements'
 
 /** Which movement to undo, and why. */
 export interface ReverseMovementInput {
-  /** `EntityInstance.id` of the `stock_movement` being undone. */
+  /** The `StockMovement.id` being undone. */
   movementId: string
-  /**
-   * Free text stamped onto the reversal only. The original is never touched -
-   * every field on `stock_movement` is `updatable: false`, which is the only
-   * reason a cost frozen onto a movement can be trusted years later.
-   */
+  /** Free text stamped onto the reversal only; the original is never touched. */
   reason?: string
 }
 
 /**
- * Every attribute the reversal reads off the original.
- *
- * All of them are treated as optional below because they are only materialised
- * once entity migration 108 has run for the org - but the four the write cannot
- * be expressed without are asserted explicitly.
- */
-const REVERSAL_ATTRIBUTES = [
-  'stock_movement_part',
-  'stock_movement_type',
-  'stock_movement_quantity',
-  'stock_movement_cost_basis',
-  'stock_movement_unit_cost',
-  'stock_movement_gl_account',
-  'stock_movement_vendor_unit_price',
-  'stock_movement_vendor_part',
-  'stock_movement_purchase_order_line',
-  'stock_movement_reverses_movement',
-  'stock_movement_build',
-  'stock_movement_fulfillment_line',
-  'stock_movement_parent_movement',
-] as const
-
-type ReversalAttribute = (typeof REVERSAL_ATTRIBUTES)[number]
-
-/** `systemAttribute` -> the materialised `CustomField`, or `null`. */
-type ReversalFields = Record<ReversalAttribute, { id: string } | null>
-
-/**
  * What the reversal row is TYPED as, per the type of the row it undoes.
  *
- * The sign is what the arithmetic runs on - `recalculatePartQoH` and the
- * purchase-order roll-up both plain-`SUM` `stock_movement_quantity` with no
- * regard for the type - so this map is a LABEL, chosen to describe the direction
+ * The sign is what the arithmetic runs on - QoH and the purchase-order roll-up
+ * both plain-`SUM` the quantity with no regard for the type - so this map is a LABEL, chosen to describe the direction
  * the goods actually moved:
  *
  * - `receive` -> `return_out`: the goods go back out the door. This is the case
@@ -119,7 +74,7 @@ interface OriginalMovement {
   costBasis: string | null
   /** `null` only on a `pending` row (111 Q18). */
   unitCost: number | null
-  glAccount: string
+  glRole: string
   vendorUnitPrice: number | null
   vendorPartId: string | null
   purchaseOrderLineId: string | null
@@ -135,18 +90,15 @@ interface OriginalMovement {
  *
  * The order of the steps is the contract:
  *
- * 1. Read the original, or `NotFoundError`. Archived rows and rows belonging to
- *    another org read as absent.
- * 2. Refuse a movement that is ALREADY reversed, with `ConflictError`. This is
- *    the sharpest correctness rule in the function: a second reversal would
- *    decrement `purchase_order_line_quantity_received` twice off one mistake, and
- *    because the roll-up re-SUMs rather than increments, the wrong number would
- *    look exactly as authoritative as the right one.
+ * 1. Read the original, or `NotFoundError`. Rows of another org read as absent.
+ * 2. Refuse a movement that is ALREADY reversed, with `ConflictError`: a second
+ *    reversal would decrement `quantityReceived` twice off one mistake. The unique
+ *    index on `reversesMovementId` enforces it, concurrent requests included.
  * 3. Refuse to reverse a reversal, with `BadRequestError`. The correction of an
  *    over-correction is a fresh receipt or adjustment, not a chain of undos -
  *    a chain makes "is this movement live?" a graph walk instead of a lookup.
  * 4. Write ONE new movement: the negated quantity, the ORIGINAL's frozen unit
- *    cost verbatim, its `glAccount` and `vendorUnitPrice`, and every link it
+ *    cost verbatim, its `glRole` and `vendorUnitPrice`, and every link it
  *    carried (`StockMovementLinks`).
  *
  * 🛑 **The reversal is never re-priced.** It carries the unit cost the original
@@ -164,12 +116,6 @@ interface OriginalMovement {
  * row, a BOM-explode child) has no cost to preserve and no lane that will ever
  * price it, and writing its negation at zero would be the thing
  * `receive-stock.ts` refuses. Those are corrected with a second adjustment.
- *
- * ⚠️ Step 2 is a read-then-write check, not a database constraint - there is no
- * unique index available on a `FieldValue` relationship - so two reversals
- * issued concurrently for the same movement could both pass it. The window is a
- * single request and the surface is one row action, so this is accepted rather
- * than serialised.
  */
 export async function reverseMovement(
   db: Database,
@@ -179,37 +125,7 @@ export async function reverseMovement(
 ): Promise<Result<MovementRecord, Error>> {
   return guard(
     async () => {
-      const movementDefId = await getCachedEntityDefId(organizationId, 'stock_movement')
-      if (!movementDefId) {
-        throw new NotFoundError('This organization has no stock_movement entity definition')
-      }
-
-      const fields = (await systemFieldMap(db, organizationId, [
-        ...REVERSAL_ATTRIBUTES,
-      ])) as ReversalFields
-
-      const reversesField = fields.stock_movement_reverses_movement
-      if (!reversesField || !fields.stock_movement_unit_cost || !fields.stock_movement_quantity) {
-        // Without `reversesMovement` there is no way to record WHAT this row
-        // undoes, and therefore no way to refuse the second reversal in step 2.
-        throw new UnprocessableEntityError(
-          'Reversing a movement is not available until the stock movement correction fields are provisioned'
-        )
-      }
-
-      const original = await readOriginalMovement(
-        db,
-        organizationId,
-        movementDefId,
-        fields,
-        input.movementId
-      )
-
-      if (await hasReversal(db, organizationId, reversesField.id, input.movementId)) {
-        throw new ConflictError(
-          'This movement has already been reversed. Reversing it again would decrement the received quantity twice.'
-        )
-      }
+      const original = await readOriginalMovement(db, organizationId, input.movementId)
 
       if (original.reversesMovementId) {
         throw new BadRequestError(
@@ -217,13 +133,13 @@ export async function reverseMovement(
         )
       }
 
-      const record = await writeReversal(db, organizationId, userId, {
-        movementDefId,
+      const { record, touched } = await writeReversal(db, organizationId, userId, {
         originalMovementId: input.movementId,
         original,
         reason: input.reason,
         occurredAt: new Date(),
       })
+      await settleStockMovements(organizationId, touched)
 
       // The correction is a REVERSAL of the entry the original was booked in,
       // never a fresh opposite entry: a period that has been posted never
@@ -240,7 +156,7 @@ export async function reverseMovement(
         await linkMovementsToPosting(db, {
           organizationId,
           glPostingId: reversed.glPostingId,
-          movementIds: [record.movementId],
+          movementIds: [record.id],
         })
       }
       return record
@@ -250,153 +166,46 @@ export async function reverseMovement(
   )
 }
 
-/**
- * Step 1: the original's frozen facts, or `NotFoundError`.
- *
- * Two queries rather than one join: the instance probe is what distinguishes
- * "no such movement" from "a movement with no values", and collapsing them would
- * report a data problem as a missing row.
- */
+/** Step 1: the original's frozen facts, or `NotFoundError`. */
 async function readOriginalMovement(
   db: Database,
   organizationId: string,
-  movementDefId: string,
-  fields: ReversalFields,
   movementId: string
 ): Promise<OriginalMovement> {
-  const [instance] = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.id, movementId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, movementDefId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .limit(1)
+  const row = await readMovementById(db, organizationId, movementId)
+  if (!row) throw new NotFoundError(`Stock movement ${movementId} not found`)
 
-  if (!instance) {
-    throw new NotFoundError(`Stock movement ${movementId} not found`)
-  }
-
-  const fieldIds = REVERSAL_ATTRIBUTES.map((attr) => fields[attr]?.id).filter((id): id is string =>
-    Boolean(id)
-  )
-
-  const rows = await db
-    .select({
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      valueNumber: schema.FieldValue.valueNumber,
-      optionId: schema.FieldValue.optionId,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.entityId, movementId),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-
-  const byFieldId = new Map(rows.map((row) => [row.fieldId, row]))
-  const read = (attr: ReversalAttribute) => {
-    const id = fields[attr]?.id
-    return id ? (byFieldId.get(id) ?? null) : null
-  }
-
-  const partId = read('stock_movement_part')?.relatedEntityId ?? null
-  const type = read('stock_movement_type')?.optionId ?? null
-  const quantity = read('stock_movement_quantity')?.valueNumber ?? null
-  const unitCost = read('stock_movement_unit_cost')?.valueNumber ?? null
-  const glAccount = read('stock_movement_gl_account')?.valueText ?? null
-
-  if (!partId || !type) {
-    throw new UnprocessableEntityError(
-      `Stock movement ${movementId} has no part or no type and cannot be reversed`
-    )
-  }
-  if (quantity == null || !Number.isFinite(quantity) || quantity === 0) {
+  const { quantity, unitCostMinor: unitCost, glRole, costBasis } = row
+  if (!Number.isFinite(quantity) || quantity === 0) {
     throw new UnprocessableEntityError(`Stock movement ${movementId} has no quantity to reverse`)
   }
-  const costBasis = read('stock_movement_cost_basis')?.optionId ?? null
   const pending = costBasis === StockMovementCostBasis.PENDING
-  if (pending && unitCost != null) {
-    throw new UnprocessableEntityError(
-      `Stock movement ${movementId} is pending a price but already carries a cost, and cannot be reversed`
-    )
-  }
-  if (
-    !glAccount ||
-    (!pending && (unitCost == null || !Number.isFinite(unitCost) || unitCost <= 0))
-  ) {
-    // See the JSDoc on `reverseMovement`: an uncosted movement has no frozen
-    // cost to carry, and the alternative - a reversal valued at zero - is worse
-    // than no row at all. Every sanctioned writer stamps `glAccount` beside the
-    // cost, so the two travel together.
+  if (!glRole || (!pending && (unitCost == null || !Number.isFinite(unitCost) || unitCost <= 0))) {
+    // An uncosted movement has no frozen cost to carry, and a reversal valued at
+    // zero is worse than no row at all.
     throw new UnprocessableEntityError(
       `Stock movement ${movementId} carries no frozen unit cost and is not pending a price, so it cannot be reversed. Adjust the stock instead.`
     )
   }
 
   return {
-    partId,
-    type,
+    partId: row.partId,
+    type: row.type,
     quantity,
     costBasis,
     unitCost,
-    glAccount,
-    vendorUnitPrice: read('stock_movement_vendor_unit_price')?.valueNumber ?? null,
-    vendorPartId: read('stock_movement_vendor_part')?.relatedEntityId ?? null,
-    purchaseOrderLineId: read('stock_movement_purchase_order_line')?.relatedEntityId ?? null,
-    reversesMovementId: read('stock_movement_reverses_movement')?.relatedEntityId ?? null,
-    buildId: read('stock_movement_build')?.relatedEntityId ?? null,
-    fulfillmentLineId: read('stock_movement_fulfillment_line')?.relatedEntityId ?? null,
-    parentMovementId: read('stock_movement_parent_movement')?.relatedEntityId ?? null,
+    glRole,
+    vendorUnitPrice: row.vendorUnitPriceMinor,
+    vendorPartId: row.vendorPartId,
+    purchaseOrderLineId: row.purchaseOrderLineId,
+    reversesMovementId: row.reversesMovementId,
+    buildId: row.buildId,
+    fulfillmentLineId: row.fulfillmentLineId,
+    parentMovementId: row.parentMovementId,
   }
 }
 
-/**
- * Step 2: does a live movement already point its `reversesMovement` at this one?
- *
- * Joins `EntityInstance` so an archived reversal does not block a legitimate
- * second attempt - an archived row contributes nothing to either roll-up, so
- * treating it as a standing reversal would leave the mistake uncorrectable.
- */
-async function hasReversal(
-  db: Database,
-  organizationId: string,
-  reversesFieldId: string,
-  movementId: string
-): Promise<boolean> {
-  const [existing] = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.FieldValue)
-    .innerJoin(
-      schema.EntityInstance,
-      and(
-        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
-        eq(schema.EntityInstance.organizationId, schema.FieldValue.organizationId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, reversesFieldId),
-        eq(schema.FieldValue.relatedEntityId, movementId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-    .limit(1)
-
-  return Boolean(existing)
-}
-
 interface WriteReversalArgs {
-  movementDefId: string
   originalMovementId: string
   original: OriginalMovement
   reason: string | undefined
@@ -404,107 +213,76 @@ interface WriteReversalArgs {
 }
 
 /**
- * Step 4: write the one opposite movement, through the shared
- * `inventory/movements/writeStockMovements` (plans/money/tasks/50-batch-inventory-relief.md
- * §2) - the same writer `writeReceiveMovement` uses and for the same reason: a
- * direct `EntityInstance` + `FieldValue` insert writes rows the post-commit
- * triggers (QoH recalculation, the purchase-order roll-up, timeline, realtime)
- * never hear about - and the roll-up firing is the entire point of copying the
- * `purchaseOrderLine` across.
- *
- * `partDefId` is resolved here rather than threaded in, since this is the
- * only step of `reverseMovement` that needs it.
- *
- * 🛑 **`adjustSubparts` is never set here, which is what keeps it `false`.**
- * `explodeBomMovement` inherits the parent movement's type AND its sign, so a
- * reversal with the flag set would explode the negation across every descendant
- * in the BOM - undoing one receipt of 10 motors would also move 10 of every
- * screw inside them. Undoing a purchase moves the purchased item and nothing
- * else, exactly as the receipt it undoes did.
- *
- * `extendedCost` is left to the shared writer to compute from
- * `computeExtendedCost(unitCost, quantity)` - never negated from a stored
- * total, so a reversal stays identical in magnitude to the receipt it undoes
- * without depending on a number the original may never have carried.
+ * Step 4: write the one opposite movement. `adjustSubparts` is never set: undoing a
+ * purchase moves the purchased item and nothing else, exactly as the receipt did.
+ * `extendedCost` is recomputed from the frozen unit cost, never negated from a stored total.
  */
 async function writeReversal(
   db: Database,
   organizationId: string,
   userId: string,
   args: WriteReversalArgs
-): Promise<MovementRecord> {
-  const { movementDefId, originalMovementId, original, reason, occurredAt } = args
-
-  const partDefId = await getPartDefId(organizationId)
+): Promise<{ record: MovementRecord; touched: StockMovementTouched }> {
+  const { originalMovementId, original, reason, occurredAt } = args
   const quantity = -original.quantity
   const unitCost = original.unitCost
 
-  const written = await writeStockMovements(
-    { db, organizationId, userId, movementDefId, partDefId, lane: { kind: 'plain' } },
-    [
-      {
-        partInstanceId: original.partId,
-        type: reversalTypeFor(original.type),
-        quantity,
-        unitCost,
-        // The basis follows the cost. A row carrying the original's frozen
-        // `actual` cost is still an `actual`, a `pending` original makes a
-        // pending reversal, and re-deciding it here would let a reversal
-        // disagree with the movement it is a copy of. Omitted entirely (not
-        // defaulted) when the original never carried one.
-        costBasis: original.costBasis ?? undefined,
-        glAccount: original.glAccount,
-        occurredAt,
-        vendorUnitPrice: original.vendorUnitPrice ?? undefined,
-        reason,
-        // Every link the original carried, so the reversal is found wherever
-        // the original is (`write-movements.ts` header). The purchase-order
-        // line is what rolls `purchase_order_line_quantity_received` back for
-        // free: the roll-up re-SUMs every movement pointing at the line.
-        links: {
-          reversesMovementId: originalMovementId,
-          vendorPartId: original.vendorPartId ?? undefined,
-          purchaseOrderLineId: original.purchaseOrderLineId ?? undefined,
-          buildId: original.buildId ?? undefined,
-          fulfillmentLineId: original.fulfillmentLineId ?? undefined,
-          // Safe to copy: `explodeBomMovement` exits on `adjustSubparts`
-          // (never set here) before it ever reads the parent.
-          parentMovementId: original.parentMovementId ?? undefined,
-        },
+  const written = await writeStockMovements({ db, organizationId, userId }, [
+    {
+      partInstanceId: original.partId,
+      type: reversalTypeFor(original.type),
+      quantity,
+      unitCost,
+      // The basis follows the cost. A row carrying the original's frozen
+      // `actual` cost is still an `actual`, a `pending` original makes a
+      // pending reversal, and re-deciding it here would let a reversal
+      // disagree with the movement it is a copy of. Omitted entirely (not
+      // defaulted) when the original never carried one.
+      costBasis: original.costBasis ?? undefined,
+      glRole: original.glRole,
+      occurredAt,
+      vendorUnitPrice: original.vendorUnitPrice ?? undefined,
+      reason,
+      // Every link the original carried, so the reversal is found wherever the
+      // original is; the PO line is what rolls `quantityReceived` back.
+      links: {
+        reversesMovementId: originalMovementId,
+        vendorPartId: original.vendorPartId ?? undefined,
+        purchaseOrderLineId: original.purchaseOrderLineId ?? undefined,
+        buildId: original.buildId ?? undefined,
+        fulfillmentLineId: original.fulfillmentLineId ?? undefined,
+        parentMovementId: original.parentMovementId ?? undefined,
       },
-    ]
-  )
-  if (written.isErr()) throw written.error
+    },
+  ])
+  if (written.isErr()) {
+    if (written.error instanceof ConflictError) {
+      throw new ConflictError(
+        'This movement has already been reversed. Reversing it again would decrement the received quantity twice.'
+      )
+    }
+    throw written.error
+  }
   const record = written.value.records[0]!
 
   return {
-    movementId: record.movementId,
-    recordId: record.recordId,
-    partInstanceId: original.partId,
-    quantity,
-    unitCost,
-    extendedCost: record.extendedCost,
-    vendorUnitPrice: original.vendorUnitPrice,
-    vendorPartId: original.vendorPartId,
-    glAccount: original.glAccount,
-    occurredAt,
-    purchaseOrderLineId: original.purchaseOrderLineId,
+    record: {
+      id: record.id,
+      partInstanceId: original.partId,
+      quantity,
+      unitCost,
+      extendedCost: record.extendedCost,
+      vendorUnitPrice: original.vendorUnitPrice,
+      vendorPartId: original.vendorPartId,
+      glRole: original.glRole,
+      occurredAt,
+      purchaseOrderLineId: original.purchaseOrderLineId,
+    },
+    touched: written.value.touched,
   }
 }
 
 /** See {@link REVERSAL_TYPE_BY_ORIGINAL} for why an unmapped type is an `adjust`. */
 function reversalTypeFor(originalType: string): string {
   return REVERSAL_TYPE_BY_ORIGINAL[originalType] ?? StockMovementType.ADJUST
-}
-
-/**
- * Resolve the org's `part` def id, as an `UnprocessableEntityError` rather
- * than the bare `Error` the cache helper throws.
- */
-async function getPartDefId(organizationId: string): Promise<string> {
-  const defId = await getCachedEntityDefId(organizationId, 'part')
-  if (!defId) {
-    throw new UnprocessableEntityError('This organization has no part entity definition yet')
-  }
-  return defId
 }

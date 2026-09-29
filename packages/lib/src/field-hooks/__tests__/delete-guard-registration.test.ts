@@ -90,7 +90,6 @@ const MONEY_ENTITY_TYPES = [
   'purchase_order_line',
   'vendor_bill',
   'vendor_bill_line',
-  'stock_movement',
   'build',
   'part',
   'vendor_part',

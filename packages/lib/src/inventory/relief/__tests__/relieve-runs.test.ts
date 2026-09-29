@@ -44,7 +44,6 @@ vi.mock('../../../cache', () => ({
         Object.fromEntries(attrs.map((attr) => [attr, { id: `f_${attr}` }])),
     }),
   }),
-  requireCachedEntityDefId: async (_orgId: string, entityType: string) => `def_${entityType}`,
 }))
 vi.mock('../../costing', () => ({
   readStandardCost: async (_db: unknown, _orgId: string, partIds: string[]) => {
@@ -58,7 +57,6 @@ vi.mock('../../costing', () => ({
     return ok(map)
   },
 }))
-vi.mock('../../costing/qoh', () => ({ batchRecalculateQoH: async () => {} }))
 vi.mock('../../costing/cost-reads', () => ({
   readPartLedgerAverages: async () => (await import('neverthrow')).ok(new Map()),
   readFulfillmentLineRelievedAverages: async () => (await import('neverthrow')).ok(new Map()),
@@ -75,33 +73,25 @@ vi.mock('../../../field-hooks/post/fulfillment-line-rollups', () => ({
     return totals
   },
 }))
-vi.mock('../write-lane', () => ({
-  reliefWriteSession: () => ({ origin: { kind: 'automation' }, mode: { kind: 'quiet' } }),
-  announceQuietReliefWrites: () => {},
-}))
 vi.mock('../../../accounting/work-items/write', () => ({
   upsertWorkItem: async () => ({ isOk: () => true }),
   deleteWorkItemsAtStage: async () => ({ isOk: () => true }),
-}))
-// The park's pending-row read is not this file's subject; the fake db below has no reader shape.
-vi.mock('../../../resources/system-records', async () => ({
-  ...(await vi.importActual<typeof import('../../../resources/system-records')>(
-    '../../../resources/system-records'
-  )),
-  readSystemRecords: async () => [],
 }))
 vi.mock('../../movements', async () => {
   const actual = await vi.importActual<typeof import('../../movements')>('../../movements')
   const { ok } = await import('neverthrow')
   return {
     ...actual,
-    writeStockMovementsBatch: async (
+    settleStockMovements: async () => {},
+    // The park's pending-row read is not this file's subject.
+    readMovementsByFulfillmentLines: async () => [],
+    writeStockMovements: async (
       _ctx: unknown,
       inputs: Array<{
         partInstanceId: string
         quantity: number
         unitCost: number | null
-        glAccount: string
+        glRole: string
         occurredAt: Date
         links: { fulfillmentLineId: string }
       }>
@@ -114,17 +104,22 @@ vi.mock('../../movements', async () => {
           quantity: input.quantity,
         })
         return {
-          movementId: id,
-          recordId: `def_stock_movement:${id}`,
+          id,
           partInstanceId: input.partInstanceId,
           quantity: input.quantity,
           unitCost: input.unitCost,
           extendedCost: input.unitCost == null ? null : input.quantity * input.unitCost,
-          glAccount: input.glAccount,
+          glRole: input.glRole,
           occurredAt: input.occurredAt,
         }
       })
-      return ok({ records, affectedPartIds: [...new Set(inputs.map((i) => i.partInstanceId))] })
+      const touched = {
+        partIds: [...new Set(inputs.map((i) => i.partInstanceId))],
+        purchaseOrderLineIds: [],
+        fulfillmentLineIds: [...new Set(inputs.map((i) => i.links.fulfillmentLineId))],
+        buildIds: [],
+      }
+      return ok({ records, touched })
     },
   }
 })

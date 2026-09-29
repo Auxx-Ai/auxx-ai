@@ -55,6 +55,11 @@ vi.mock('@auxx/database', () => ({
       relatedEntityId: 'relatedEntityId',
     },
     CustomField: { id: 'id', systemAttribute: 'systemAttribute' },
+    StockMovement: {
+      organizationId: 'organizationId',
+      purchaseOrderLineId: 'purchaseOrderLineId',
+      quantity: 'quantity',
+    },
   },
 }))
 vi.mock('../../../cache', () => ({
@@ -94,7 +99,6 @@ import {
   recalculateBilledRollupOnBillLineChange,
   recalculateBilledRollupOnCreditLineChange,
   recalculatePurchaseOrderLineBilled,
-  recalculatePurchaseOrderLineReceived,
   recalculatePurchaseOrderLineRollup,
   recalculatePurchaseOrderLineRollups,
   registerPurchaseOrderLineRollupReconcilers,
@@ -102,16 +106,21 @@ import {
 
 const PO_LINE = 'poline-1'
 
+/** Settle the received roll-up for one line, as `settleStockMovements` does. */
+function receive(lineId = PO_LINE) {
+  return recalculatePurchaseOrderLineRollup('org_1', lineId, PURCHASE_ORDER_LINE_ROLLUPS.received)
+}
+
 function event(
   values: Record<string, unknown>,
   overrides: Partial<EntityTriggerEvent> = {}
 ): EntityTriggerEvent {
   return {
     action: 'created',
-    entitySlug: 'stock-movements',
+    entitySlug: 'vendor-bill-lines',
     entityType: '',
-    entityDefinitionId: 'smdef',
-    entityInstanceId: 'sm-1',
+    entityDefinitionId: 'vbldef',
+    entityInstanceId: 'vbl-1',
     organizationId: 'org_1',
     userId: 'usr_1',
     values,
@@ -123,8 +132,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.dbResults = []
   h.bySystemAttributes.mockResolvedValue({
-    stock_movement_quantity: { id: 'fld-qty', type: 'NUMBER' },
-    stock_movement_purchase_order_line: { id: 'fld-poline', type: 'RELATIONSHIP' },
     purchase_order_line_quantity_received: { id: 'fld-received', type: 'NUMBER' },
     vendor_bill_line_quantity_billed: { id: 'fld-billed-qty', type: 'NUMBER' },
     vendor_bill_line_purchase_order_line: { id: 'fld-bl-poline', type: 'RELATIONSHIP' },
@@ -140,13 +147,11 @@ beforeEach(() => {
   h.resolveParentsByRelation.mockResolvedValue([])
 })
 
-describe('recalculatePurchaseOrderLineReceived', () => {
+describe('the received roll-up', () => {
   it('re-SUMs the movements and writes the whole total, never an increment', async () => {
     h.dbResults.push([{ total: '17' }])
 
-    await recalculatePurchaseOrderLineReceived(
-      event({ stock_movement_purchase_order_line: PO_LINE })
-    )
+    await receive()
 
     expect(h.setValueWithType).toHaveBeenCalledWith(
       { organizationId: 'org_1' },
@@ -158,48 +163,10 @@ describe('recalculatePurchaseOrderLineReceived', () => {
     )
   })
 
-  it('accepts a RecordId-shaped relationship value as well as a bare instance id', async () => {
-    h.dbResults.push([{ total: '4' }])
-
-    await recalculatePurchaseOrderLineReceived(
-      event({ stock_movement_purchase_order_line: `poldef:${PO_LINE}` })
-    )
-
-    expect(h.setValueWithType).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        recordId: `poldef:${PO_LINE}`,
-        value: { type: 'number', value: 4 },
-      })
-    )
-  })
-
-  it('falls back to the movement’s own field value when the event carried none', async () => {
-    h.dbResults.push([{ relatedEntityId: PO_LINE }]) // the fallback lookup
-    h.dbResults.push([{ total: '9' }]) // the SUM
-
-    await recalculatePurchaseOrderLineReceived(event({}))
-
-    expect(h.setValueWithType).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ fieldId: 'fld-received', value: { type: 'number', value: 9 } })
-    )
-  })
-
-  it('is a silent no-op for a movement with no purchase order line', async () => {
-    h.dbResults.push([]) // fallback lookup finds nothing
-
-    await recalculatePurchaseOrderLineReceived(event({}))
-
-    expect(h.setValueWithType).not.toHaveBeenCalled()
-  })
-
   it('writes 0 rather than skipping when the last movement is deleted', async () => {
     h.dbResults.push([{ total: '0' }])
 
-    await recalculatePurchaseOrderLineReceived(
-      event({ stock_movement_purchase_order_line: PO_LINE }, { action: 'deleted' })
-    )
+    await receive()
 
     expect(h.setValueWithType).toHaveBeenCalledWith(
       expect.anything(),
@@ -229,9 +196,7 @@ describe('recalculatePurchaseOrderLineBilled', () => {
 describe('the roll-up specs', () => {
   it('name the child quantity field, never the PO line’s own', () => {
     expect(PURCHASE_ORDER_LINE_ROLLUPS.received).toEqual({
-      childEntityType: 'stock_movement',
-      quantityAttr: 'stock_movement_quantity',
-      lineRelAttr: 'stock_movement_purchase_order_line',
+      source: 'stock_movement',
       targetAttr: 'purchase_order_line_quantity_received',
       evidence: 'receipt',
     })
@@ -382,9 +347,7 @@ describe('the order-level status pass', () => {
   it('runs after a receipt roll-up, and declares the evidence as a receipt', async () => {
     h.dbResults.push([{ total: '3' }])
 
-    await recalculatePurchaseOrderLineReceived(
-      event({ stock_movement_purchase_order_line: PO_LINE })
-    )
+    await receive()
 
     expect(h.recalculatePurchaseOrderStatuses).toHaveBeenCalledWith({
       organizationId: 'org_1',
@@ -420,28 +383,16 @@ describe('the order-level status pass', () => {
     })
     h.dbResults.push([{ total: '3' }])
 
-    await recalculatePurchaseOrderLineReceived(
-      event({ stock_movement_purchase_order_line: PO_LINE })
-    )
+    await receive()
 
     expect(callOrder).toEqual(['line-write', 'status-pass'])
-  })
-
-  it('does not run when no purchase order line could be resolved', async () => {
-    h.dbResults.push([])
-
-    await recalculatePurchaseOrderLineReceived(event({}))
-
-    expect(h.recalculatePurchaseOrderStatuses).not.toHaveBeenCalled()
   })
 
   it('swallows a status failure — the quantity is committed and must not be taken down with it', async () => {
     h.dbResults.push([{ total: '3' }])
     h.recalculatePurchaseOrderStatuses.mockResolvedValue(err(new AuxxError('boom')))
 
-    await expect(
-      recalculatePurchaseOrderLineReceived(event({ stock_movement_purchase_order_line: PO_LINE }))
-    ).resolves.toBeUndefined()
+    await expect(receive()).resolves.toBeUndefined()
 
     expect(h.setValueWithType).toHaveBeenCalled()
   })
@@ -454,9 +405,7 @@ describe('the stored total is read in the same statement as the SUM', () => {
     // derivation behind it.
     h.dbResults.push([{ total: '17', current: 17 }])
 
-    await recalculatePurchaseOrderLineReceived(
-      event({ stock_movement_purchase_order_line: PO_LINE })
-    )
+    await receive()
 
     expect(h.setValueWithType).not.toHaveBeenCalled()
     expect(h.publishFieldValueUpdates).not.toHaveBeenCalled()
@@ -469,9 +418,7 @@ describe('the stored total is read in the same statement as the SUM', () => {
     // order holding a stale quantity with nothing thrown.
     h.dbResults.push([{ total: '17', current: null }])
 
-    await recalculatePurchaseOrderLineReceived(
-      event({ stock_movement_purchase_order_line: PO_LINE })
-    )
+    await receive()
 
     expect(h.setValueWithType).toHaveBeenCalledWith(
       expect.anything(),
@@ -484,9 +431,7 @@ describe('the stored total is read in the same statement as the SUM', () => {
     // `0` is falsy and a stored zero is a real answer, not an absent one.
     h.dbResults.push([{ total: '3', current: 0 }])
 
-    await recalculatePurchaseOrderLineReceived(
-      event({ stock_movement_purchase_order_line: PO_LINE })
-    )
+    await receive()
 
     expect(h.setValueWithType).toHaveBeenCalled()
   })
@@ -494,9 +439,7 @@ describe('the stored total is read in the same statement as the SUM', () => {
   it('does not write a zero back over a stored zero when the last movement goes', async () => {
     h.dbResults.push([{ total: '0', current: 0 }])
 
-    await recalculatePurchaseOrderLineReceived(
-      event({ stock_movement_purchase_order_line: PO_LINE }, { action: 'deleted' })
-    )
+    await receive()
 
     expect(h.setValueWithType).not.toHaveBeenCalled()
   })
@@ -650,9 +593,7 @@ describe('a receipt re-matches the bills that charge the line', () => {
   it('rematches the bills for a line whose received total moved', async () => {
     h.dbResults.push([{ total: '2' }])
 
-    await recalculatePurchaseOrderLineReceived(
-      event({ stock_movement_purchase_order_line: PO_LINE })
-    )
+    await receive()
 
     expect(h.rematchBillsForPurchaseOrderLines).toHaveBeenCalledWith('org_1', '', [PO_LINE])
   })
@@ -662,9 +603,7 @@ describe('a receipt re-matches the bills that charge the line', () => {
     // all short-circuited, and so is this.
     h.dbResults.push([{ total: '2', current: 2 }])
 
-    await recalculatePurchaseOrderLineReceived(
-      event({ stock_movement_purchase_order_line: PO_LINE })
-    )
+    await receive()
 
     expect(h.setValueWithType).not.toHaveBeenCalled()
     expect(h.rematchBillsForPurchaseOrderLines).not.toHaveBeenCalled()
@@ -707,9 +646,7 @@ describe('a receipt re-matches the bills that charge the line', () => {
     h.dbResults.push([{ total: '2' }])
     h.rematchBillsForPurchaseOrderLines.mockRejectedValueOnce(new Error('boom'))
 
-    await expect(
-      recalculatePurchaseOrderLineReceived(event({ stock_movement_purchase_order_line: PO_LINE }))
-    ).resolves.toBeUndefined()
+    await expect(receive()).resolves.toBeUndefined()
 
     // The quantity is the primary fact and is already committed.
     expect(h.setValueWithType).toHaveBeenCalled()

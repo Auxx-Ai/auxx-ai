@@ -5,8 +5,8 @@
  *
  * Every collaborator that touches the database or another module's write lane
  * is mocked - this file is about the ARITHMETIC and the SKIP/WARN
- * decisions §1.5-§4.2 make, not about `writeStockMovementsBatch`,
- * `batchRecalculateQoH` or the roll-up's own SQL, each of which has its own
+ * decisions §1.5-§4.2 make, not about `writeStockMovements`,
+ * `settleStockMovements` or the roll-up's own SQL, each of which has its own
  * tests. `readPartLedgerAverages` / `readFulfillmentLineRelievedAverages`
  * (`inventory/costing/cost-reads`) are mocked to their documented return shapes rather than
  * exercised for real, since that module is a different agent's surface.
@@ -16,22 +16,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   fieldsByAttr: {} as Record<string, { id: string } | undefined>,
-  defIds: {
-    stock_movement: 'def_stock_movement',
-    part: 'def_part',
-    fulfillment_line: 'def_fulfillment_line',
-  } as Record<string, string>,
   ledgerAverages: new Map<string, unknown>(),
   relievedAverages: new Map<string, unknown>(),
   /** What the `sale` movements say each line has relieved, as the in-tx re-read sees it. */
   relievedQuantities: new Map<string, number>(),
   standardCosts: new Map<string, unknown>(),
   postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
-  writeStockMovementsBatch: vi.fn(),
-  batchRecalculateQoH: vi.fn(async () => {}),
+  writeStockMovements: vi.fn(),
+  settleStockMovements: vi.fn(async () => {}),
   recalculateFulfillmentLineQuantityRelievedBatch: vi.fn(async () => {}),
-  announceQuietReliefWrites: vi.fn(),
-  reliefWriteSession: vi.fn(() => ({ origin: { kind: 'automation' }, mode: { kind: 'quiet' } })),
   upsertWorkItem: vi.fn(async () => ({ isOk: () => true })),
   deleteWorkItemsAtStage: vi.fn(async () => ({ isOk: () => true })),
   /** The fake subledger the park reads: every row the write double minted, with its basis. */
@@ -42,32 +35,6 @@ const h = vi.hoisted(() => ({
     costBasis: string | undefined
   }>,
 }))
-
-vi.mock('../../../resources/system-records', async () => {
-  const actual = await vi.importActual<typeof import('../../../resources/system-records')>(
-    '../../../resources/system-records'
-  )
-  return {
-    ...actual,
-    // `readPendingMovements` asks for the movements on the offered lines; answer from the fake ledger.
-    readSystemRecords: async (
-      _db: unknown,
-      _org: string,
-      _ctx: unknown,
-      options: { by?: { in: readonly string[] } }
-    ) =>
-      h.ledger
-        .filter((row) => row.fulfillmentLineId && options.by?.in.includes(row.fulfillmentLineId))
-        .map((row) => ({
-          id: row.id,
-          option: () => row.costBasis ?? null,
-          related: (attribute: string) =>
-            attribute === 'stock_movement_fulfillment_line'
-              ? row.fulfillmentLineId
-              : row.partInstanceId,
-        })),
-  }
-})
 
 vi.mock('../../../accounting/work-items/write', () => ({
   upsertWorkItem: h.upsertWorkItem,
@@ -84,11 +51,6 @@ vi.mock('../../../cache', () => ({
       },
     }),
   }),
-  requireCachedEntityDefId: async (_orgId: string, entityType: string) => {
-    const id = h.defIds[entityType]
-    if (!id) throw new Error(`no def for ${entityType}`)
-    return id
-  },
 }))
 
 vi.mock('../../costing', () => ({
@@ -109,10 +71,6 @@ vi.mock('../../costing', () => ({
   },
 }))
 
-vi.mock('../../costing/qoh', () => ({
-  batchRecalculateQoH: h.batchRecalculateQoH,
-}))
-
 vi.mock('../../../field-hooks/post/fulfillment-line-rollups', () => ({
   recalculateFulfillmentLineQuantityRelievedBatch:
     h.recalculateFulfillmentLineQuantityRelievedBatch,
@@ -125,7 +83,21 @@ vi.mock('../../../accounting/ledger/post/accounting-commit-lock', () => ({
 
 vi.mock('../../movements', async () => {
   const actual = await vi.importActual<typeof import('../../movements')>('../../movements')
-  return { ...actual, writeStockMovementsBatch: h.writeStockMovementsBatch }
+  return {
+    ...actual,
+    writeStockMovements: h.writeStockMovements,
+    settleStockMovements: h.settleStockMovements,
+    // The park reads the movements on the offered lines; answer from the fake ledger.
+    readMovementsByFulfillmentLines: async (_db: unknown, _org: string, ids: readonly string[]) =>
+      h.ledger
+        .filter((row) => row.fulfillmentLineId && ids.includes(row.fulfillmentLineId))
+        .map((row) => ({
+          id: row.id,
+          partId: row.partInstanceId,
+          fulfillmentLineId: row.fulfillmentLineId,
+          costBasis: row.costBasis ?? null,
+        })),
+  }
 })
 
 vi.mock('../../costing/cost-reads', () => ({
@@ -137,11 +109,6 @@ vi.mock('../../costing/cost-reads', () => ({
     const { ok } = await import('neverthrow')
     return ok(h.relievedAverages)
   },
-}))
-
-vi.mock('../write-lane', () => ({
-  reliefWriteSession: h.reliefWriteSession,
-  announceQuietReliefWrites: h.announceQuietReliefWrites,
 }))
 
 import type { Database } from '@auxx/database'
@@ -156,41 +123,40 @@ function stubDb(): Database {
 }
 
 const OCCURRED_AT = new Date('2026-09-03T12:00:00.000Z')
+const TOUCHED = {
+  partIds: ['part_1'],
+  purchaseOrderLineIds: [],
+  fulfillmentLineIds: ['fl_1'],
+  buildIds: [],
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
   h.fieldsByAttr = {
     line_item_part: { id: 'f_part' },
     part_kind: { id: 'f_kind' },
-    stock_movement_fulfillment_line: { id: 'f_mv_line' },
-    stock_movement_cost_basis: { id: 'f_mv_basis' },
-    stock_movement_part: { id: 'f_mv_part' },
   }
   h.ledgerAverages = new Map()
   h.relievedAverages = new Map()
   h.relievedQuantities = new Map()
   h.standardCosts = new Map()
   h.ledger = []
-  h.reliefWriteSession.mockReturnValue({
-    origin: { kind: 'automation' },
-    mode: { kind: 'quiet' },
-  } as never)
-  h.writeStockMovementsBatch.mockImplementation(writeDouble({ costed: false }))
+  h.writeStockMovements.mockImplementation(writeDouble({ costed: false }))
 })
 
 /**
- * A `writeStockMovementsBatch` double: mints ids in input order, records every row in
+ * A `writeStockMovements` double: mints ids in input order, records every row in
  * the fake ledger, and echoes the input's cost - `null` on a pending row - or,
  * with `costed`, the priced figures a real write would return.
  */
-function writeDouble(options: { costed: boolean; glAccount?: string }) {
+function writeDouble(options: { costed: boolean; glRole?: string }) {
   return async (_ctx: unknown, inputs: unknown[]) => {
     const typed = inputs as Array<{
       partInstanceId: string
       quantity: number
       unitCost: number | null
       costBasis?: string
-      glAccount?: string
+      glRole?: string
       links?: { fulfillmentLineId?: string }
     }>
     const records = typed.map((input, index) => {
@@ -203,19 +169,25 @@ function writeDouble(options: { costed: boolean; glAccount?: string }) {
       })
       const priced = input.unitCost != null && options.costed
       return {
-        movementId: id,
-        recordId: `def_stock_movement:${id}`,
+        id,
         partInstanceId: input.partInstanceId,
         quantity: options.costed ? input.quantity : 0,
         unitCost: input.unitCost,
         extendedCost: input.unitCost == null ? null : priced ? input.quantity * input.unitCost : 0,
-        glAccount: options.costed ? (options.glAccount ?? input.glAccount ?? null) : null,
+        glRole: options.costed ? (options.glRole ?? input.glRole ?? null) : null,
         occurredAt: OCCURRED_AT,
       }
     })
     return ok({
       records,
-      affectedPartIds: [...new Set(typed.map((input) => input.partInstanceId))],
+      touched: {
+        partIds: [...new Set(typed.map((input) => input.partInstanceId))],
+        purchaseOrderLineIds: [],
+        fulfillmentLineIds: [
+          ...new Set(typed.flatMap((input) => input.links?.fulfillmentLineId ?? [])),
+        ],
+        buildIds: [],
+      },
     })
   }
 }
@@ -258,7 +230,7 @@ describe('relieveFulfillmentLines', () => {
       skippedService: 0,
       negativeQoHPartIds: [],
     })
-    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
   })
 
   it('§1.6 - skips a line with no line_item_part and counts it, never guessing', async () => {
@@ -280,7 +252,7 @@ describe('relieveFulfillmentLines', () => {
     })
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().skippedNoPart).toBe(1)
-    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
   })
 
   it('§1.5 - a delta of zero writes no row', async () => {
@@ -302,7 +274,7 @@ describe('relieveFulfillmentLines', () => {
     })
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().skippedZeroDelta).toBe(1)
-    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
   })
 
   it('73 §6.2 rule 3 - a positive delta writes a NEGATIVE movement priced at the STANDARD', async () => {
@@ -339,9 +311,8 @@ describe('relieveFulfillmentLines', () => {
     expect(result.isOk()).toBe(true)
     const value = result._unsafeUnwrap()
     expect(value.skippedNoCost).toBe(0)
-    expect(h.writeStockMovementsBatch).toHaveBeenCalledTimes(1)
-    const [ctx, inputs] = h.writeStockMovementsBatch.mock.calls[0]!
-    expect(ctx.lane.kind).toBe('quiet')
+    expect(h.writeStockMovements).toHaveBeenCalledTimes(1)
+    const [, inputs] = h.writeStockMovements.mock.calls[0]!
     expect(inputs).toEqual([
       expect.objectContaining({
         partInstanceId: 'part_1',
@@ -349,7 +320,7 @@ describe('relieveFulfillmentLines', () => {
         quantity: -3, // -(quantity - quantityRelieved) = -(3 - 0)
         unitCost: 5_500,
         costBasis: 'standard',
-        glAccount: 'inventory_finished_goods',
+        glRole: 'inventory_finished_goods',
         occurredAt: OCCURRED_AT,
         links: { fulfillmentLineId: 'fl_1' },
       }),
@@ -389,13 +360,13 @@ describe('relieveFulfillmentLines', () => {
     })
 
     expect(result.isOk()).toBe(true)
-    const [, inputs] = h.writeStockMovementsBatch.mock.calls[0]!
+    const [, inputs] = h.writeStockMovements.mock.calls[0]!
     expect(inputs).toEqual([
       expect.objectContaining({
         partInstanceId: 'part_1',
         quantity: 2, // -(10 - 12) = +2, un-relieving
         unitCost: 4_200,
-        glAccount: 'inventory_raw_materials',
+        glRole: 'inventory_raw_materials',
       }),
     ])
   })
@@ -414,21 +385,20 @@ describe('relieveFulfillmentLines', () => {
       standardLaborCost: 500,
       standardOverheadCost: 300,
     })
-    h.writeStockMovementsBatch.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+    h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
       ok({
         records: (inputs as Array<{ partInstanceId: string; quantity: number }>).map(
           (input, index) => ({
-            movementId: `mv_${index}`,
-            recordId: `def_stock_movement:mv_${index}`,
+            id: `mv_${index}`,
             partInstanceId: input.partInstanceId,
             quantity: input.quantity,
             unitCost: 2_000,
             extendedCost: -8_000,
-            glAccount: 'inventory_finished_goods',
+            glRole: 'inventory_finished_goods',
             occurredAt: OCCURRED_AT,
           })
         ),
-        affectedPartIds: ['part_1'],
+        touched: TOUCHED,
       })
     )
 
@@ -449,7 +419,7 @@ describe('relieveFulfillmentLines', () => {
     })
 
     expect(result.isOk()).toBe(true)
-    const [, inputs] = h.writeStockMovementsBatch.mock.calls[0]!
+    const [, inputs] = h.writeStockMovements.mock.calls[0]!
     expect(inputs).toEqual([expect.objectContaining({ unitCost: 2_000, costBasis: 'standard' })])
     const posted = h.postSpy.mock.calls[0]![1] as { cogsSplit: unknown }
     expect(posted.cogsSplit).toEqual({ laborMinor: 2_000, overheadMinor: 1_200 })
@@ -467,19 +437,18 @@ describe('relieveFulfillmentLines', () => {
     })
     h.relievedAverages.set('fl_1', { fulfillmentLineId: 'fl_1', unitCostMinor: 4_200 })
     h.relievedQuantities.set('fl_1', 12)
-    h.writeStockMovementsBatch.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+    h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
       ok({
         records: (inputs as Array<{ partInstanceId: string }>).map((input, index) => ({
-          movementId: `mv_${index}`,
-          recordId: `def_stock_movement:mv_${index}`,
+          id: `mv_${index}`,
           partInstanceId: input.partInstanceId,
           quantity: 2,
           unitCost: 4_200,
           extendedCost: 8_400,
-          glAccount: 'inventory_finished_goods',
+          glRole: 'inventory_finished_goods',
           occurredAt: OCCURRED_AT,
         })),
-        affectedPartIds: ['part_1'],
+        touched: TOUCHED,
       })
     )
 
@@ -527,21 +496,20 @@ describe('relieveFulfillmentLines', () => {
     })
 
     expect(result._unsafeUnwrap()).toMatchObject({ skippedNoCost: 1, movementIds: ['mv_0'] })
-    const [, inputs] = h.writeStockMovementsBatch.mock.calls[0]!
+    const [, inputs] = h.writeStockMovements.mock.calls[0]!
     expect(inputs).toEqual([
       expect.objectContaining({
         quantity: -2,
         unitCost: null,
         costBasis: 'pending',
-        glAccount: 'inventory_finished_goods',
+        glRole: 'inventory_finished_goods',
         links: { fulfillmentLineId: 'fl_1' },
       }),
     ])
     // The row carries no cost keys at all - never a 0 - and is never offered to the builder.
     expect(inputs[0]).not.toHaveProperty('extendedCost')
     expect(h.postSpy).not.toHaveBeenCalled()
-    expect(h.batchRecalculateQoH).toHaveBeenCalledWith(ORG, ['part_1'])
-    expect(h.recalculateFulfillmentLineQuantityRelievedBatch).toHaveBeenCalledWith(ORG, ['fl_1'])
+    expect(h.settleStockMovements).toHaveBeenCalledWith(ORG, TOUCHED)
   })
 
   it('111 Q18 - a down-delta on a line relieved while pending writes a pending positive row', async () => {
@@ -570,7 +538,7 @@ describe('relieveFulfillmentLines', () => {
     })
 
     expect(result._unsafeUnwrap()).toMatchObject({ skippedNoCost: 1, movementIds: ['mv_0'] })
-    const [, inputs] = h.writeStockMovementsBatch.mock.calls[0]!
+    const [, inputs] = h.writeStockMovements.mock.calls[0]!
     expect(inputs).toEqual([
       expect.objectContaining({ quantity: 2, unitCost: null, costBasis: 'pending' }),
     ])
@@ -593,8 +561,8 @@ describe('relieveFulfillmentLines', () => {
       ],
     })
     h.standardCosts.set('part_1', 1_000)
-    h.writeStockMovementsBatch.mockImplementation(
-      writeDouble({ costed: true, glAccount: 'inventory_finished_goods' })
+    h.writeStockMovements.mockImplementation(
+      writeDouble({ costed: true, glRole: 'inventory_finished_goods' })
     )
     const line = (id: string, lineItemId: string) => ({
       fulfillmentLineId: id,
@@ -728,8 +696,8 @@ describe('relieveFulfillmentLines', () => {
       part_kind: [{ entityId: 'part_1', optionId: 'finished_good' }],
     })
     h.standardCosts.set('part_1', 0)
-    h.writeStockMovementsBatch.mockImplementation(
-      writeDouble({ costed: true, glAccount: 'inventory_finished_goods' })
+    h.writeStockMovements.mockImplementation(
+      writeDouble({ costed: true, glRole: 'inventory_finished_goods' })
     )
 
     const result = await relieveFulfillmentLines(db, {
@@ -749,11 +717,11 @@ describe('relieveFulfillmentLines', () => {
     })
 
     expect(result._unsafeUnwrap()).toMatchObject({ skippedNoCost: 0, movementIds: ['mv_0'] })
-    const [, inputs] = h.writeStockMovementsBatch.mock.calls[0]!
+    const [, inputs] = h.writeStockMovements.mock.calls[0]!
     expect(inputs).toEqual([expect.objectContaining({ quantity: -2, unitCost: 0 })])
     // A zero-amount entry is refused by the builder, so the document is never offered to it.
     expect(h.postSpy).not.toHaveBeenCalled()
-    expect(h.recalculateFulfillmentLineQuantityRelievedBatch).toHaveBeenCalledWith(ORG, ['fl_1'])
+    expect(h.settleStockMovements).toHaveBeenCalledWith(ORG, TOUCHED)
     expect(h.upsertWorkItem).not.toHaveBeenCalled()
     expect(h.deleteWorkItemsAtStage).toHaveBeenCalledWith(db, ORG, {
       sourceKind: 'fulfillment',
@@ -786,7 +754,7 @@ describe('relieveFulfillmentLines', () => {
 
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap()).toMatchObject({ skippedService: 1, skippedNoCost: 0 })
-    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
     expect(h.upsertWorkItem).not.toHaveBeenCalled()
     expect(h.deleteWorkItemsAtStage).toHaveBeenCalledWith(db, ORG, {
       sourceKind: 'fulfillment',
@@ -876,7 +844,7 @@ describe('relieveFulfillmentLines', () => {
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().negativeQoHPartIds).toEqual(['part_1'])
     // Never refuses - the movement still writes.
-    expect(h.writeStockMovementsBatch).toHaveBeenCalledTimes(1)
+    expect(h.writeStockMovements).toHaveBeenCalledTimes(1)
   })
 
   it('discharges both post-commit obligations and announces the movement rows', async () => {
@@ -909,11 +877,7 @@ describe('relieveFulfillmentLines', () => {
     })
 
     expect(result.isOk()).toBe(true)
-    expect(h.batchRecalculateQoH).toHaveBeenCalledWith(ORG, ['part_1'])
-    expect(h.recalculateFulfillmentLineQuantityRelievedBatch).toHaveBeenCalledWith(ORG, ['fl_1'])
-    expect(h.announceQuietReliefWrites).toHaveBeenCalledWith(ORG, 'def_stock_movement', ['mv_0'])
-    expect(h.announceQuietReliefWrites).toHaveBeenCalledWith(ORG, 'def_part', ['part_1'])
-    expect(h.announceQuietReliefWrites).toHaveBeenCalledWith(ORG, 'def_fulfillment_line', ['fl_1'])
+    expect(h.settleStockMovements).toHaveBeenCalledWith(ORG, TOUCHED)
   })
 })
 
@@ -930,8 +894,8 @@ describe('each relief run is its own document', () => {
 
   function pricedDb(): Database {
     h.standardCosts.set('part_1', 1_000)
-    h.writeStockMovementsBatch.mockImplementation(
-      writeDouble({ costed: true, glAccount: 'inventory_finished_goods' })
+    h.writeStockMovements.mockImplementation(
+      writeDouble({ costed: true, glRole: 'inventory_finished_goods' })
     )
     return fakeDb({
       line_item_part: [{ entityId: 'li_1', relatedEntityId: 'part_1' }],
@@ -963,7 +927,7 @@ describe('each relief run is its own document', () => {
     })
 
     expect(result.isErr()).toBe(true)
-    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
     expect(h.postSpy).not.toHaveBeenCalled()
     expect(h.recalculateFulfillmentLineQuantityRelievedBatch).toHaveBeenCalledWith(ORG, ['fl_1'])
   })
@@ -979,7 +943,7 @@ describe('each relief run is its own document', () => {
     })
 
     expect(result.isErr()).toBe(true)
-    expect(h.announceQuietReliefWrites).not.toHaveBeenCalled()
+    expect(h.settleStockMovements).not.toHaveBeenCalled()
   })
 })
 

@@ -43,7 +43,7 @@ export const FULFILLMENT_ATTRIBUTES = pickSystemAttributes(FULFILLMENT_FIELDS, [
 
 export type FulfillmentAttribute = (typeof FULFILLMENT_ATTRIBUTES)[number]
 
-/** Every `fulfillment_line` attribute this module reads or writes; `fulfillment_line_stock_movements` is an inverse and is not one. */
+/** Every `fulfillment_line` attribute this module reads or writes. */
 export const FULFILLMENT_LINE_ATTRIBUTES = pickSystemAttributes(FULFILLMENT_LINE_FIELDS, [
   'fulfillment_line_fulfillment',
   'fulfillment_line_line_item',

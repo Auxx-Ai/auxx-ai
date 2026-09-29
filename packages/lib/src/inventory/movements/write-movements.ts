@@ -1,192 +1,41 @@
 // packages/lib/src/inventory/movements/write-movements.ts
 
-/**
- * `writeStockMovements` - the ONE writer behind `receive-stock.ts`,
- * `adjust-stock.ts`, `reverse-movement.ts` and `reverse-build.ts`
- * (plans/money/tasks/50-batch-inventory-relief.md §2). A build completion writes the
- * same rows through `writeStockMovementsBatch` (`write-movements-batch.ts`).
- *
- * `bulk-opening-stock.ts` is the sixth caller and deliberately does NOT go
- * through this function: its cardinality is `UnifiedCrudHandler.bulkCreate`
- * with per-INDEX failure tolerance (one bad part must not lose the other
- * 494), which §2.2 does not name as a shared axis. It still shares
- * `buildStockMovementValues` (`values.ts`) for the nine keys and the sign
- * convention, so the ONE rule six files used to restate by hand
- * (`adjustSubparts` defaults false) has one definition regardless.
- *
- * ## What is a parameter here, never a branch (§2.2)
- *
- * - **The lane** - `ctx.lane`. `'plain'` constructs
- *   `new UnifiedCrudHandler(organizationId, userId, db)` exactly as
- *   `receive-stock.ts` / `adjust-stock.ts` / `reverse-movement.ts` do today
- *   (no session override, no `bypassFieldGuards`). `'quiet'` adds the
- *   session and the builds-only `bypassFieldGuards` - see `types.ts`.
- * - **`bypassFieldGuards`** rides on the quiet lane only, and is inert here:
- *   `stock_movement` has no attribute it would ever bypass. It is threaded
- *   through purely so `complete-build.ts` and `reverse-build.ts` do not need
- *   a second `UnifiedCrudHandler` construction site for their movement
- *   writes.
- * - **The typed links** - resolved here, once, from bare
- *   `EntityInstance.id`s. §2.4 item 4: a reversal (or any future writer)
- *   copies the WHOLE link set rather than a hand-listed subset, because
- *   there is exactly one place that knows how to turn a link into a
- *   `RecordId`.
- * - **`extendedCost`** - computed here from `computeExtendedCost`, unless
- *   the caller supplies the override (`values.ts`).
- *
- * `affectedPartIds` comes back from every call (§2.4 item 3): the quiet
- * lane's caller passes it to `batchRecalculateQoH` after its transaction
- * commits, and the set is a fact about what was WRITTEN, not something the
- * caller re-derives and could get out of sync.
- */
-
+import { type CreateStockMovementInput, type Database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
+import { generateId } from '@auxx/utils'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId } from '../../cache'
-import { BadRequestError, UnprocessableEntityError } from '../../errors'
-import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
-import { isRecordId, type RecordId, toRecordId } from '../../resources/resource-id'
+import { uniqueViolationConstraint } from '../../accounting/ledger/post/post-entry'
+import { requireCachedEntityDefId } from '../../cache'
+import { BadRequestError, ConflictError } from '../../errors'
+import { recalculateFulfillmentLineQuantityRelievedBatch } from '../../field-hooks/post/fulfillment-line-rollups'
+import {
+  PURCHASE_ORDER_LINE_ROLLUPS,
+  recalculatePurchaseOrderLineRollups,
+} from '../../field-hooks/post/purchase-order-line-rollups'
+import { chunkArray } from '../../import/utils/chunk-array'
+import { getRealtimeService, publishRecordsChanged } from '../../realtime'
+import { getDeductionTargets, loadSubpartGraph } from '../bom/subpart-graph'
 import { readPartKinds } from '../builds/build-queries'
 import { isServicePartKind } from '../costing/client'
+import { batchRecalculateQoH } from '../costing/qoh'
 import { movementFactFromInput, readOriginalClasses } from './fact/live'
-import { insertMovementFacts } from './fact/writes'
+import { insertMovementFacts, type MovementFactInput } from './fact/writes'
 import { guard } from './guard'
+import { toStockMovementRow } from './row'
 import type {
   StockMovementInput,
-  StockMovementLinks,
   StockMovementsCtx,
+  StockMovementTouched,
   WriteStockMovementsResult,
   WrittenStockMovement,
 } from './types'
-import { buildStockMovementValues, type ResolvedStockMovementLinks } from './values'
 
-/** The entity type a bare link id resolves against, for every link but the two that point at a `stock_movement` itself. */
-const LINK_ENTITY_TYPES = {
-  vendorPartId: 'vendor_part',
-  purchaseOrderLineId: 'purchase_order_line',
-  buildId: 'build',
-  fulfillmentLineId: 'fulfillment_line',
-} as const
+const logger = createScopedLogger('inventory-movements')
 
-/**
- * Resolve one bare link id to a `RecordId`, or pass an already-built
- * `RecordId` through unchanged - a caller that already resolved its OWN def
- * id (a build's own field context, for instance) is not made to resolve it
- * twice, and cannot disagree with itself by doing so.
- *
- * Throws `UnprocessableEntityError` naming the entity type when the org has
- * no such definition - the exact refusal `receive-stock.ts` and
- * `reverse-movement.ts` each hand-rolled as their own `requireDefId` before
- * this extraction.
- */
-async function resolveLinkId(
-  organizationId: string,
-  entityType: string,
-  value: string
-): Promise<RecordId> {
-  if (isRecordId(value)) return value
-  const defId = await getCachedEntityDefId(organizationId, entityType)
-  if (!defId) {
-    throw new UnprocessableEntityError(
-      `This organization has no ${entityType} entity definition yet`
-    )
-  }
-  return toRecordId(defId, value)
-}
+const INSERT_CHUNK = 500
 
-/**
- * `reversesMovementId` / `parentMovementId` point at a `stock_movement`
- * itself - the def id this call is ALREADY writing against, so no second
- * cache lookup is needed or made.
- */
-function resolveMovementLinkId(movementDefId: string, value: string): RecordId {
-  return isRecordId(value) ? value : toRecordId(movementDefId, value)
-}
-
-async function resolveLinks(
-  ctx: StockMovementsCtx,
-  links: StockMovementLinks | undefined
-): Promise<ResolvedStockMovementLinks | undefined> {
-  if (!links) return undefined
-  const resolved: ResolvedStockMovementLinks = {}
-
-  if (links.vendorPartId) {
-    resolved.vendorPart = await resolveLinkId(
-      ctx.organizationId,
-      LINK_ENTITY_TYPES.vendorPartId,
-      links.vendorPartId
-    )
-  }
-  if (links.purchaseOrderLineId) {
-    resolved.purchaseOrderLine = await resolveLinkId(
-      ctx.organizationId,
-      LINK_ENTITY_TYPES.purchaseOrderLineId,
-      links.purchaseOrderLineId
-    )
-  }
-  if (links.buildId) {
-    resolved.build = await resolveLinkId(
-      ctx.organizationId,
-      LINK_ENTITY_TYPES.buildId,
-      links.buildId
-    )
-  }
-  if (links.fulfillmentLineId) {
-    resolved.fulfillmentLine = await resolveLinkId(
-      ctx.organizationId,
-      LINK_ENTITY_TYPES.fulfillmentLineId,
-      links.fulfillmentLineId
-    )
-  }
-  if (links.reversesMovementId) {
-    resolved.reversesMovement = resolveMovementLinkId(ctx.movementDefId, links.reversesMovementId)
-  }
-  if (links.parentMovementId) {
-    resolved.parentMovement = resolveMovementLinkId(ctx.movementDefId, links.parentMovementId)
-  }
-
-  return resolved
-}
-
-/**
- * The one `UnifiedCrudHandler` every input in this call writes through -
- * `ctx.handler` when the caller supplied one (see its doc comment), else a
- * fresh construction from the lane.
- */
-function buildHandler(ctx: StockMovementsCtx): UnifiedCrudHandler {
-  if (ctx.handler) return ctx.handler
-  if (ctx.lane.kind === 'quiet') {
-    return new UnifiedCrudHandler(ctx.organizationId, ctx.userId, ctx.db, undefined, {
-      session: ctx.lane.session,
-      bypassFieldGuards: ctx.lane.bypassFieldGuards,
-    })
-  }
-  return new UnifiedCrudHandler(ctx.organizationId, ctx.userId, ctx.db)
-}
-
-/** The create values bag for one input, links resolved; shared with `writeStockMovementsBatch`. */
-export async function movementValues(
-  ctx: StockMovementsCtx,
-  input: StockMovementInput
-): Promise<Record<string, unknown>> {
-  return buildStockMovementValues({
-    partRecordId: toRecordId(ctx.partDefId, input.partInstanceId),
-    type: input.type,
-    quantity: input.quantity,
-    unitCost: input.unitCost,
-    costBasis: input.costBasis,
-    glAccount: input.glAccount,
-    occurredAt: input.occurredAt,
-    extendedCost: input.extendedCost,
-    adjustSubparts: input.adjustSubparts,
-    reason: input.reason,
-    reference: input.reference,
-    qtyPerUnit: input.qtyPerUnit,
-    vendorUnitPrice: input.vendorUnitPrice,
-    accrued: input.accrued,
-    count: input.count,
-    links: await resolveLinks(ctx, input.links),
-  })
-}
+/** The unique partial index that makes a second reversal of one movement impossible. */
+const REVERSAL_UNIQUE_INDEX = 'StockMovement_reversesMovementId_key'
 
 /**
  * Refuse any input whose part is a `service` (107-D10). A reversal is exempt: it
@@ -200,7 +49,7 @@ export async function assertNoServiceParts(
     .filter((input) => !input.links?.reversesMovementId)
     .map((input) => input.partInstanceId)
   if (partIds.length === 0) return
-  const kinds = await readPartKinds(ctx.db, ctx.organizationId, partIds)
+  const kinds = await readPartKinds(ctx.db as unknown as Database, ctx.organizationId, partIds)
   const services = partIds.filter((partId) => isServicePartKind(kinds.get(partId)))
   if (services.length === 0) return
   throw new BadRequestError('A service holds no stock, so it cannot have a stock movement', {
@@ -209,17 +58,9 @@ export async function assertNoServiceParts(
 }
 
 /**
- * Write one or more `stock_movement` rows, atomically in the sense that every
- * write shares one `UnifiedCrudHandler` and the caller decides the
- * transaction boundary (§2's "no lane changes" - this function never opens
- * its own transaction). A create that throws partway through propagates as
- * `Err` and leaves whatever the caller's own transaction (if any) rolls back.
- *
- * Call it once per row for a single-movement writer (`receive-stock.ts`,
- * `adjust-stock.ts`, `reverse-movement.ts`), once with the whole batch for a
- * writer whose rows carry no live, order-dependent computation between them
- * (`reverse-build.ts`), or split across calls when a value genuinely can only
- * be known after an earlier write has landed.
+ * Write movements as one batched insert on `ctx.db` (pass the caller's transaction), plus their BOM
+ * children and planning facts. Never opens a transaction and never recomputes QoH or roll-ups: the
+ * caller MUST pass `touched` to {@link settleStockMovements} after its commit.
  */
 export async function writeStockMovements(
   ctx: StockMovementsCtx,
@@ -227,44 +68,174 @@ export async function writeStockMovements(
 ): Promise<Result<WriteStockMovementsResult, Error>> {
   return guard(
     async () => {
+      if (inputs.length === 0) return { records: [], touched: emptyTouched() }
       await assertNoServiceParts(ctx, inputs)
-      const crud = buildHandler(ctx)
-      const records: WrittenStockMovement[] = []
-      const affectedPartIds = new Set<string>()
+
+      const createdAt = new Date()
+      const meta = (id: string) => ({
+        id,
+        organizationId: ctx.organizationId,
+        userId: ctx.userId || null,
+        createdAt,
+      })
+      const rows = inputs.map((input) => toStockMovementRow(meta(generateId()), input))
+      const children = await explodeBomRows(ctx, inputs, rows)
+
+      // Parents before children, so a chunk never holds a child whose parent is still unwritten.
+      for (const chunk of chunkArray([...rows, ...children], INSERT_CHUNK)) {
+        await ctx.db
+          .insert(schema.StockMovement)
+          .values(chunk)
+          .catch((error: unknown) => {
+            if (uniqueViolationConstraint(error) === REVERSAL_UNIQUE_INDEX) {
+              throw new ConflictError('This movement has already been reversed')
+            }
+            throw error
+          })
+      }
+
       const reversed = inputs.flatMap((input) => input.links?.reversesMovementId ?? [])
       const originalClasses = reversed.length
         ? await readOriginalClasses(ctx.db, ctx.organizationId, reversed)
         : new Map()
+      await insertMovementFacts(ctx.db, ctx.organizationId, [
+        ...inputs.map((input, i) =>
+          movementFactFromInput(rows[i]!.id!, createdAt, input, originalClasses)
+        ),
+        ...children.map(childFact),
+      ])
 
-      for (const input of inputs) {
-        const values = await movementValues(ctx, input)
-        const created = await crud.create(ctx.movementDefId, values)
-        // The planning mirror (plans/mrp/02-data-structures.md §3.2), on the caller's transaction.
-        await insertMovementFacts(ctx.db, ctx.organizationId, [
-          movementFactFromInput(
-            created.instance.id,
-            created.instance.createdAt,
-            input,
-            originalClasses
-          ),
-        ])
-
-        records.push({
-          movementId: created.instance.id,
-          recordId: toRecordId(ctx.movementDefId, created.instance.id),
-          partInstanceId: input.partInstanceId,
-          quantity: input.quantity,
-          unitCost: input.unitCost,
-          extendedCost: (values.stock_movement_extended_cost as number | undefined) ?? null,
-          glAccount: input.glAccount ?? null,
-          occurredAt: input.occurredAt,
-        })
-        affectedPartIds.add(input.partInstanceId)
-      }
-
-      return { records, affectedPartIds: [...affectedPartIds] }
+      const records: WrittenStockMovement[] = rows.map((row, i) => ({
+        id: row.id!,
+        partInstanceId: row.partId,
+        quantity: row.quantity,
+        unitCost: inputs[i]!.unitCost,
+        extendedCost: row.extendedCostMinor ?? null,
+        glRole: row.glRole ?? null,
+        occurredAt: inputs[i]!.occurredAt,
+      }))
+      return { records, touched: touchedBy([...rows, ...children]) }
     },
     'Failed to write stock movements',
     { organizationId: ctx.organizationId, count: inputs.length }
   )
+}
+
+/** Child rows for every input that asked for a BOM explosion (inventory guide §8.2); uncosted, as before. */
+async function explodeBomRows(
+  ctx: StockMovementsCtx,
+  inputs: readonly StockMovementInput[],
+  rows: readonly CreateStockMovementInput[]
+): Promise<CreateStockMovementInput[]> {
+  const children: CreateStockMovementInput[] = []
+  for (const [i, input] of inputs.entries()) {
+    if (!input.adjustSubparts || input.links?.parentMovementId) continue
+    const parent = rows[i]!
+    const graph = await loadSubpartGraph(ctx.organizationId, input.partInstanceId)
+    if (!graph.has(input.partInstanceId)) continue
+    for (const target of getDeductionTargets(input.partInstanceId, input.quantity, graph)) {
+      if (target.quantity === 0) continue
+      children.push({
+        id: generateId(),
+        organizationId: parent.organizationId,
+        createdById: parent.createdById,
+        createdAt: parent.createdAt,
+        partId: target.partInstanceId,
+        type: parent.type,
+        quantity: target.quantity,
+        reason: parent.reason,
+        reference: parent.reference,
+        occurredAt: parent.occurredAt,
+        parentMovementId: parent.id,
+      })
+    }
+  }
+  return children
+}
+
+/** A BOM child's planning fact: an exploded adjustment is always `adjustment`. */
+function childFact(row: CreateStockMovementInput): MovementFactInput {
+  return {
+    id: row.id!,
+    partId: row.partId,
+    type: row.type,
+    quantity: row.quantity,
+    occurredAt: row.occurredAt ?? null,
+    createdAt: row.createdAt!,
+    consumptionClass: 'adjustment',
+    parentMovementId: row.parentMovementId ?? null,
+  }
+}
+
+function emptyTouched(): StockMovementTouched {
+  return { partIds: [], purchaseOrderLineIds: [], fulfillmentLineIds: [], buildIds: [] }
+}
+
+/** The distinct parts and parent documents a set of rows points at. */
+export function touchedBy(
+  rows: ReadonlyArray<
+    Pick<
+      CreateStockMovementInput,
+      'partId' | 'purchaseOrderLineId' | 'fulfillmentLineId' | 'buildId'
+    >
+  >
+): StockMovementTouched {
+  const distinct = (values: Array<string | null | undefined>) => [
+    ...new Set(values.filter((v): v is string => !!v)),
+  ]
+  return {
+    partIds: distinct(rows.map((row) => row.partId)),
+    purchaseOrderLineIds: distinct(rows.map((row) => row.purchaseOrderLineId)),
+    fulfillmentLineIds: distinct(rows.map((row) => row.fulfillmentLineId)),
+    buildIds: distinct(rows.map((row) => row.buildId)),
+  }
+}
+
+/**
+ * After the commit: re-derive QoH, the PO-line received and FL relieved roll-ups, and tell open
+ * part views their movement list changed. Never throws; the movements are already committed.
+ */
+export async function settleStockMovements(
+  organizationId: string,
+  touched: StockMovementTouched
+): Promise<void> {
+  const steps: Array<[string, () => Promise<unknown>]> = [
+    ['quantity on hand', () => batchRecalculateQoH(organizationId, touched.partIds)],
+    [
+      'purchase order line received',
+      () =>
+        recalculatePurchaseOrderLineRollups(
+          organizationId,
+          touched.purchaseOrderLineIds,
+          PURCHASE_ORDER_LINE_ROLLUPS.received
+        ),
+    ],
+    [
+      'fulfillment line relieved',
+      () =>
+        recalculateFulfillmentLineQuantityRelievedBatch(organizationId, touched.fulfillmentLineIds),
+    ],
+    ['realtime', () => announceMovementParts(organizationId, touched.partIds)],
+  ]
+  for (const [step, run] of steps) {
+    try {
+      await run()
+    } catch (error) {
+      logger.error('Stock movement settle step failed', {
+        organizationId,
+        step,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+}
+
+/** `records:changed` on the part def: a part's inventory tab refetches its movement list. */
+async function announceMovementParts(organizationId: string, partIds: string[]): Promise<void> {
+  if (partIds.length === 0) return
+  const partDefId = await requireCachedEntityDefId(organizationId, 'part')
+  await publishRecordsChanged(getRealtimeService(), organizationId, {
+    entityDefinitionId: partDefId,
+    entries: partIds.map((recordId) => ({ recordId })),
+  })
 }

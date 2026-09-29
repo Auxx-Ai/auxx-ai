@@ -187,8 +187,6 @@ export const EventHandlers: IEventsHandlers = {
   'signal:recorded': [projectSignalToTimeline, handleSignalRecordRules, autoCompleteTasks],
 
   // Stock movement events → ENTITY TRIGGERS (inventory QoH recalculation) + WORKFLOWS
-  'stock_movement:created': [triggerResourceDispatch, handleRecordRules],
-  'stock_movement:deleted': [triggerResourceDispatch, handleRecordRules],
 
   // Vendor part / subpart events → ENTITY TRIGGERS (BOM cost recalculation) + WORKFLOWS
   'vendor_part:created': [triggerResourceDispatch, handleRecordRules],

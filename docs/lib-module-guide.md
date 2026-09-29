@@ -230,7 +230,7 @@ packages/lib/src/
     sales/       quotes, orders, fulfillments, invoice issuance, credit memos, billing, totals
     documents/   edit-in-place/, the ledger generation, the document entry key
   inventory/
-    movements/   the stock_movement writer, reversal, movement cost fields
+    movements/   the StockMovement writer, reads, reversal, settle
     costing/     part cost, vendor cost, standard cost, QoH
     receiving/   receive PO, receive stock, adjust, opening stock
     builds/      the make side

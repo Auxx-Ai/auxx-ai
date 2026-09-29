@@ -45,7 +45,6 @@ const ENTITY_TYPES = [
   'part',
   'subpart',
   'build',
-  'stock_movement',
   'order',
   'line_item',
   'fulfillment',
@@ -188,14 +187,9 @@ describe('the relieve lane', () => {
     expect(counts).toMatchObject({ scanned: 0 })
 
     const movements = await db()
-      .select({ id: schema.EntityInstance.id })
-      .from(schema.EntityInstance)
-      .where(
-        and(
-          eq(schema.EntityInstance.organizationId, organizationId),
-          eq(schema.EntityInstance.entityDefinitionId, defs.get('stock_movement')!.id)
-        )
-      )
+      .select({ id: schema.StockMovement.id })
+      .from(schema.StockMovement)
+      .where(eq(schema.StockMovement.organizationId, organizationId))
     expect(movements).toHaveLength(1)
   })
 })

@@ -43,6 +43,7 @@ import { loadDirectSubparts } from '../bom/subpart-graph'
 import { loadStandardCostFields, readStandardCost } from '../costing/standard-cost-queries'
 import type { AbsorptionRates, PartStandardCost } from '../costing/types'
 import { computeExtendedCost, resolveInventoryRoleForPartKind } from '../movements/client'
+import { readMovementsByBuilds } from '../movements/reads'
 import {
   type BuildStatusValue,
   componentConsumption,
@@ -99,36 +100,10 @@ const BUILD_PICK = pickSystemAttributes(BUILD_FIELDS, [
 
 type BuildAttribute = (typeof BUILD_PICK)[number]
 
-/**
- * The movement attributes a build writes and a reversal reads back.
- *
- * Hand-listed rather than picked off `STOCK_MOVEMENT_FIELDS`: that registry file
- * belongs to a lane still in flight, and this list is checked by the refusal in
- * {@link requireBuildMovementContext} either way.
- */
-const BUILD_MOVEMENT_ATTRIBUTES = [
-  'stock_movement_build',
-  'stock_movement_part',
-  'stock_movement_type',
-  'stock_movement_quantity',
-  'stock_movement_unit_cost',
-  'stock_movement_extended_cost',
-  'stock_movement_gl_account',
-  'stock_movement_qty_per_unit',
-  'stock_movement_cost_basis',
-] as const
-
-type BuildMovementAttribute = (typeof BUILD_MOVEMENT_ATTRIBUTES)[number]
-
 const DEFAULT_LIMIT = 50
 
 /** The `build` def and the fields every build read is scoped by. */
 export type BuildContext = SystemFieldContext<BuildAttribute>
-
-/** {@link BuildContext}'s movement counterpart, plus the `part` def a movement's `RecordId`s are written with. */
-export interface BuildMovementContext extends SystemFieldContext<BuildMovementAttribute> {
-  partDefId: string
-}
 
 /**
  * Resolve the `build` def and its fields, or `null` when the org has no build
@@ -155,43 +130,6 @@ export async function requireBuildContext(organizationId: string): Promise<Build
     )
   }
   return ctx
-}
-
-/**
- * Resolve the `stock_movement` def and the fields a build stamps onto its rows.
- *
- * The two migration-109 additions — `stock_movement_build` and
- * `stock_movement_qty_per_unit` — are REQUIRED here rather than optional. A
- * build whose movements cannot name the build that wrote them is a ledger with
- * no provenance, and `reverseBuild` has nothing to read back.
- */
-export async function requireBuildMovementContext(
-  organizationId: string
-): Promise<BuildMovementContext> {
-  const [ctx, partDefId] = await Promise.all([
-    systemFields(undefined, organizationId, 'stock_movement', BUILD_MOVEMENT_ATTRIBUTES),
-    systemDefId(undefined, organizationId, 'part'),
-  ])
-  if (!ctx || !partDefId) {
-    throw new UnprocessableEntityError(
-      'This organization has no stock movement or part entity definition yet'
-    )
-  }
-  const { fields } = ctx
-
-  if (
-    !fields.stock_movement_build ||
-    !fields.stock_movement_part ||
-    !fields.stock_movement_type ||
-    !fields.stock_movement_quantity ||
-    !fields.stock_movement_unit_cost ||
-    !fields.stock_movement_qty_per_unit
-  ) {
-    throw new UnprocessableEntityError(
-      'Writing a build is not available until the stock movement build fields are provisioned'
-    )
-  }
-  return { ...ctx, partDefId }
 }
 
 // ─── Detail and list ────────────────────────────────────────────────────
@@ -470,56 +408,35 @@ export async function hasBuildReversal(
 }
 
 /**
- * Every live `stock_movement` this build wrote, with its FROZEN costs.
- *
- * 🛑 The costs come back verbatim and are never re-priced. A reversal valued at
- * today's standard nets a build and its undo to a non-zero amount of inventory
- * value out of nothing, which is the exact costing bug this subsystem exists to
- * prevent (B6).
+ * Every movement this build wrote, with its FROZEN costs. They come back verbatim and are never
+ * re-priced: a reversal valued at today's standard nets a build and its undo to non-zero (B6).
  */
 export async function readBuildMovements(
-  db: Database,
+  db: Database | Transaction,
   organizationId: string,
-  movementCtx: BuildMovementContext,
   buildId: string
 ): Promise<BuildMovementRow[]> {
-  const records = await readSystemRecords(db, organizationId, movementCtx, {
-    by: { attribute: 'stock_movement_build', in: [buildId] },
-  })
-
-  const rows: BuildMovementRow[] = []
-  for (const record of records) {
-    const partId = record.related('stock_movement_part')
-    const type = record.option('stock_movement_type')
-    const quantity = record.number('stock_movement_quantity')
-    const unitCost = record.number('stock_movement_unit_cost')
-    const costBasis = record.option('stock_movement_cost_basis')
-    // A pending leg (111 Q18) has no cost yet and reverses into a pending leg.
-    const pending = costBasis === StockMovementCostBasis.PENDING
-
-    if (!partId || !type || quantity == null || quantity === 0 || (unitCost == null && !pending)) {
-      // Every row a build writes carries all four, or is marked pending. One
-      // that does neither was not written by `completeBuild`, and negating it
-      // would invent a cost.
+  const movements = await readMovementsByBuilds(db, organizationId, [buildId])
+  return movements.map((movement) => {
+    const pending = movement.costBasis === StockMovementCostBasis.PENDING
+    if (movement.quantity === 0 || (movement.unitCostMinor == null && !pending)) {
+      // Not written by `completeBuild`; negating it would invent a cost.
       throw new UnprocessableEntityError(
-        `Stock movement ${record.id} on this build has no part, type, quantity or frozen cost and cannot be reversed`
+        `Stock movement ${movement.id} on this build has no quantity or frozen cost and cannot be reversed`
       )
     }
-
-    rows.push({
-      movementId: record.id,
-      partId,
-      type,
-      quantity,
-      unitCost: pending ? null : unitCost,
-      extendedCost: pending ? null : record.number('stock_movement_extended_cost'),
-      glAccount: record.text('stock_movement_gl_account'),
-      qtyPerUnit: record.number('stock_movement_qty_per_unit'),
-      costBasis,
-    })
-  }
-
-  return rows
+    return {
+      movementId: movement.id,
+      partId: movement.partId,
+      type: movement.type,
+      quantity: movement.quantity,
+      unitCost: pending ? null : movement.unitCostMinor,
+      extendedCost: pending ? null : movement.extendedCostMinor,
+      glRole: movement.glRole,
+      qtyPerUnit: movement.qtyPerUnit,
+      costBasis: movement.costBasis,
+    }
+  })
 }
 
 // ─── The component plan ─────────────────────────────────────────────────
@@ -645,7 +562,7 @@ export function priceComponentPlan(
       extendedCost: standard
         ? computeExtendedCost(standard.standardCost, line.quantityConsumed)
         : null,
-      glAccount: resolveInventoryRoleForPartKind(kinds.get(line.partId) ?? null),
+      glRole: resolveInventoryRoleForPartKind(kinds.get(line.partId) ?? null),
       offBom: line.qtyPerUnit == null,
     }
   })

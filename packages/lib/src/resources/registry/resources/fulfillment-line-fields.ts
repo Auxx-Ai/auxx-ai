@@ -146,7 +146,7 @@ export const FULFILLMENT_LINE_FIELDS = defineResourceFields({
 
   /**
    * 🔑 The exact mirror of `purchase_order_line_quantity_received`: re-SUMmed
-   * whole by a post-hook over `stock_movement_fulfillment_line`, never
+   * whole over `StockMovement.fulfillmentLineId` by `settleStockMovements`, never
    * incremented in place, with `field-hooks/post/purchase-order-line-rollups.ts`
    * as the template (plans/money/tasks/50-batch-inventory-relief.md). The
    * subledger is the truth and a hand-maintained copy of it diverges silently -
@@ -171,38 +171,9 @@ export const FULFILLMENT_LINE_FIELDS = defineResourceFields({
       configurable: false,
     },
     description:
-      'Re-SUMmed whole from stock_movement_fulfillment_line by a post-hook, never ' +
+      'Re-SUMmed whole from the stock movements after each write, never ' +
       'incremented - the same shape as purchase_order_line_quantity_received and for the ' +
       'same reason: the subledger is the truth',
-  },
-
-  // Reverse relationship: stockMovements (from stock_movement.fulfillmentLine).
-  // The sell-side mirror of `purchase_order_line.stockMovements` - what
-  // `quantityRelieved` re-sums over, and all of task 50's netting.
-  stockMovements: {
-    id: toFieldId('stockMovements'),
-    key: 'stockMovements',
-    label: 'Stock Movements',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'fulfillment_line_stock_movements',
-    systemSortOrder: 'a5',
-    showInPanel: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'stock_movement:fulfillmentLine' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'cascade',
-      isInverse: true,
-    },
-    description: 'The stock movements that relieved this line - what quantityRelieved re-sums over',
   },
 
   createdAt: {

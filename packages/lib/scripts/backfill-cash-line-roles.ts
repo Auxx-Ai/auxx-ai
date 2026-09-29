@@ -10,7 +10,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-// Relative import on purpose — see the note in backfill-po-line-rollups.ts.
+// Relative import on purpose: `generate-exports.ts` gives packages/lib no subpath for this module.
 import { ACCOUNT_ROLES } from '../src/accounting/ledger/builders/entry'
 
 /** The posting types whose endpoint line `resolveCashEndpoint` names; a checkout deposit posts `payment`. */

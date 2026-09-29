@@ -3,10 +3,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => {
-  const state = { rows: [] as { partId: string | null; fieldId: string }[] }
+  const state = {
+    moved: [] as { partId: string }[],
+    rows: [] as { partId: string | null; fieldId: string }[],
+  }
+  // The movement read ends at `.where()`; the relation read goes through `.innerJoin()`.
   const db = {
     selectDistinct: () => ({
-      from: () => ({ innerJoin: () => ({ where: async () => state.rows }) }),
+      from: () => ({
+        where: async () => state.moved,
+        innerJoin: () => ({ where: async () => state.rows }),
+      }),
     }),
   }
   return { state, db }
@@ -49,6 +56,7 @@ function event(optionId: string) {
 
 beforeEach(() => {
   h.state.rows = []
+  h.state.moved = []
 })
 
 describe('guardPartKindService', () => {
@@ -60,12 +68,12 @@ describe('guardPartKindService', () => {
   })
 
   it('never checks a change to a stocked kind', async () => {
-    h.state.rows = [{ partId: 'part_1', fieldId: 'f_stock_movement_part' }]
+    h.state.moved = [{ partId: 'part_1' }]
     await expect(guardPartKindService(event('finished_good'))).resolves.toBeDefined()
   })
 
   it('refuses a part with stock movements, naming why', async () => {
-    h.state.rows = [{ partId: 'part_1', fieldId: 'f_stock_movement_part' }]
+    h.state.moved = [{ partId: 'part_1' }]
     const run = guardPartKindService(event('service'))
     await expect(run).rejects.toBeInstanceOf(BadRequestError)
     await expect(run).rejects.toThrow(/it has stock movements/)
@@ -81,10 +89,7 @@ describe('guardPartKindService', () => {
   it('refuses a part with a build, and movements win the sentence', async () => {
     h.state.rows = [{ partId: 'part_1', fieldId: 'f_build_part' }]
     await expect(guardPartKindService(event('service'))).rejects.toThrow(/it has builds/)
-    h.state.rows = [
-      { partId: 'part_1', fieldId: 'f_build_part' },
-      { partId: 'part_1', fieldId: 'f_stock_movement_part' },
-    ]
+    h.state.moved = [{ partId: 'part_1' }]
     await expect(guardPartKindService(event('service'))).rejects.toThrow(/stock movements/)
   })
 })

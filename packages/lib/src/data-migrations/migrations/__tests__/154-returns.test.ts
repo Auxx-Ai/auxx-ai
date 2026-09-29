@@ -10,8 +10,6 @@
 //    lesson, carried by 149 and 153);
 //  - `return_part_line.parent` is SELF-REFERENTIAL, which is the one edge
 //    shape no earlier migration in this directory has had to link;
-//  - `return_part_line.movement` is one-sided on purpose and must never enter
-//    a "must be linked" assertion list;
 //  - the seeded option sets. `ensureCustomFields` NEVER updates an existing
 //    field's options, so `return.origin` (CLOSED) and `return.reason` (TAGS
 //    seeds) reach an org exactly once, at creation. Getting either list wrong
@@ -371,18 +369,6 @@ describe('return_part_line.parent is self-referential', () => {
     expect(RETURN_PART_LINE_FIELDS.parent?.systemSortOrder).not.toBe(
       RETURN_PART_LINE_FIELDS.children?.systemSortOrder
     )
-  })
-})
-
-describe('return_part_line.movement is one-sided on purpose', () => {
-  it('declares a null inverse, so linkNewRelationships skips it', () => {
-    // The append-only ledger carries no field pointing back at a salvage row.
-    // This edge must never appear in a "must be linked" assertion list.
-    expect(RETURN_PART_LINE_FIELDS.movement?.relationship?.relationshipType).toBe('belongs_to')
-    expect(RETURN_PART_LINE_FIELDS.movement?.relationship?.inverseResourceFieldId).toBeNull()
-    expect(RETURN_PART_LINE_FIELDS.movement?.relationship?.onDelete).toBeUndefined()
-    expect(RETURN_PART_LINE_FIELDS.movement?.relationshipConfig).toBeUndefined()
-    expect(RETURN_PART_LINE_FIELDS.movement?.nullable).toBe(true)
   })
 })
 

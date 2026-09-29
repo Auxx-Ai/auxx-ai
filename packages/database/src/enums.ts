@@ -126,7 +126,6 @@ export const ModelTypeValues = [
   'part',
   'vendor_part',
   'subpart',
-  'stock_movement',
   'company',
   'meeting',
   'article',
@@ -208,7 +207,6 @@ export const ModelTypes = {
   PART: 'part',
   VENDOR_PART: 'vendor_part',
   SUBPART: 'subpart',
-  STOCK_MOVEMENT: 'stock_movement',
   COMPANY: 'company',
   MEETING: 'meeting',
   ARTICLE: 'article',
@@ -383,15 +381,6 @@ export const ModelTypeMeta: Record<
     icon: 'layers',
     color: 'teal',
     apiSlug: 'subparts',
-    dbTable: 'EntityInstance',
-    hasDetailPage: false,
-  },
-  stock_movement: {
-    label: 'Stock Movement',
-    plural: 'Stock Movements',
-    icon: 'arrow-left-right',
-    color: 'teal',
-    apiSlug: 'stock-movements',
     dbTable: 'EntityInstance',
     hasDetailPage: false,
   },
@@ -835,6 +824,26 @@ export type GlPostingStatus = (typeof GlPostingStatusValues)[number]
 export const GlPostingDirectionValues = ['debit', 'credit'] as const
 export type GlPostingDirection = (typeof GlPostingDirectionValues)[number]
 
+/** A `StockMovement.type`. Mirrors the `StockMovementType` pgEnum; labels live in lib's `enum-values.ts`. */
+export const StockMovementTypeValues = [
+  'receive',
+  'ship',
+  'adjust',
+  'sale',
+  'build_consume',
+  'build_produce',
+  'scrap',
+  'return_in',
+  'return_out',
+  'initial',
+  'revalue',
+] as const
+export type StockMovementTypeValue = (typeof StockMovementTypeValues)[number]
+
+/** Where a movement's unit cost came from; `pending` means none yet (`unitCostMinor` is null). */
+export const StockMovementCostBasisValues = ['standard', 'actual', 'pending'] as const
+export type StockMovementCostBasisValue = (typeof StockMovementCostBasisValues)[number]
+
 export const INVENTORY_POLICYValues = ['CONTINUE', 'DENY'] as const
 
 export const IdentifierTypeValues = [
@@ -1223,7 +1232,6 @@ export const EntityTypeValues = [
   'quote',
   'service_request',
   'signature',
-  'stock_movement',
   'subpart',
   'tag',
   'thread',
@@ -2028,7 +2036,6 @@ export const EntityType = {
   QUOTE: 'quote',
   SERVICE_REQUEST: 'service_request',
   SIGNATURE: 'signature',
-  STOCK_MOVEMENT: 'stock_movement',
   SUBPART: 'subpart',
   TAG: 'tag',
   THREAD: 'thread',

@@ -5,9 +5,8 @@
  * (103 O1, 111 D21).
  *
  * It never throws for a part: an entry is refused (`failed`) or set aside (`excluded`) with
- * the reason, and the others still run. Only a whole-run precondition - no `part` or
- * `stock_movement` definition, cost fields not materialised - is an error, because it refuses
- * every entry identically. A part that already has an `initial` is excluded unless the caller
+ * the reason, and the others still run. Only a whole-run precondition - no `part`
+ * definition - is an error, because it refuses every entry identically. A part that already has an `initial` is excluded unless the caller
  * opted into the adjust leg (`adjustAnchored`), so a stale re-run cannot write adjustments.
  *
  * No permission checks: the router asserts (`docs/lib-module-guide.md` §6).
@@ -18,17 +17,16 @@ import { createScopedLogger } from '@auxx/logger'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
 import { onCacheEvent, requireCachedEntityDefId } from '../../cache'
-import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
+import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { PartKind } from '../../resources/registry/enum-values'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
-import { readSystemRecords, systemDefId, systemFieldMap } from '../../resources/system-records'
+import { readSystemRecords, systemFieldMap } from '../../resources/system-records'
 import { clearKindConflictConfirmations } from '../builds/kind-conflict-mutations'
 import { isServicePartKind } from '../costing/client'
 import { readServiceKindBlockers, serviceKindRefusal } from '../costing/service-kind-blockers'
-import { assertCostFieldsMaterialized } from '../movements/cost-fields'
 import { readPartInitials } from '../movements/initial-queries'
 import { guard } from './guard'
 import { setCount } from './set-count'
@@ -56,14 +54,6 @@ export async function bulkOpenStockBalance(
   return guard(
     async () => {
       const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-      const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
-      if (!movementDefId) {
-        throw new NotFoundError('This organization has no stock_movement entity definition')
-      }
-      await assertCostFieldsMaterialized(
-        organizationId,
-        'Set count is not available until the stock movement cost fields are provisioned'
-      )
 
       const excluded: OpeningStockSkip[] = []
       const failed: OpeningStockSkip[] = []
@@ -126,13 +116,12 @@ export async function bulkOpenStockBalance(
         opened.push({
           partId: entry.partId,
           outcome: count.outcome,
-          movementId: count.movement.movementId,
-          recordId: count.movement.recordId,
+          movementId: count.movement.id,
           quantity: count.movement.quantity,
           countDate: count.countDate,
           unitCost: count.movement.unitCost,
           extendedCost: count.movement.extendedCost,
-          glAccount: count.movement.glAccount ?? '',
+          glRole: count.movement.glRole ?? '',
           pending: count.pending,
           standardCostChange: count.standardCostChange,
         })
@@ -152,7 +141,7 @@ export async function bulkOpenStockBalance(
         opened,
         excluded,
         failed,
-        totalsByGlAccount: totalByGlAccount(opened),
+        totalsByGlRole: totalByGlRole(opened),
       }
     },
     'Failed to set counts in bulk',
@@ -330,20 +319,20 @@ async function readParts(
 }
 
 /** The run's value by inventory account, from the rows actually written and priced. */
-function totalByGlAccount(
+function totalByGlRole(
   opened: readonly OpenedOpeningStockRow[]
-): BulkOpeningStockSummary['totalsByGlAccount'] {
-  const totals = new Map<string, { glAccount: string; partCount: number; extendedCost: number }>()
+): BulkOpeningStockSummary['totalsByGlRole'] {
+  const totals = new Map<string, { glRole: string; partCount: number; extendedCost: number }>()
   for (const row of opened) {
     if (row.extendedCost == null) continue
-    const total = totals.get(row.glAccount) ?? {
-      glAccount: row.glAccount,
+    const total = totals.get(row.glRole) ?? {
+      glRole: row.glRole,
       partCount: 0,
       extendedCost: 0,
     }
     total.partCount += 1
     total.extendedCost += row.extendedCost
-    totals.set(row.glAccount, total)
+    totals.set(row.glRole, total)
   }
-  return [...totals.values()].sort((a, b) => a.glAccount.localeCompare(b.glAccount))
+  return [...totals.values()].sort((a, b) => a.glRole.localeCompare(b.glRole))
 }

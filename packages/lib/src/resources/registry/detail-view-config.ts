@@ -149,8 +149,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     entityType: 'part',
     mainTabs: [
       // No `recordResource` on Inventory: it leads with the part's OWN on-hand
-      // quantity/status and only then lists stock movements, so the stock_movement
-      // gate belongs on its Adjust Stock action, not on the whole tab.
+      // quantity/status, and its stock actions gate on edit of the part itself.
       { value: 'inventory', label: 'Inventory', icon: 'package' },
       { value: 'subparts', label: 'Components', icon: 'layers', recordResource: 'subpart' },
       { value: 'vendors', label: 'Vendors', icon: 'store', recordResource: 'vendor_part' },
@@ -415,8 +414,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     // `run` is the only place the lifecycle actions live — Start, Cancel,
     // Complete, Reverse — because `build_status` is `showInDialogs: false` and
     // `completeBuild` is a procedure, not a status somebody picks.
-    // `ledger` is the only surface for `build_movements`, whose field is
-    // `showInPanel: false` (section 1.6: "has_many; a card lists them").
+    // `ledger` is the only surface for the build's stock movements.
     // `batch-run` is the run this build belongs to, and the only verb in the
     // build UI whose scope is not this build (plans/money/tasks/45 §11): Undo
     // cancels or reverses every build the run raised. It is declared here AND in
@@ -428,7 +426,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
         value: 'ledger',
         label: 'Ledger',
         icon: 'arrow-left-right',
-        recordResource: 'stock_movement',
+        recordResource: 'build',
       },
       { value: 'batch-run', label: 'Batch run', icon: 'layers' },
     ],

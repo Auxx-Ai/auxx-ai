@@ -10,19 +10,19 @@ import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import {
   type InventoryDocumentRow,
-  loadInventoryDocumentContext,
   postInventoryDocument,
   readFulfillmentLineParents,
   readInventoryDocumentRows,
   type StoredInventoryDocumentRow,
+  toInventoryDocumentRow,
   valuedDocumentRow,
 } from '../../accounting/ledger/post/post-inventory-document'
 import { deleteWorkItemsAtStage, refreshPendingParts } from '../../accounting/work-items/write'
 import { getOrgCache } from '../../cache'
 import { StockMovementCostBasis } from '../../resources/registry/enum-values'
-import { findSystemRecordIdsByValue } from '../../resources/system-records'
 import { finishPricedBuild } from '../builds/price-build'
 import { fillPendingCost } from '../movements/fill-pending-cost'
+import { readPendingMovements } from '../movements/reads'
 import { guard } from './guard'
 import { readStandardCost } from './standard-cost-queries'
 
@@ -79,7 +79,7 @@ export async function pricePendingMovements(
         db,
         organizationId,
         pending.map((row) => ({
-          movementId: row.movementId,
+          movementId: row.id,
           unitCost: standards.value.get(row.partInstanceId!)!.standardCost,
         }))
       )
@@ -87,18 +87,18 @@ export async function pricePendingMovements(
       // Only rows this pass filled are posted; a row a concurrent pass claimed is that pass's to post.
       const costByMovement = new Map(filled.value.map((row) => [row.movementId, row.extendedCost]))
       const rows: InventoryDocumentRow[] = pending.flatMap((row) =>
-        costByMovement.has(row.movementId)
+        costByMovement.has(row.id)
           ? [
               valuedDocumentRow({
                 ...row,
                 pending: false,
                 costBasis: StockMovementCostBasis.STANDARD,
-                extendedCost: costByMovement.get(row.movementId)!,
+                extendedCost: costByMovement.get(row.id)!,
               }),
             ]
           : []
       )
-      const pricedMovementIds = rows.map((row) => row.movementId)
+      const pricedMovementIds = rows.map((row) => row.id)
       if (rows.length === 0) return { ...EMPTY, unpricedPartIds }
 
       const userId = await getOrgCache().get(organizationId, 'systemUser')
@@ -131,15 +131,8 @@ async function readPendingRows(
   organizationId: string,
   partIds: readonly string[]
 ): Promise<StoredInventoryDocumentRow[]> {
-  const ctx = await loadInventoryDocumentContext(db, organizationId)
-  if (!ctx) return []
-  const found = await findSystemRecordIdsByValue(db, organizationId, ctx, [
-    { attribute: 'stock_movement_cost_basis', option: [StockMovementCostBasis.PENDING] },
-    { attribute: 'stock_movement_part', related: partIds },
-  ])
-  const ids = [...new Set([...found.values()].flat())]
-  const rows = await readInventoryDocumentRows(db, organizationId, ids)
-  return rows.filter((row) => row.pending && row.partInstanceId)
+  const rows = await readPendingMovements(db, organizationId, { partIds })
+  return rows.map(toInventoryDocumentRow)
 }
 
 /**
@@ -187,7 +180,7 @@ async function postDocuments(
       documentsFailed++
       logger.error('A priced document could not be posted; the catch-up sweep retries it', {
         organizationId,
-        movementIds: document.map((row) => row.movementId),
+        movementIds: document.map((row) => row.id),
         error: error instanceof Error ? error.message : String(error),
       })
     }
@@ -305,7 +298,7 @@ export async function readStillPending(
   const ids = [...new Set(movementIds)]
   if (ids.length === 0) return new Set()
   const rows = await readInventoryDocumentRows(db, organizationId, ids)
-  return new Set(rows.filter((row) => row.pending).map((row) => row.movementId))
+  return new Set(rows.filter((row) => row.pending).map((row) => row.id))
 }
 
 /** The parts behind these movements, for a handler that holds only movement ids. */
@@ -320,7 +313,7 @@ export async function readMovementPartIds(
     partIds: [
       ...new Set(pending.flatMap((row) => (row.partInstanceId ? [row.partInstanceId] : []))),
     ],
-    pendingMovementIds: pending.map((row) => row.movementId),
+    pendingMovementIds: pending.map((row) => row.id),
   }
 }
 
@@ -330,11 +323,9 @@ export async function readBuildPendingParts(
   organizationId: string,
   buildId: string
 ): Promise<{ partIds: string[]; pendingMovementIds: string[] }> {
-  const ctx = await loadInventoryDocumentContext(db, organizationId)
-  if (!ctx) return { partIds: [], pendingMovementIds: [] }
-  const found = await findSystemRecordIdsByValue(db, organizationId, ctx, [
-    { attribute: 'stock_movement_cost_basis', option: [StockMovementCostBasis.PENDING] },
-    { attribute: 'stock_movement_build', related: [buildId] },
-  ])
-  return readMovementPartIds(db, organizationId, [...found.values()].flat())
+  const pending = await readPendingMovements(db, organizationId, { buildIds: [buildId] })
+  return {
+    partIds: [...new Set(pending.map((row) => row.partId))],
+    pendingMovementIds: pending.map((row) => row.id),
+  }
 }

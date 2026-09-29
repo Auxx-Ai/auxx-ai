@@ -3,10 +3,10 @@
 // The build event: what `createBuild` does NOT write, what `completeBuild`
 // writes and at what cost, and what `reverseBuild` carries back.
 //
-// Harness style follows `receiving/__tests__/reverse-movement.test.ts` — the org
-// cache, the CRUD handler, the quantity-on-hand batch and the standard-cost read
-// are doubles, and a db stand-in routes the reads by table identity plus whether
-// the query joined. Nothing here needs a database.
+// The org cache, the CRUD handler, the movement seam and the standard-cost read are
+// doubles, and a db stand-in routes the reads by table identity plus whether the
+// query joined. Movement rows are shaped by the real `toStockMovementRow`. Nothing
+// here needs a database.
 //
 // ⚠️ `src/test/setup.ts` mocks `@auxx/database` wholesale, so `schema.Foo` is a
 // memoized `{}` and its COLUMNS are `undefined`. Table identity therefore works
@@ -65,14 +65,6 @@ const FIELD_TYPES: Record<string, string> = {
   build_produced_value: 'NUMBER',
   build_variance_amount: 'NUMBER',
   build_batch_run: 'NUMBER',
-  stock_movement_build: 'RELATIONSHIP',
-  stock_movement_part: 'RELATIONSHIP',
-  stock_movement_type: 'SINGLE_SELECT',
-  stock_movement_cost_basis: 'SINGLE_SELECT',
-  stock_movement_quantity: 'NUMBER',
-  stock_movement_unit_cost: 'NUMBER',
-  stock_movement_extended_cost: 'NUMBER',
-  stock_movement_qty_per_unit: 'NUMBER',
   part_kind: 'SINGLE_SELECT',
   part_quantity_on_hand: 'NUMBER',
 }
@@ -88,8 +80,12 @@ interface CreatedRecord {
 const h = vi.hoisted(() => ({
   /** `.from(EntityInstance)` with no join. */
   instanceRows: [] as { id: string; createdAt: Date; displayName: string | null }[],
-  /** `.from(EntityInstance).innerJoin(...)` — the build's own movements. */
-  movementInstances: [] as { id: string }[],
+  /** What `readMovementsByBuilds` returns: the build's own movements. */
+  buildMovements: [] as Record<string, unknown>[],
+  /** Every `StockMovement` row the seam double was asked to insert, in write order. */
+  movementRows: [] as Record<string, unknown>[],
+  /** Every `touched` handed to `settleStockMovements`. */
+  settleCalls: [] as Array<{ partIds: string[]; buildIds: string[] }>,
   /** `.from(FieldValue)` with no join. One combined list; every reader buckets it. */
   valueRows: [] as ValueRow[],
   /** `.from(FieldValue).innerJoin(EntityInstance)` — the already-reversed probe. */
@@ -110,12 +106,11 @@ const h = vi.hoisted(() => ({
   updated: [] as { recordId: string; values: Record<string, unknown> }[],
   /** Options every `UnifiedCrudHandler` was constructed with, in order. */
   constructions: [] as (Record<string, unknown> | undefined)[],
-  recalcCalls: [] as string[][],
   /** Interleaved trace: what ran, and on which side of the commit. */
   trace: [] as string[],
   publishedEntries: [] as unknown[],
   /** Every tier-2 `records:changed` frame `publishQuietBuildWrites` emitted. */
-  movementFrames: [] as Array<{ entityDefinitionId: string; entries: Array<{ recordId: string }> }>,
+  buildFrames: [] as Array<{ entityDefinitionId: string; entries: Array<{ recordId: string }> }>,
   getDeductionTargets: vi.fn(),
   loadSubpartGraph: vi.fn(),
   nextId: 0,
@@ -175,11 +170,55 @@ vi.mock('../../costing/standard-cost-queries', () => ({
   loadPartAbsorptionRates: vi.fn(async () => h.rates),
 }))
 
-vi.mock('../../costing/qoh', () => ({
-  batchRecalculateQoH: vi.fn(async (_org: string, partIds: string[]) => {
-    h.trace.push('recalc')
-    h.recalcCalls.push(partIds)
-  }),
+vi.mock('../../movements/write-movements', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../movements/write-movements')>()
+  const { toStockMovementRow } = await import('../../movements/row')
+  const { ok } = await import('neverthrow')
+  return {
+    ...actual,
+    writeStockMovements: vi.fn(
+      async (
+        ctx: { organizationId: string; userId: string },
+        inputs: Parameters<typeof toStockMovementRow>[1][]
+      ) => {
+        const rows = inputs.map((input) => {
+          h.nextId += 1
+          const meta = {
+            id: `mv_new_${h.nextId}`,
+            organizationId: ctx.organizationId,
+            userId: ctx.userId,
+            createdAt: CREATED_AT,
+          }
+          const row = toStockMovementRow(meta, input)
+          h.movementRows.push(row as Record<string, unknown>)
+          h.trace.push(`create:${row.type}`)
+          return row
+        })
+        return ok({
+          records: rows.map((row, i) => ({
+            id: row.id!,
+            partInstanceId: row.partId,
+            quantity: row.quantity,
+            unitCost: inputs[i]!.unitCost,
+            extendedCost: row.extendedCostMinor ?? null,
+            glRole: row.glRole ?? null,
+            occurredAt: inputs[i]!.occurredAt,
+          })),
+          touched: actual.touchedBy(rows),
+        })
+      }
+    ),
+    settleStockMovements: vi.fn(
+      async (_org: string, touched: { partIds: string[]; buildIds: string[] }) => {
+        h.trace.push('settle')
+        h.settleCalls.push(touched)
+      }
+    ),
+  }
+})
+
+vi.mock('../../movements/reads', () => ({
+  readMovementsByBuilds: vi.fn(async () => h.buildMovements),
 }))
 
 vi.mock('../../../realtime', () => ({
@@ -194,8 +233,8 @@ vi.mock('../../../realtime', () => ({
       _org: string,
       args: { entityDefinitionId: string; entries: Array<{ recordId: string }> }
     ) => {
-      h.trace.push('publish-movements')
-      h.movementFrames.push(args)
+      h.trace.push('publish-build')
+      h.buildFrames.push(args)
     }
   ),
 }))
@@ -213,9 +252,9 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
     }
     async create(defId: string, values: Record<string, unknown>) {
       h.nextId += 1
-      const id = defId === h.defs.get('build') ? `bld_new_${h.nextId}` : `mv_new_${h.nextId}`
+      const id = `bld_new_${h.nextId}`
       h.created.push({ defId, id, values })
-      h.trace.push(`create:${String(values.stock_movement_type ?? 'build')}`)
+      h.trace.push('create:build')
       return { instance: { id }, recordId: `${defId}:${id}`, values }
     }
     async update(recordId: string, values: Record<string, unknown>) {
@@ -225,22 +264,6 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
     }
   },
 }))
-
-// The batched writer's own SQL is covered by the integration suite; here each leg goes through
-// the per-row writer and the CRUD double above, with no handler construction of its own.
-vi.mock('../../movements/write-movements-batch', async () => {
-  const { writeStockMovements } = await vi.importActual<
-    typeof import('../../movements/write-movements')
-  >('../../movements/write-movements')
-  const { UnifiedCrudHandler } = await import('../../../resources/crud/unified-handler')
-  return {
-    writeStockMovementsBatch: (
-      ctx: Parameters<typeof writeStockMovements>[0],
-      inputs: Parameters<typeof writeStockMovements>[1]
-    ) =>
-      writeStockMovements({ ...ctx, handler: Object.create(UnifiedCrudHandler.prototype) }, inputs),
-  }
-})
 
 import { amendPlannedBuildQuantity, cancelBuild, createBuild, startBuild } from '../build-mutations'
 import { completeBuild } from '../complete-build'
@@ -275,7 +298,6 @@ function rowsPromise(rows: unknown[]): RowsChain {
  *
  * The COLUMNS a condition names are `undefined` under the wholesale
  * `@auxx/database` mock, but its PARAMETERS are real — which is enough to tell
- * "instances of the build def" from "instances of the stock_movement def", and
  * the reader's child-by-parent lookup from any other value read. Routing on
  * that rather than on call order keeps the double order-independent.
  */
@@ -306,26 +328,15 @@ function makeChain(columns: unknown) {
     // `findSystemRecordIdsByValue` is the only read projecting a `key` beside
     // the instance id - the reader's child-by-parent lookup.
     if (keyed) {
-      if (bound.includes('fld_stock_movement_build')) {
-        return h.movementInstances.map((row) => ({ entityId: row.id, key: 'k' }))
-      }
       if (bound.includes('fld_build_reversal_of')) {
         return h.reversalRows.map((row) => ({ entityId: row.id, key: 'k' }))
       }
       return []
     }
-    if (state.table === schema.EntityInstance) {
-      if (state.joined) return h.movementInstances
-      const movementDefId = h.defs.get('stock_movement')
-      if (movementDefId && bound.includes(movementDefId)) return h.movementInstances
-      return h.instanceRows
-    }
+    if (state.table === schema.EntityInstance) return h.instanceRows
     if (state.joined) return h.reversalRows
     // The reader's child-by-parent lookup: a `{ entityId }` projection filtered
     // on one relationship field.
-    if (columns && bound.includes('fld_stock_movement_build')) {
-      return h.movementInstances.map((row) => ({ entityId: row.id }))
-    }
     if (columns && bound.includes('fld_build_reversal_of')) {
       return h.reversalRows.map((row) => ({ entityId: row.id }))
     }
@@ -383,18 +394,6 @@ const BUILD_ATTRS = [
   'build_order_revision',
 ]
 
-const MOVEMENT_ATTRS = [
-  'stock_movement_build',
-  'stock_movement_part',
-  'stock_movement_type',
-  'stock_movement_quantity',
-  'stock_movement_unit_cost',
-  'stock_movement_extended_cost',
-  'stock_movement_gl_account',
-  'stock_movement_qty_per_unit',
-  'stock_movement_cost_basis',
-]
-
 function value(entityId: string, attr: string, over: Partial<ValueRow>): ValueRow {
   return {
     entityId,
@@ -448,34 +447,40 @@ function completedBuildRows(): ValueRow[] {
 }
 
 /** The two movements that completion wrote, with their FROZEN costs. */
-function completedMovementRows(): ValueRow[] {
+function completedMovementRows(): Record<string, unknown>[] {
   return [
-    value('mv_1', 'stock_movement_part', { relatedEntityId: PART_ASM }),
-    value('mv_1', 'stock_movement_type', { optionId: 'build_consume' }),
-    value('mv_1', 'stock_movement_quantity', { valueNumber: -24 }),
-    value('mv_1', 'stock_movement_unit_cost', { valueNumber: 3661 }),
-    value('mv_1', 'stock_movement_extended_cost', { valueNumber: -87864 }),
-    value('mv_1', 'stock_movement_gl_account', { valueText: 'inventory_raw_materials' }),
-    value('mv_1', 'stock_movement_qty_per_unit', { valueNumber: 2 }),
-    value('mv_1', 'stock_movement_cost_basis', { optionId: 'standard' }),
-    value('mv_2', 'stock_movement_part', { relatedEntityId: PART_LIFT }),
-    value('mv_2', 'stock_movement_type', { optionId: 'build_produce' }),
-    value('mv_2', 'stock_movement_quantity', { valueNumber: 10 }),
-    value('mv_2', 'stock_movement_unit_cost', { valueNumber: 8022 }),
-    value('mv_2', 'stock_movement_extended_cost', { valueNumber: 80220 }),
-    value('mv_2', 'stock_movement_gl_account', { valueText: 'inventory_finished_goods' }),
-    value('mv_2', 'stock_movement_cost_basis', { optionId: 'standard' }),
+    {
+      id: 'mv_1',
+      partId: PART_ASM,
+      type: 'build_consume',
+      quantity: -24,
+      unitCostMinor: 3661,
+      extendedCostMinor: -87864,
+      glRole: 'inventory_raw_materials',
+      qtyPerUnit: 2,
+      costBasis: 'standard',
+    },
+    {
+      id: 'mv_2',
+      partId: PART_LIFT,
+      type: 'build_produce',
+      quantity: 10,
+      unitCostMinor: 8022,
+      extendedCostMinor: 80220,
+      glRole: 'inventory_finished_goods',
+      qtyPerUnit: null,
+      costBasis: 'standard',
+    },
   ]
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.materialised = new Set([...BUILD_ATTRS, ...MOVEMENT_ATTRS, 'part_kind'])
+  h.materialised = new Set([...BUILD_ATTRS, 'part_kind'])
   h.fieldTypes = FIELD_TYPES
   h.defs = new Map([
     ['build', 'def_build'],
     ['part', 'def_part'],
-    ['stock_movement', 'def_mv'],
     ['order', 'def_order'],
   ])
   // The build row FIRST: the double ignores `WHERE`, and every detail read takes
@@ -485,7 +490,9 @@ beforeEach(() => {
     { id: PART_LIFT, createdAt: CREATED_AT, displayName: 'Auxx Lift 400lbs 4x8' },
     { id: PART_ASM, createdAt: CREATED_AT, displayName: '400Lbs motor Assembly' },
   ]
-  h.movementInstances = []
+  h.buildMovements = []
+  h.movementRows = []
+  h.settleCalls = []
   h.reversalRows = []
   h.valueRows = [...plannedBuildRows(), ...partKindRows()]
   // 2 assemblies per lift; 1 motor per assembly. The motor is one level too deep
@@ -503,21 +510,20 @@ beforeEach(() => {
   h.created = []
   h.updated = []
   h.constructions = []
-  h.recalcCalls = []
   h.trace = []
   h.publishedEntries = []
-  h.movementFrames = []
+  h.buildFrames = []
   h.nextId = 0
 })
 
-/** Every `stock_movement` the CRUD double was asked to create. */
+/** Every `StockMovement` row the seam double was asked to insert. */
 function movementWrites(): Record<string, unknown>[] {
-  return h.created.filter((row) => row.defId === 'def_mv').map((row) => row.values)
+  return h.movementRows
 }
 
-/** The ids of every `stock_movement` written, in write order. */
+/** The ids of every movement written, in write order. */
 function movementIdsWritten(): string[] {
-  return h.created.filter((row) => row.defId === 'def_mv').map((row) => row.id)
+  return h.movementRows.map((row) => row.id as string)
 }
 
 /** Every `build` the CRUD double was asked to create. */
@@ -746,11 +752,9 @@ describe('completeBuild', () => {
     const result = await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
     expect(result.isOk()).toBe(true)
 
-    const consumes = movementWrites().filter(
-      (values) => values.stock_movement_type === 'build_consume'
-    )
+    const consumes = movementWrites().filter((values) => values.type === 'build_consume')
     expect(consumes).toHaveLength(1)
-    expect(consumes[0]?.stock_movement_part).toBe('def_part:part_asm')
+    expect(consumes[0]?.partId).toBe(PART_ASM)
     // The motor sits one level below the assembly and must never appear: the
     // assembly carries its own on-hand balance and its own standard, so
     // exploding through it would consume the same material twice.
@@ -796,12 +800,10 @@ describe('completeBuild', () => {
     expect(value.varianceAmount).toBe(16044)
     expect(value.varianceAmount).toBe(2 * 8022)
 
-    const produces = movementWrites().filter(
-      (values) => values.stock_movement_type === 'build_produce'
-    )
+    const produces = movementWrites().filter((values) => values.type === 'build_produce')
     expect(produces).toHaveLength(1)
     // Not 12. Scrapped units produce nothing.
-    expect(produces[0]?.stock_movement_quantity).toBe(10)
+    expect(produces[0]?.quantity).toBe(10)
   })
 
   it('posts the build entry once, inside the completion', async () => {
@@ -812,7 +814,7 @@ describe('completeBuild', () => {
   })
 
   // 111 Q18: quantity never waits on cost. The uncosted leg is written with no
-  // cost keys; the whole entry waits, because the build id can be claimed once.
+  // cost; the whole entry waits, because the build id can be claimed once.
   it('writes an uncosted component leg PENDING, stamps no cost, posts nothing and parks the build', async () => {
     h.standards.delete(PART_ASM)
     const result = await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
@@ -820,18 +822,18 @@ describe('completeBuild', () => {
 
     const [consume, produce] = movementWrites()
     expect(consume).toMatchObject({
-      stock_movement_type: 'build_consume',
-      stock_movement_quantity: -20,
-      stock_movement_cost_basis: 'pending',
-      stock_movement_gl_account: 'inventory_raw_materials',
+      type: 'build_consume',
+      quantity: -20,
+      costBasis: 'pending',
+      glRole: 'inventory_raw_materials',
+      unitCostMinor: null,
+      extendedCostMinor: null,
     })
-    expect(consume).not.toHaveProperty('stock_movement_unit_cost')
-    expect(consume).not.toHaveProperty('stock_movement_extended_cost')
     // The priced leg is still priced: only the entry waits.
     expect(produce).toMatchObject({
-      stock_movement_type: 'build_produce',
-      stock_movement_unit_cost: 8022,
-      stock_movement_cost_basis: 'standard',
+      type: 'build_produce',
+      unitCostMinor: 8022,
+      costBasis: 'standard',
     })
     expect(h.postSpy).not.toHaveBeenCalled()
     expect(h.updated[0]?.values).toMatchObject({ build_status: 'completed' })
@@ -855,9 +857,9 @@ describe('completeBuild', () => {
         partName: '400Lbs motor Assembly',
       },
     })
-    // The commit still happened, and QoH still moved for every part.
+    // The commit still happened, and QoH still settles for every part.
     expect(h.trace).toContain('commit')
-    expect([...h.recalcCalls[0]!].sort()).toEqual([PART_ASM, PART_LIFT].sort())
+    expect([...h.settleCalls[0]!.partIds].sort()).toEqual([PART_ASM, PART_LIFT].sort())
   })
 
   it('writes the PRODUCE leg pending when the produced part has no standard, and posts nothing', async () => {
@@ -866,16 +868,13 @@ describe('completeBuild', () => {
     expect(result._unsafeUnwrap().pendingPartIds).toEqual([PART_LIFT])
 
     const [consume, produce] = movementWrites()
-    expect(consume).toMatchObject({
-      stock_movement_unit_cost: 3661,
-      stock_movement_cost_basis: 'standard',
-    })
+    expect(consume).toMatchObject({ unitCostMinor: 3661, costBasis: 'standard' })
     expect(produce).toMatchObject({
-      stock_movement_quantity: 10,
-      stock_movement_cost_basis: 'pending',
+      quantity: 10,
+      costBasis: 'pending',
+      unitCostMinor: null,
+      extendedCostMinor: null,
     })
-    expect(produce).not.toHaveProperty('stock_movement_unit_cost')
-    expect(produce).not.toHaveProperty('stock_movement_extended_cost')
     expect(h.postSpy).not.toHaveBeenCalled()
     expect(h.upsertWorkItem).toHaveBeenCalledWith(
       db,
@@ -908,51 +907,34 @@ describe('completeBuild', () => {
     const rows = movementWrites()
     expect(rows.length).toBeGreaterThan(0)
     for (const values of rows) {
-      expect(values.stock_movement_adjust_subparts).toBe(false)
+      expect(values.adjustSubparts).toBe(false)
     }
   })
 
-  it('recalculates quantity on hand ONCE, batched, and only after the commit', async () => {
+  it('settles the movements ONCE, batched, and only after the commit', async () => {
     await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
 
-    expect(h.recalcCalls).toHaveLength(1)
-    // The produced part and every consumed part, deduplicated. Under the quiet
-    // lane this call is the ONLY thing that recalculates them.
-    expect([...h.recalcCalls[0]!].sort()).toEqual([PART_ASM, PART_LIFT].sort())
+    expect(h.settleCalls).toHaveLength(1)
+    // The produced part and every consumed part, deduplicated.
+    expect([...h.settleCalls[0]!.partIds].sort()).toEqual([PART_ASM, PART_LIFT].sort())
+    expect(h.settleCalls[0]!.buildIds).toEqual([BUILD])
     // Ordering, not just presence: a recalc inside the transaction would re-SUM
     // a ledger that does not yet contain the rows above.
     expect(h.trace.indexOf('commit')).toBeGreaterThan(-1)
-    expect(h.trace.indexOf('recalc')).toBeGreaterThan(h.trace.indexOf('commit'))
+    expect(h.trace.indexOf('settle')).toBeGreaterThan(h.trace.indexOf('commit'))
     for (const entry of h.trace.filter((step) => step.startsWith('create:'))) {
       expect(h.trace.indexOf(entry)).toBeLessThan(h.trace.indexOf('commit'))
     }
   })
 
-  it('announces movements, their parts and the build with one tier-2 frame each, after the commit', async () => {
+  it('announces the build with one tier-2 frame, after the commit', async () => {
     await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
 
-    // The covered lane sends no inverse frames, so the parts' and the build's movement lists
-    // ride on their own `records:changed`, with no field ids.
-    expect(h.movementFrames.map((f) => f.entityDefinitionId)).toEqual([
-      'def_mv',
-      'def_part',
-      'def_build',
-    ])
-    const partIds = new Set(
-      movementWrites().map((values) => String(values.stock_movement_part).split(':')[1])
-    )
-    expect(new Set(h.movementFrames[1]!.entries.map((entry) => entry.recordId))).toEqual(partIds)
-    expect(h.movementFrames[2]!.entries).toEqual([{ recordId: BUILD }])
-    const frame = h.movementFrames[0]!
-    // The `stock_movement` def, NOT `build`: the ledger card lists movements, so
-    // a frame addressed to the build def is delivered to the wrong query.
-    expect(frame.entityDefinitionId).toBe('def_mv')
+    // The parts' frames are the settle's; the build row is announced here.
+    expect(h.buildFrames.map((f) => f.entityDefinitionId)).toEqual(['def_build'])
     // BARE instance ids (`RecordChangedEntry.recordId`), never composite ones.
-    expect(frame.entries.map((entry) => entry.recordId)).toEqual(movementIdsWritten())
-    for (const entry of frame.entries) expect(entry.recordId).not.toContain(':')
-    // After the commit, like every other post-commit door here — the rows have
-    // to be readable by the refetch the frame provokes.
-    expect(h.trace.indexOf('publish-movements')).toBeGreaterThan(h.trace.indexOf('commit'))
+    expect(h.buildFrames[0]!.entries).toEqual([{ recordId: BUILD }])
+    expect(h.trace.indexOf('publish-build')).toBeGreaterThan(h.trace.indexOf('commit'))
   })
 
   it('writes the ledger on the quiet lane, and never with the deprecated skipEvents alias', async () => {
@@ -969,9 +951,6 @@ describe('completeBuild', () => {
     // `automation`, not `seed`: a build completion is production automation, and
     // a seed reason string would be a lie.
     expect(session.origin.kind).toBe('automation')
-    for (const values of movementWrites()) {
-      expect(values).not.toHaveProperty('skipEvents')
-    }
   })
 
   it('freezes the standard onto every row, with the extended cost signed like the quantity', async () => {
@@ -979,27 +958,27 @@ describe('completeBuild', () => {
     const [consume, produce] = movementWrites()
 
     expect(consume).toMatchObject({
-      stock_movement_type: 'build_consume',
-      stock_movement_quantity: -20,
-      stock_movement_unit_cost: 3661,
-      stock_movement_extended_cost: -73220,
+      type: 'build_consume',
+      quantity: -20,
+      unitCostMinor: 3661,
+      extendedCostMinor: -73220,
       // A subassembly's stock sits in Raw Materials, not Finished Goods.
-      stock_movement_gl_account: 'inventory_raw_materials',
-      stock_movement_cost_basis: 'standard',
+      glRole: 'inventory_raw_materials',
+      costBasis: 'standard',
       // The as-built BOM snapshot.
-      stock_movement_qty_per_unit: 2,
-      stock_movement_build: 'def_build:bld_1',
+      qtyPerUnit: 2,
+      buildId: BUILD,
     })
     expect(produce).toMatchObject({
-      stock_movement_type: 'build_produce',
-      stock_movement_quantity: 10,
-      stock_movement_unit_cost: 8022,
-      stock_movement_extended_cost: 80220,
-      stock_movement_gl_account: 'inventory_finished_goods',
-      stock_movement_build: 'def_build:bld_1',
+      type: 'build_produce',
+      quantity: 10,
+      unitCostMinor: 8022,
+      extendedCostMinor: 80220,
+      glRole: 'inventory_finished_goods',
+      buildId: BUILD,
     })
     // NULL on the produce row, never a zero.
-    expect(produce).not.toHaveProperty('stock_movement_qty_per_unit')
+    expect(produce?.qtyPerUnit).toBeNull()
   })
 
   it('stamps the build with the five costs and the completed status', async () => {
@@ -1028,10 +1007,10 @@ describe('completeBuild', () => {
       componentOverrides: [{ partId: PART_ASM, quantityConsumed: 21 }],
     })
     const [consume] = movementWrites()
-    expect(consume?.stock_movement_quantity).toBe(-21)
+    expect(consume?.quantity).toBe(-21)
     // The floor used one more than the bill of materials called for. The bill
     // still called for 2 per unit, and the snapshot says so.
-    expect(consume?.stock_movement_qty_per_unit).toBe(2)
+    expect(consume?.qtyPerUnit).toBe(2)
   })
 
   it('marks an OFF-BOM substitution with a null qtyPerUnit rather than a zero', async () => {
@@ -1040,13 +1019,11 @@ describe('completeBuild', () => {
       quantityProduced: 10,
       componentOverrides: [{ partId: PART_MOTOR, quantityConsumed: 5 }],
     })
-    const substitution = movementWrites().find(
-      (values) => values.stock_movement_part === 'def_part:part_motor'
-    )
-    expect(substitution?.stock_movement_quantity).toBe(-5)
-    expect(substitution).not.toHaveProperty('stock_movement_qty_per_unit')
+    const substitution = movementWrites().find((values) => values.partId === PART_MOTOR)
+    expect(substitution?.quantity).toBe(-5)
+    expect(substitution?.qtyPerUnit).toBeNull()
     // A component's stock sits in Raw Materials.
-    expect(substitution?.stock_movement_gl_account).toBe('inventory_raw_materials')
+    expect(substitution?.glRole).toBe('inventory_raw_materials')
   })
 
   it('absorbs nothing when no rate is declared, and keeps the variance honest', async () => {
@@ -1073,10 +1050,8 @@ describe('completeBuild', () => {
     expect(value.materialCost).toBe(0)
     expect(value.producedValue).toBe(0)
     expect(value.varianceAmount).toBe(0)
-    const consumes = movementWrites().filter(
-      (values) => values.stock_movement_type === 'build_consume'
-    )
-    expect(consumes[0]?.stock_movement_unit_cost).toBe(0)
+    const consumes = movementWrites().filter((values) => values.type === 'build_consume')
+    expect(consumes[0]?.unitCostMinor).toBe(0)
   })
 
   it('refuses a completion that produces nothing', async () => {
@@ -1092,8 +1067,8 @@ describe('completeBuild', () => {
 
 describe('reverseBuild', () => {
   beforeEach(() => {
-    h.valueRows = [...completedBuildRows(), ...completedMovementRows(), ...partKindRows()]
-    h.movementInstances = [{ id: 'mv_1' }, { id: 'mv_2' }]
+    h.valueRows = [...completedBuildRows(), ...partKindRows()]
+    h.buildMovements = completedMovementRows()
   })
 
   it("carries the ORIGINAL's frozen costs, not today's", async () => {
@@ -1108,22 +1083,22 @@ describe('reverseBuild', () => {
     const rows = movementWrites()
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({
-      stock_movement_type: 'build_consume',
-      stock_movement_quantity: 24,
-      stock_movement_unit_cost: 3661,
-      stock_movement_extended_cost: 87864,
-      stock_movement_gl_account: 'inventory_raw_materials',
-      stock_movement_qty_per_unit: 2,
-      stock_movement_cost_basis: 'standard',
-      stock_movement_reverses_movement: 'def_mv:mv_1',
-      stock_movement_adjust_subparts: false,
+      type: 'build_consume',
+      quantity: 24,
+      unitCostMinor: 3661,
+      extendedCostMinor: 87864,
+      glRole: 'inventory_raw_materials',
+      qtyPerUnit: 2,
+      costBasis: 'standard',
+      reversesMovementId: 'mv_1',
+      adjustSubparts: false,
     })
     expect(rows[1]).toMatchObject({
-      stock_movement_type: 'build_produce',
-      stock_movement_quantity: -10,
-      stock_movement_unit_cost: 8022,
-      stock_movement_extended_cost: -80220,
-      stock_movement_reverses_movement: 'def_mv:mv_2',
+      type: 'build_produce',
+      quantity: -10,
+      unitCostMinor: 8022,
+      extendedCostMinor: -80220,
+      reversesMovementId: 'mv_2',
     })
     expect(JSON.stringify(rows)).not.toContain('9999')
     expect(JSON.stringify(rows)).not.toContain('12345')
@@ -1147,84 +1122,56 @@ describe('reverseBuild', () => {
     // Every reversing movement belongs to the NEW build, which is what
     // `reverseMovement` could not express.
     for (const values of movementWrites()) {
-      expect(values.stock_movement_build).toBe('def_build:bld_new_1')
+      expect(values.buildId).toBe('bld_new_1')
     }
   })
 
-  it('recalculates quantity on hand once, after the commit', async () => {
+  it('settles the movements once, after the commit', async () => {
     await reverseBuild(db, ORG, USER, { buildId: BUILD })
-    expect(h.recalcCalls).toHaveLength(1)
-    expect([...h.recalcCalls[0]!].sort()).toEqual([PART_ASM, PART_LIFT].sort())
-    expect(h.trace.indexOf('recalc')).toBeGreaterThan(h.trace.indexOf('commit'))
+    expect(h.settleCalls).toHaveLength(1)
+    expect([...h.settleCalls[0]!.partIds].sort()).toEqual([PART_ASM, PART_LIFT].sort())
+    expect(h.trace.indexOf('settle')).toBeGreaterThan(h.trace.indexOf('commit'))
   })
 
   // 111 Q18: a pending leg has no cost to carry and is undone as a pending leg;
   // the pricer fills the pair together when the standard lands.
-  it('undoes a PENDING build into pending legs, with no cost keys', async () => {
-    const costKeys = [
-      'fld_stock_movement_unit_cost',
-      'fld_stock_movement_extended_cost',
-      'fld_stock_movement_cost_basis',
-    ]
-    h.valueRows = [
-      ...completedBuildRows(),
-      ...completedMovementRows().filter(
-        (row) => !(row.entityId === 'mv_1' && costKeys.includes(row.fieldId))
-      ),
-      value('mv_1', 'stock_movement_cost_basis', { optionId: 'pending' }),
-      ...partKindRows(),
+  it('undoes a PENDING build into pending legs, with no cost', async () => {
+    const [consumeLeg, produceLeg] = completedMovementRows()
+    h.buildMovements = [
+      { ...consumeLeg, unitCostMinor: null, extendedCostMinor: null, costBasis: 'pending' },
+      produceLeg!,
     ]
     const result = await reverseBuild(db, ORG, USER, { buildId: BUILD })
     expect(result.isOk()).toBe(true)
 
     const [consume, produce] = movementWrites()
     expect(consume).toMatchObject({
-      stock_movement_type: 'build_consume',
-      stock_movement_quantity: 24,
-      stock_movement_cost_basis: 'pending',
-      stock_movement_reverses_movement: 'def_mv:mv_1',
+      type: 'build_consume',
+      quantity: 24,
+      costBasis: 'pending',
+      reversesMovementId: 'mv_1',
+      unitCostMinor: null,
+      extendedCostMinor: null,
     })
-    expect(consume).not.toHaveProperty('stock_movement_unit_cost')
-    expect(consume).not.toHaveProperty('stock_movement_extended_cost')
-    expect(produce).toMatchObject({
-      stock_movement_unit_cost: 8022,
-      stock_movement_extended_cost: -80220,
-    })
+    expect(produce).toMatchObject({ unitCostMinor: 8022, extendedCostMinor: -80220 })
   })
 
   it('still refuses to undo a build whose leg has no cost and is not pending', async () => {
-    h.valueRows = [
-      ...completedBuildRows(),
-      ...completedMovementRows().filter(
-        (row) => !(row.entityId === 'mv_1' && row.fieldId === 'fld_stock_movement_unit_cost')
-      ),
-      ...partKindRows(),
-    ]
+    const [consumeLeg, produceLeg] = completedMovementRows()
+    h.buildMovements = [{ ...consumeLeg, unitCostMinor: null }, produceLeg!]
     const error = await expectErr(reverseBuild(db, ORG, USER, { buildId: BUILD }))
     expect(error).toBeInstanceOf(UnprocessableEntityError)
     expect(movementWrites()).toEqual([])
   })
 
-  it('announces BOTH defs — the reversing movements and the new build row', async () => {
-    // A reversal writes on two defs and both are silent. The movements feed the
-    // reversing build's own ledger; the `build` row is a CREATE that no open
-    // builds list would otherwise learn about (`completeBuild` never needs this
-    // — its build row already exists).
+  it('announces the new build row — a CREATE no open builds list would otherwise see', async () => {
     await reverseBuild(db, ORG, USER, { buildId: BUILD })
 
-    expect(h.movementFrames).toHaveLength(2)
-    const byDef = Object.fromEntries(
-      h.movementFrames.map((frame) => [frame.entityDefinitionId, frame.entries])
-    )
-    expect(Object.keys(byDef).sort()).toEqual(['def_build', 'def_mv'])
-    expect(byDef.def_mv?.map((entry) => entry.recordId)).toEqual(movementIdsWritten())
-    // The REVERSING build, not the one being reversed — that is the row the
-    // list is missing.
-    expect(byDef.def_build?.map((entry) => entry.recordId)).toEqual(['bld_new_1'])
-    for (const entry of [...(byDef.def_mv ?? []), ...(byDef.def_build ?? [])]) {
-      expect(entry.recordId).not.toContain(':')
-    }
-    expect(h.trace.indexOf('publish-movements')).toBeGreaterThan(h.trace.indexOf('commit'))
+    expect(h.buildFrames).toHaveLength(1)
+    expect(h.buildFrames[0]!.entityDefinitionId).toBe('def_build')
+    // The REVERSING build, not the one being reversed — that is the row the list is missing.
+    expect(h.buildFrames[0]!.entries.map((entry) => entry.recordId)).toEqual(['bld_new_1'])
+    expect(h.trace.indexOf('publish-build')).toBeGreaterThan(h.trace.indexOf('commit'))
   })
 
   it('refuses a build that is already reversed — a second negation is invisible', async () => {
@@ -1238,7 +1185,6 @@ describe('reverseBuild', () => {
     h.valueRows = [
       ...completedBuildRows(),
       value(BUILD, 'build_reversal_of', { relatedEntityId: 'bld_original' }),
-      ...completedMovementRows(),
       ...partKindRows(),
     ]
     const error = await expectErr(reverseBuild(db, ORG, USER, { buildId: BUILD }))
@@ -1308,8 +1254,8 @@ describe('every sanctioned build_status writer carries its bypass', () => {
     // 🛑 The field chain has no `operation === 'create'` exemption, so a create carrying a
     // guarded value is refused exactly like an update. B6's only correction for a posted run
     // depends on this.
-    h.valueRows = [...completedBuildRows(), ...completedMovementRows(), ...partKindRows()]
-    h.movementInstances = [{ id: 'mv_1' }, { id: 'mv_2' }]
+    h.valueRows = [...completedBuildRows(), ...partKindRows()]
+    h.buildMovements = completedMovementRows()
 
     const result = await reverseBuild(db, ORG, USER, { buildId: BUILD })
     expect(result.isOk()).toBe(true)
@@ -1317,13 +1263,10 @@ describe('every sanctioned build_status writer carries its bypass', () => {
     expect(bypasses()).toEqual(['build_status'])
   })
 
-  // 🛑 ONE element. `completeBuild` and `reverseBuild` write their stock movements through
-  // the SAME handler and so inherit this set; a second attribute would silently disarm a
-  // guard on the movement rows and nothing would say so — the same narrowness that keeps
-  // `markQuoteSent`'s mirror write safe (21 §7.1).
+  // ONE element: a second attribute would silently disarm another guard on the build row (21 §7.1).
   it('names build_status and nothing else, on every handler it constructs', async () => {
-    h.valueRows = [...completedBuildRows(), ...completedMovementRows(), ...partKindRows()]
-    h.movementInstances = [{ id: 'mv_1' }, { id: 'mv_2' }]
+    h.valueRows = [...completedBuildRows(), ...partKindRows()]
+    h.buildMovements = completedMovementRows()
     await reverseBuild(db, ORG, USER, { buildId: BUILD })
 
     expect(h.constructions.length).toBeGreaterThan(0)
@@ -1332,8 +1275,6 @@ describe('every sanctioned build_status writer carries its bypass', () => {
       expect(set).toBeDefined()
       expect(set?.size).toBe(1)
       expect(set?.has('build_status')).toBe(true)
-      expect(set?.has('stock_movement_type')).toBe(false)
-      expect(set?.has('stock_movement_unit_cost')).toBe(false)
     }
   })
 

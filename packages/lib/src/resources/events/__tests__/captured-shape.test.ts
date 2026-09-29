@@ -21,13 +21,13 @@ import { describe, expect, it } from 'vitest'
 import type { FieldValueService } from '../../../field-values/field-value-service'
 import { captureEventData } from '../extract-event-data'
 
-const RECORD_ID = 'movement-def:movement-1' as RecordId
+const RECORD_ID = 'build-def:build-1' as RecordId
 const PART_RECORD_ID = 'part-def:part-1' as RecordId
 
 /** The BaseFieldValue columns every variant carries; irrelevant to the shape. */
 const base = {
   id: 'fv-1',
-  entityId: 'movement-1',
+  entityId: 'build-1',
   fieldId: 'f',
   organizationId: 'org-1',
   sortKey: '0',
@@ -36,13 +36,13 @@ const base = {
 }
 
 const FIELDS = [
-  { id: 'f-part', systemAttribute: 'stock_movement_part', type: 'RELATIONSHIP' },
-  { id: 'f-type', systemAttribute: 'stock_movement_type', type: 'SINGLE_SELECT' },
-  { id: 'f-qty', systemAttribute: 'stock_movement_quantity', type: 'NUMBER' },
-  { id: 'f-cost', systemAttribute: 'stock_movement_unit_cost', type: 'CURRENCY' },
-  { id: 'f-account', systemAttribute: 'stock_movement_gl_account', type: 'TEXT' },
-  { id: 'f-occurred', systemAttribute: 'stock_movement_occurred_at', type: 'DATETIME' },
-  { id: 'f-explode', systemAttribute: 'stock_movement_adjust_subparts', type: 'CHECKBOX' },
+  { id: 'f-part', systemAttribute: 'build_part', type: 'RELATIONSHIP' },
+  { id: 'f-type', systemAttribute: 'build_status', type: 'SINGLE_SELECT' },
+  { id: 'f-qty', systemAttribute: 'build_quantity_produced', type: 'NUMBER' },
+  { id: 'f-cost', systemAttribute: 'build_material_cost', type: 'CURRENCY' },
+  { id: 'f-account', systemAttribute: 'build_notes', type: 'TEXT' },
+  { id: 'f-occurred', systemAttribute: 'build_completed_at', type: 'DATETIME' },
+  { id: 'f-explode', systemAttribute: 'part_kind_confirmed', type: 'CHECKBOX' },
 ]
 
 /**
@@ -52,10 +52,10 @@ const FIELDS = [
 function serviceReturning(): FieldValueService {
   const values = new Map<string, TypedFieldValue | TypedFieldValue[]>([
     ['f-part', [{ ...base, type: 'relationship', recordId: PART_RECORD_ID }] as TypedFieldValue[]],
-    ['f-type', [{ ...base, type: 'option', optionId: 'build_consume' }] as TypedFieldValue[]],
-    ['f-qty', { ...base, type: 'number', value: -10 } as TypedFieldValue],
+    ['f-type', [{ ...base, type: 'option', optionId: 'completed' }] as TypedFieldValue[]],
+    ['f-qty', { ...base, type: 'number', value: 10 } as TypedFieldValue],
     ['f-cost', { ...base, type: 'number', value: 9822 } as TypedFieldValue],
-    ['f-account', { ...base, type: 'text', value: 'inventory_raw_materials' } as TypedFieldValue],
+    ['f-account', { ...base, type: 'text', value: 'first batch' } as TypedFieldValue],
     ['f-occurred', { ...base, type: 'date', value: '2026-08-31T23:55:10.318Z' } as TypedFieldValue],
     ['f-explode', { ...base, type: 'boolean', value: false } as TypedFieldValue],
   ])
@@ -66,40 +66,40 @@ describe('captureEventData — the shape delete consumers actually receive', () 
   it('emits RELATIONSHIP as an ARRAY of RecordId strings, never a bare string', async () => {
     const captured = await captureEventData(serviceReturning(), RECORD_ID, FIELDS)
 
-    expect(captured.stock_movement_part).toEqual([PART_RECORD_ID])
+    expect(captured.build_part).toEqual([PART_RECORD_ID])
     // The regression this whole task is about: the natural-looking test below is
     // what a reader written against the create chain would satisfy, and it fails.
-    expect(typeof captured.stock_movement_part).not.toBe('string')
+    expect(typeof captured.build_part).not.toBe('string')
   })
 
   it('emits SINGLE_SELECT as an ARRAY of option ids', async () => {
     const captured = await captureEventData(serviceReturning(), RECORD_ID, FIELDS)
 
-    expect(captured.stock_movement_type).toEqual(['build_consume'])
-    expect(typeof captured.stock_movement_type).not.toBe('string')
+    expect(captured.build_status).toEqual(['completed'])
+    expect(typeof captured.build_status).not.toBe('string')
   })
 
   it('keeps a to-ONE relation an array — the shape is not count-dependent', async () => {
     const captured = await captureEventData(serviceReturning(), RECORD_ID, FIELDS)
 
-    expect(Array.isArray(captured.stock_movement_part)).toBe(true)
-    expect((captured.stock_movement_part as unknown[]).length).toBe(1)
+    expect(Array.isArray(captured.build_part)).toBe(true)
+    expect((captured.build_part as unknown[]).length).toBe(1)
   })
 
   it('emits scalars bare — NUMBER, CURRENCY, TEXT, CHECKBOX', async () => {
     const captured = await captureEventData(serviceReturning(), RECORD_ID, FIELDS)
 
-    expect(captured.stock_movement_quantity).toBe(-10)
-    expect(captured.stock_movement_unit_cost).toBe(9822)
-    expect(captured.stock_movement_gl_account).toBe('inventory_raw_materials')
-    expect(captured.stock_movement_adjust_subparts).toBe(false)
+    expect(captured.build_quantity_produced).toBe(10)
+    expect(captured.build_material_cost).toBe(9822)
+    expect(captured.build_notes).toBe('first batch')
+    expect(captured.part_kind_confirmed).toBe(false)
   })
 
   it('emits DATETIME as a string, not a Date', async () => {
     const captured = await captureEventData(serviceReturning(), RECORD_ID, FIELDS)
 
-    expect(typeof captured.stock_movement_occurred_at).toBe('string')
-    expect(captured.stock_movement_occurred_at).not.toBeInstanceOf(Date)
+    expect(typeof captured.build_completed_at).toBe('string')
+    expect(captured.build_completed_at).not.toBeInstanceOf(Date)
   })
 
   it('keys by systemAttribute and drops fields that have none', async () => {

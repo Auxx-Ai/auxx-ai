@@ -19,7 +19,7 @@
 
 import { database } from '@auxx/database'
 import { sql } from 'drizzle-orm'
-// Relative import on purpose — see the note in backfill-po-line-rollups.ts.
+// Relative import on purpose: `generate-exports.ts` gives packages/lib no subpath for this module.
 import { recalculateVendorBillBalance } from '../src/accounting/purchasing/vendor-bill-balance'
 
 /** Every (org, vendor bill) pair where a total has been keyed. */

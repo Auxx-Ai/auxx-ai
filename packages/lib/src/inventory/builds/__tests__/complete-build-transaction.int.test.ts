@@ -19,11 +19,10 @@
 //   1. **Commit.** After a completion, all N consume rows and the single
 //      produce row are in the database, priced from the frozen standard.
 //   2. **Rollback.** A failure raised after the movement writes leaves NOTHING
-//      behind — no movement instances, no movement field values, and a build
-//      still reading `in_progress`.
-//   3. **The post-commit recalculation sees committed rows.** `batchRecalculateQoH`
-//      runs on the module-level pool after the transaction returns (trap 1), so
-//      the quantity on hand it writes is the proof the rows were visible to a
+//      behind — no movement rows, and a build still reading `in_progress`.
+//   3. **The post-commit settle sees committed rows.** `settleStockMovements`
+//      runs on the module-level pool after the transaction returns, so the
+//      quantity on hand it writes is the proof the rows were visible to a
 //      different connection by then.
 //
 // The pool probe after the batched write (`freshReadOutcomes`) is what shows the rows are on `tx`.
@@ -100,23 +99,21 @@ vi.mock('../../../accounting/ledger/post/post-inventory-movement', async (import
   }
 })
 
-vi.mock('../../movements/write-movements-batch', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../movements/write-movements-batch')>()
-  const { getEntityInstance } = await import('../../../entity-instances')
+vi.mock('../../movements/write-movements', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../movements/write-movements')>()
   return {
     ...actual,
     // Probe each written row through the MODULE-LEVEL pool, a different connection from `tx`.
-    writeStockMovementsBatch: async (
-      ...args: Parameters<typeof actual.writeStockMovementsBatch>
-    ) => {
-      const result = await actual.writeStockMovementsBatch(...args)
+    writeStockMovements: async (...args: Parameters<typeof actual.writeStockMovements>) => {
+      const result = await actual.writeStockMovements(...args)
       if (result.isOk()) {
-        for (const record of result.value.records) {
-          const probe = await getEntityInstance({
-            id: record.movementId,
-            organizationId: args[0].organizationId,
-          })
-          h.freshReadOutcomes.push({ id: record.movementId, found: probe.isOk() })
+        const ids = result.value.records.map((record) => record.id)
+        const seen = await db()
+          .select({ id: schema.StockMovement.id })
+          .from(schema.StockMovement)
+          .where(inArray(schema.StockMovement.id, ids))
+        for (const id of ids) {
+          h.freshReadOutcomes.push({ id, found: seen.some((row) => row.id === id) })
         }
       }
       return result
@@ -144,18 +141,16 @@ async function anInProgressBuild(): Promise<string> {
   return buildId
 }
 
-/** Every `stock_movement` instance id in the org. */
+/** Every `StockMovement` row in the org. */
+async function movementRows() {
+  return db()
+    .select()
+    .from(schema.StockMovement)
+    .where(eq(schema.StockMovement.organizationId, f.organizationId))
+}
+
 async function movementInstanceIds(): Promise<string[]> {
-  const rows = await db()
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, f.organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, f.movementDefId)
-      )
-    )
-  return rows.map((row) => row.id)
+  return (await movementRows()).map((row) => row.id)
 }
 
 /** `systemAttribute` -> `CustomField.id`, straight off the org cache. */
@@ -195,58 +190,6 @@ async function numbersByEntity(
   return out
 }
 
-/** The related-record target of `attribute` on each of `entityIds`. */
-async function relatedByEntity(
-  attribute: string,
-  entityIds: string[]
-): Promise<Map<string, string>> {
-  const id = await fieldId(attribute)
-  const rows = await db()
-    .select({
-      entityId: schema.FieldValue.entityId,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, f.organizationId),
-        eq(schema.FieldValue.fieldId, id),
-        inArray(schema.FieldValue.entityId, entityIds)
-      )
-    )
-  const out = new Map<string, string>()
-  for (const row of rows) {
-    if (row.relatedEntityId) out.set(row.entityId, row.relatedEntityId)
-  }
-  return out
-}
-
-/** The stored option id of `attribute` on each of `entityIds`. */
-async function optionsByEntity(
-  attribute: string,
-  entityIds: string[]
-): Promise<Map<string, string>> {
-  const id = await fieldId(attribute)
-  const rows = await db()
-    .select({
-      entityId: schema.FieldValue.entityId,
-      optionId: schema.FieldValue.optionId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, f.organizationId),
-        eq(schema.FieldValue.fieldId, id),
-        inArray(schema.FieldValue.entityId, entityIds)
-      )
-    )
-  const out = new Map<string, string>()
-  for (const row of rows) {
-    if (row.optionId) out.set(row.entityId, row.optionId)
-  }
-  return out
-}
-
 beforeEach(async () => {
   h.failPosting = false
   h.freshReadOutcomes = []
@@ -263,35 +206,30 @@ describe('completeBuild commits its whole ledger', () => {
     })
     if (done.isErr()) throw done.error
 
-    const stored = await movementInstanceIds()
-    expect(stored.sort()).toEqual([...done.value.movementIds].sort())
+    const stored = await movementRows()
+    expect(stored.map((row) => row.id).sort()).toEqual([...done.value.movementIds].sort())
     expect(stored).toHaveLength(f.componentPartIds.length + 1)
-
-    const quantities = await numbersByEntity('stock_movement_quantity', stored)
-    const unitCosts = await numbersByEntity('stock_movement_unit_cost', stored)
-    const extended = await numbersByEntity('stock_movement_extended_cost', stored)
-    const parts = await relatedByEntity('stock_movement_part', stored)
-    const types = await optionsByEntity('stock_movement_type', stored)
+    expect(stored.every((row) => row.buildId === buildId)).toBe(true)
 
     // One row per consumed part, at the NEGATED BOM quantity and the frozen cost.
     for (const partId of f.componentPartIds) {
-      const movementId = stored.find((id) => parts.get(id) === partId)
-      expect(movementId, `no consume movement for ${partId}`).toBeTruthy()
+      const row = stored.find((movement) => movement.partId === partId)
+      expect(row, `no consume movement for ${partId}`).toBeTruthy()
       const consumed = (f.qtyPerUnit.get(partId) as number) * QUANTITY_PRODUCED
       const unitCost = f.standardCosts.get(partId) as number
-      expect(types.get(movementId as string)).toBe('build_consume')
-      expect(quantities.get(movementId as string)).toBe(-consumed)
-      expect(unitCosts.get(movementId as string)).toBe(unitCost)
-      expect(extended.get(movementId as string)).toBe(-(unitCost * consumed))
+      expect(row?.type).toBe('build_consume')
+      expect(row?.quantity).toBe(-consumed)
+      expect(row?.unitCostMinor).toBe(unitCost)
+      expect(row?.extendedCostMinor).toBe(-(unitCost * consumed))
+      expect(row?.qtyPerUnit).toBe(f.qtyPerUnit.get(partId))
     }
 
     // ...and exactly one produce row, at the POSITIVE produced quantity.
-    const produceIds = stored.filter((id) => types.get(id) === 'build_produce')
-    expect(produceIds).toHaveLength(1)
-    const produceId = produceIds[0] as string
-    expect(parts.get(produceId)).toBe(f.producedPartId)
-    expect(quantities.get(produceId)).toBe(QUANTITY_PRODUCED)
-    expect(unitCosts.get(produceId)).toBe(f.standardCosts.get(f.producedPartId))
+    const produces = stored.filter((row) => row.type === 'build_produce')
+    expect(produces).toHaveLength(1)
+    expect(produces[0]?.partId).toBe(f.producedPartId)
+    expect(produces[0]?.quantity).toBe(QUANTITY_PRODUCED)
+    expect(produces[0]?.unitCostMinor).toBe(f.standardCosts.get(f.producedPartId))
   })
 
   it('stamps the build itself completed, with the costs the same commit wrote', async () => {
@@ -342,7 +280,7 @@ describe('completeBuild commits its whole ledger', () => {
 })
 
 describe('completeBuild sends only its covering frames', () => {
-  it('build update, records:changed for movements, parts and build, and the QoH frame', async () => {
+  it('build update, records:changed for parts and build, and the QoH frame', async () => {
     const buildId = await anInProgressBuild()
     h.frames = []
 
@@ -353,7 +291,7 @@ describe('completeBuild sends only its covering frames', () => {
     if (done.isErr()) throw done.error
     // The covering publishes are fire-and-forget.
     await vi.waitFor(() =>
-      expect(h.frames.filter((frame) => frame.event === 'records:changed')).toHaveLength(3)
+      expect(h.frames.filter((frame) => frame.event === 'records:changed')).toHaveLength(2)
     )
     await new Promise((resolve) => setTimeout(resolve, 50))
 
@@ -364,7 +302,6 @@ describe('completeBuild sends only its covering frames', () => {
         `fieldValues:updated ${f.buildDefId}`,
         `fieldValues:updated ${f.partDefId}`,
         `records:changed ${f.buildDefId}`,
-        `records:changed ${f.movementDefId}`,
         `records:changed ${f.partDefId}`,
       ].sort()
     )
@@ -386,7 +323,7 @@ describe('completeBuild sends only its covering frames', () => {
 })
 
 describe('a failure partway through rolls the whole completion back', () => {
-  it('leaves no movement instances behind', async () => {
+  it('leaves no movement rows behind', async () => {
     const buildId = await anInProgressBuild()
     expect(await movementInstanceIds()).toHaveLength(0)
     h.freshReadOutcomes = []
@@ -409,28 +346,6 @@ describe('a failure partway through rolls the whole completion back', () => {
     // If any of those writes were on the pool rather than on `tx`, they would
     // still be here.
     expect(await movementInstanceIds()).toHaveLength(0)
-  })
-
-  it('leaves no movement field values behind', async () => {
-    const buildId = await anInProgressBuild()
-
-    h.failPosting = true
-    const done = await completeBuild(db(), f.organizationId, f.userId, {
-      buildId,
-      quantityProduced: QUANTITY_PRODUCED,
-    })
-    expect(done.isErr()).toBe(true)
-
-    const orphans = await db()
-      .select({ id: schema.FieldValue.id })
-      .from(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.organizationId, f.organizationId),
-          eq(schema.FieldValue.entityDefinitionId, f.movementDefId)
-        )
-      )
-    expect(orphans).toEqual([])
   })
 
   // 🛑 The one that matters most. A build left reading `completed` with no
@@ -479,7 +394,7 @@ describe('a failure partway through rolls the whole completion back', () => {
   })
 })
 
-describe('the post-commit recalculation sees the committed rows', () => {
+describe('the post-commit settle sees the committed rows', () => {
   it('sets quantity on hand for the produced part and every consumed part', async () => {
     const buildId = await anInProgressBuild()
 
@@ -492,10 +407,8 @@ describe('the post-commit recalculation sees the committed rows', () => {
     const partIds = [f.producedPartId, ...f.componentPartIds]
     const qoh = await numbersByEntity('part_quantity_on_hand', partIds)
 
-    // 🛑 `batchRecalculateQoH` runs AFTER the transaction returns, on the
-    // module-level pool. A non-zero number here is only possible if the movement
-    // rows were committed and visible to that other connection by then — which
-    // is trap 1 discharged, observed rather than reasoned about.
+    // The settle runs AFTER the transaction returns, on the module-level pool: a non-zero number
+    // here is only possible if the rows were committed and visible to that connection by then.
     expect(qoh.get(f.producedPartId)).toBe(QUANTITY_PRODUCED)
     for (const partId of f.componentPartIds) {
       const consumed = (f.qtyPerUnit.get(partId) as number) * QUANTITY_PRODUCED

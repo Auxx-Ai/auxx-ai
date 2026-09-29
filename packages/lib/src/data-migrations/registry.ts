@@ -10,7 +10,6 @@ import { migration149ShipmentParcel } from './migrations/149-shipment-parcel'
 import { migration150StripLegacyAddressComponents } from './migrations/150-strip-legacy-address-components'
 import { migration151ShipmentLabelCostAndDocument } from './migrations/151-shipment-label-cost-and-document'
 import { migration152CreditMemoGlPosting } from './migrations/152-credit-memo-gl-posting'
-import { migration153FulfillmentLines } from './migrations/153-fulfillment-lines'
 import { migration154Returns } from './migrations/154-returns'
 import { migration155ReturnInboundTrackingMulti } from './migrations/155-return-inbound-tracking-multi'
 import { migration156PaymentGatewayFeeTreatment } from './migrations/156-payment-gateway-fee-treatment'
@@ -30,7 +29,6 @@ import { migration170GlAccountParentField } from './migrations/170-gl-account-pa
 import { migration171OneCashEndpoint } from './migrations/171-one-cash-endpoint'
 import { migration172VendorBillMatchStatus } from './migrations/172-vendor-bill-match-status'
 import { migration173PartStandardCostSource } from './migrations/173-part-standard-cost-source'
-import { migration175StockMovementAccruals } from './migrations/175-stock-movement-accruals'
 import { migration177VendorBillLineLandedBill } from './migrations/177-vendor-bill-line-landed-bill'
 import { migration178VendorCreditLineReturnsStock } from './migrations/178-vendor-credit-line-returns-stock'
 import { migration179RemovePurchaseOrderTaxRecoverable } from './migrations/179-remove-purchase-order-tax-recoverable'
@@ -45,11 +43,11 @@ import { migration189ThreadTriageFields } from './migrations/189-thread-triage-f
 import { migration190PartsAndServices } from './migrations/190-parts-and-services'
 import { migration191ProductStatusUnlisted } from './migrations/191-product-status-unlisted'
 import { migration192RetryPeriodLockedWorkItems } from './migrations/192-retry-period-locked-work-items'
-import { migration193InventoryLedgerUnderMrp } from './migrations/193-inventory-ledger-under-mrp'
 import { migration197MrpPlanningFields } from './migrations/197-mrp-planning-fields'
 import { migration198SidebarDefaultLayout } from './migrations/198-sidebar-default-layout'
 import { migration199PartKindConflictConfirmed } from './migrations/199-part-kind-conflict-confirmed'
 import { migration200PartKindConfirmed } from './migrations/200-part-kind-confirmed'
+import { migration201StockMovementTable } from './migrations/201-stock-movement-table'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -82,6 +80,10 @@ const RETIRED_ID_NUMBERS: ReadonlySet<string> = new Set([
   // The two marker migrations 186 undoes; their registry fields are gone.
   '184',
   '185',
+  // They wrote `stock_movement` fields; 201 deleted that entity (plans/mrp/20 §4.1).
+  '153',
+  '175',
+  '193',
 ])
 
 /**
@@ -141,10 +143,6 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // Recomputes a stored column from its own source with the current algorithm:
   // the backfill shape.
   migration147BackfillBankMatchKeys,
-  // Drops a field of one type and recreates it under the SAME name as another
-  // type, alongside two new defs and three widened existing ones: the
-  // type-change shape (plans/money/tasks/55-shipment-lines.md).
-  migration153FulfillmentLines,
   // Three new defs at once plus SEVEN new halves across six existing defs, one
   // of them self-referential: the widest relationship graph any migration here
   // has linked (plans/money/tasks/54-returns.md).
@@ -185,10 +183,6 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // standard came from, so the first receipt of a typed guess replaces it
   // instead of varying against it (73 §6.4).
   migration173PartStandardCostSource,
-  // Three fields on the existing `stock_movement` def, no backfill: what a
-  // receipt credited the freight and duties accruals, and the rate behind it
-  // (73 §7.2).
-  migration175StockMovementAccruals,
   // One relationship pair on two existing defs, no backfill: the goods bill a
   // carrier's or broker's landed-cost line was charged against (73 §7.2).
   migration177VendorBillLineLandedBill,
@@ -228,15 +222,14 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   migration190PartsAndServices,
   // Appends one option to an existing system SINGLE_SELECT: Shopify's `UNLISTED` product status (D10).
   migration191ProductStatusUnlisted,
-  // Brief 111, one file with a step per unit: the `pending` cost basis option (Q18) and
-  // `relieve` work items re-staged to `price` (Q21); X4/X5 add their steps to it.
-  migration193InventoryLedgerUnderMrp,
   // MRP planning overrides on `part` and the supplier ordering rhythm on `company`, no backfill.
   migration197MrpPlanningFields,
   // The hidden "keep it" flag on a part kind conflict (plans/mrp/17 D3), no backfill.
   migration199PartKindConflictConfirmed,
   // The hidden "a person picked this kind" flag on part, no backfill.
   migration200PartKindConfirmed,
+  // Copies the stock_movement entity into the StockMovement table and deletes the entity (plans/mrp/20).
+  migration201StockMovementTable,
 ]
 
 /**

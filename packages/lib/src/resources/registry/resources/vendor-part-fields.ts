@@ -432,34 +432,6 @@ export const VENDOR_PART_FIELDS = defineResourceFields({
     description: 'Automatically updated when vendor part is modified',
   },
 
-  // Reverse relationship: stockMovements (from stock_movement.vendorPart)
-  stockMovements: {
-    id: toFieldId('stockMovements'),
-    key: 'stockMovements',
-    label: 'Stock Movements',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'vendor_part_stock_movements',
-    showInPanel: false,
-    systemSortOrder: 'c0',
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'stock_movement:vendorPart' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'unlink',
-      isInverse: true,
-    },
-    description:
-      'Receipts priced from this supplier row - the first route to what we have actually bought from a supplier',
-  },
-
   // Reverse relationship: purchaseOrderLines (from purchase_order_line.vendorPart)
   purchaseOrderLines: {
     id: toFieldId('purchaseOrderLines'),

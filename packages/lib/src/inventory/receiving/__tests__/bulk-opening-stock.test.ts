@@ -7,7 +7,7 @@
 
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { BadRequestError, NotFoundError } from '../../../errors'
+import { BadRequestError } from '../../../errors'
 
 const h = vi.hoisted(() => ({
   onCacheEvent: vi.fn(async () => {}),
@@ -114,24 +114,13 @@ function rowsFor(instances: boolean, values: boolean): unknown[] {
   return []
 }
 
-const ALL_ATTRS = [
-  'part_kind',
-  'stock_movement_part',
-  'stock_movement_unit_cost',
-  'stock_movement_cost_basis',
-  'stock_movement_extended_cost',
-  'stock_movement_gl_account',
-  'stock_movement_occurred_at',
-]
+const ALL_ATTRS = ['part_kind']
 
 beforeEach(async () => {
   vi.clearAllMocks()
   h.serviceBlockers = new Map()
   h.materialised = new Set(ALL_ATTRS)
-  h.defs = new Map([
-    ['part', 'def_part'],
-    ['stock_movement', 'def_mv'],
-  ])
+  h.defs = new Map([['part', 'def_part']])
   h.parts = new Map([
     ['part_1', { displayName: 'Widget 9000', kind: null }],
     ['part_2', { displayName: 'Bracket', kind: 'finished_good' }],
@@ -150,13 +139,12 @@ beforeEach(async () => {
         delta: input.quantity,
         pending: false,
         movement: {
-          movementId: `mv_${input.partId}`,
-          recordId: `def_mv:mv_${input.partId}`,
+          id: `mv_${input.partId}`,
           partInstanceId: input.partId,
           quantity: input.quantity,
           unitCost: 100,
           extendedCost: 100 * input.quantity,
-          glAccount:
+          glRole:
             input.partId === 'part_2' ? 'inventory_finished_goods' : 'inventory_raw_materials',
           occurredAt: new Date(`${input.day}T00:00:00.000Z`),
           vendorUnitPrice: null,
@@ -220,9 +208,9 @@ describe('bulkOpenStockBalance is setCount per part', () => {
 
   it('totals the run by inventory account from the rows written', async () => {
     const summary = await run()
-    expect(summary.totalsByGlAccount).toEqual([
-      { glAccount: 'inventory_finished_goods', partCount: 1, extendedCost: 400 },
-      { glAccount: 'inventory_raw_materials', partCount: 1, extendedCost: 1000 },
+    expect(summary.totalsByGlRole).toEqual([
+      { glRole: 'inventory_finished_goods', partCount: 1, extendedCost: 400 },
+      { glRole: 'inventory_raw_materials', partCount: 1, extendedCost: 1000 },
     ])
   })
 })
@@ -401,14 +389,8 @@ describe('the per-entry guards', () => {
 })
 
 describe('the whole-run preconditions', () => {
-  it('errors when the org has no stock_movement definition', async () => {
-    h.defs.delete('stock_movement')
-    const result = await bulkOpenStockBalance(db, ORG, USER, { entries: ENTRIES })
-    expect(result._unsafeUnwrapErr()).toBeInstanceOf(NotFoundError)
-  })
-
-  it('errors when the movement cost fields are not materialised', async () => {
-    h.materialised.delete('stock_movement_unit_cost')
+  it('errors when the org has no part definition', async () => {
+    h.defs.delete('part')
     const result = await bulkOpenStockBalance(db, ORG, USER, { entries: ENTRIES })
     expect(result.isErr()).toBe(true)
     expect(h.setCount).not.toHaveBeenCalled()

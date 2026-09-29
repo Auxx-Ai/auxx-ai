@@ -38,10 +38,9 @@ import { getCachedEntityDefId, getOrgCache } from '../../cache'
  * to retire a record, which is precisely why an archived child cannot also mean
  * "nothing depends on this any more".
  *
- * Modelled on {@link import('./guarded-movements').readMovementsByRelation},
- * which reads `EntityInstance ⋈ FieldValue` directly for the same reason. Going
- * through the shared list path instead would mean threading a flag into a query
- * every dashboard, picker and record table also reads.
+ * Reads `EntityInstance ⋈ FieldValue` directly: going through the shared list
+ * path instead would mean threading a flag into a query every dashboard, picker
+ * and record table also reads.
  *
  * @param childType entity type of the rows to find (e.g. `vendor_bill`)
  * @param relationAttribute the child's systemAttribute holding the relation
