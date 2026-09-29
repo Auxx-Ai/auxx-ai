@@ -1,23 +1,9 @@
 // apps/web/src/components/accounting/ui/chart-account-create-dialog.tsx
 'use client'
 
-// "Blank account" - creating one GL account without leaving the page you are on.
-//
-// 🛑 This exists because the ONLY other door was Accounting > Settings >
-// Accounts, which is a `MasterDetailSplit`: adding an account there means a
-// phantom draft row plus the detail pane, neither of which fits in a picker
-// popover, and getting to it means abandoning the half-typed journal entry or
-// vendor bill the picker was sitting in. Discovering the account you need does
-// not exist is something that happens mid-entry, so the fix has to be available
-// mid-entry.
-//
-// ⚠️ DELIBERATELY the four fields `chartAccountCreate` takes and no more. The
-// editor on the settings page owns the rest (activation, the provider mapping,
-// renumbering and its posted-line warnings); a second full editor here would be
-// a second place for those rules to drift.
-//
-// Copies `payment-gateway-add-dialog.tsx`'s shape: a small `FieldPanel` in a
-// dialog, with the refusal handled where the write is.
+// Creating one GL account from inside a picker, without leaving the half-typed entry it sits in.
+// Deliberately only the fields `chartAccountCreate` takes; activation and renumbering stay with
+// the settings page's editor so their rules live in one place.
 
 import { FieldType } from '@auxx/database/enums'
 import type {
@@ -36,11 +22,13 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
-import { useState } from 'react'
+import { ToggleCard } from '@auxx/ui/components/toggle-card'
+import { useEffect, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
+import { useAccountingProviderStatus } from '../hooks/use-accounting-provider-status'
 import { GlAccountPicker, useChartAccounts } from './gl-account-picker'
 import {
   ACCOUNT_SUBTYPE_OPTIONS,
@@ -68,7 +56,7 @@ function firstSelected(value: unknown): string | null {
 }
 
 /** The dialog's fields, as it holds them before the write. */
-interface CreateDraft {
+export interface CreateDraft {
   code: string
   name: string
   accountType: GlAccountTypeValue | null
@@ -94,6 +82,10 @@ export interface ChartAccountCreateDialogProps {
   defaultSubtype?: GlAccountSubtypeValue
   /** Pre-selects the parent - the chart list's "Add sub-account" (CHART-HIERARCHY.md §7). Locks Type to the parent's. */
   defaultParentId?: string | null
+  /** Field values to open with, over the three defaults above - a role row's proposal (task 119). Read each time the dialog opens. */
+  prefill?: Partial<CreateDraft>
+  /** Start with "Also create in <provider>" on - the mapping screens, where an unlinked role account blocks every export. */
+  defaultCreateInProvider?: boolean
   /**
    * The account that was just written. `ledger.chartAccounts` is already
    * invalidated by the time this fires, so a caller only has to select it.
@@ -116,6 +108,8 @@ export function ChartAccountCreateDialog({
   defaultAccountType,
   defaultSubtype,
   defaultParentId,
+  prefill,
+  defaultCreateInProvider = false,
   onCreated,
 }: ChartAccountCreateDialogProps) {
   const utils = api.useUtils()
@@ -125,10 +119,25 @@ export function ChartAccountCreateDialog({
     accountType: defaultAccountType ?? null,
     subtype: defaultSubtype ?? null,
     parentId: defaultParentId ?? null,
+    ...prefill,
   })
   const [draft, setDraft] = useState<CreateDraft>(initial)
+  const [createInProvider, setCreateInProvider] = useState(defaultCreateInProvider)
 
-  const reset = () => setDraft(initial())
+  const reset = () => {
+    setDraft(initial())
+    setCreateInProvider(defaultCreateInProvider)
+  }
+
+  // The dialog mounts with its picker, before the chart a prefill is computed from has loaded.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-seed on open only
+  useEffect(() => {
+    if (open) reset()
+  }, [open])
+
+  const { connected, providerLabel } = useAccountingProviderStatus()
+  const accountMap = api.ledger.accountMap.useQuery(undefined, { enabled: open && connected })
+  const canCreateInProvider = connected && !!accountMap.data?.canCreateProviderAccounts
 
   // D3: a sub-account shares its parent's statement type, so choosing one
   // locks Type below.
@@ -140,6 +149,14 @@ export function ChartAccountCreateDialog({
       // account, and a picker that re-reads the chart before the invalidation
       // lands would be selecting an id its own option list does not hold yet.
       await utils.ledger.chartAccounts.invalidate()
+      if (account.providerError) {
+        toastError({
+          title: `Account added, but not in ${providerLabel ?? 'the accounting system'}`,
+          description: account.providerError,
+        })
+      } else if (canCreateInProvider && createInProvider) {
+        await utils.ledger.accountMap.invalidate()
+      }
       onOpenChange(false)
       reset()
       onCreated?.(account as ChartAccountRow)
@@ -162,6 +179,7 @@ export function ChartAccountCreateDialog({
       accountType: draft.accountType as GlAccountTypeValue,
       subtype: draft.subtype,
       parentId: draft.parentId,
+      createInProvider: canCreateInProvider && createInProvider,
     })
   }
 
@@ -176,8 +194,8 @@ export function ChartAccountCreateDialog({
         <DialogHeader>
           <DialogTitle>New account</DialogTitle>
           <DialogDescription>
-            Adds one account to your chart. Activation, the provider link and renumbering are edited
-            on the Accounts settings page.
+            Adds one account to your chart. Activation and renumbering are edited on the Accounts
+            settings page.
           </DialogDescription>
         </DialogHeader>
 
@@ -279,6 +297,16 @@ export function ChartAccountCreateDialog({
             />
           </FieldPanelRow>
         </FieldPanel>
+
+        {canCreateInProvider && (
+          <ToggleCard
+            title={`Also create in ${providerLabel}`}
+            checked={createInProvider}
+            onCheckedChange={setCreateInProvider}
+            disabled={create.isPending}
+            className='mt-3'
+          />
+        )}
 
         <DialogFooter>
           <Button

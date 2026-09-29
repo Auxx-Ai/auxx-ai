@@ -2,9 +2,11 @@
 'use client'
 
 import {
+  type AccountRole,
   accountPath,
   type GlAccountSubtypeValue,
   type GlAccountTypeValue,
+  proposeRoleAccount,
 } from '@auxx/lib/accounting/ledger/client'
 import {
   Command,
@@ -18,6 +20,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
+import { api } from '~/trpc/react'
 import { AccountLabel } from '../account-label'
 import { formatAccountPath } from '../account-label-format'
 import { ChartAccountCreateDialog } from '../chart-account-create-dialog'
@@ -42,6 +45,14 @@ export interface MappingAccountSelectProps {
   mintLabel?: string
   /** Merged over the trigger's default `h-7 w-60`. */
   triggerClassName?: string
+  /** The role this row maps, so "New account" opens prefilled for it (task 119). */
+  newAccountFor?: NewAccountFor
+}
+
+/** Which role - and which store, rail or currency, if any - a new account from this picker is for. */
+export interface NewAccountFor {
+  role: AccountRole
+  scopeLabel?: string
 }
 
 /**
@@ -59,6 +70,7 @@ export function MappingAccountSelect({
   disabled = false,
   mintLabel,
   triggerClassName,
+  newAccountFor,
 }: MappingAccountSelectProps) {
   const { accounts: allAccounts, isLoading } = useChartAccounts()
   const [open, setOpen] = useState(false)
@@ -66,6 +78,16 @@ export function MappingAccountSelect({
   // A sibling of the Popover, never inside its content: Radix unmounts closed
   // popover content, and the click that opens the dialog closes the popover.
   const [createOpen, setCreateOpen] = useState(false)
+
+  const roleMap = api.ledger.roleMap.useQuery(undefined, { enabled: !!newAccountFor })
+  const prefill = useMemo(() => {
+    if (!newAccountFor) return search.trim() ? { name: search.trim() } : undefined
+    const proposal = proposeRoleAccount(newAccountFor.role, allAccounts, {
+      scopeLabel: newAccountFor.scopeLabel,
+      roleAccounts: roleMap.data?.roles,
+    })
+    return { ...proposal, code: proposal.code ?? '' }
+  }, [newAccountFor, allAccounts, roleMap.data, search])
 
   const accounts = useMemo(
     () =>
@@ -200,6 +222,8 @@ export function MappingAccountSelect({
         onOpenChange={setCreateOpen}
         defaultAccountType={filterTypes?.length === 1 ? filterTypes[0] : undefined}
         defaultSubtype={subtypePin}
+        prefill={prefill}
+        defaultCreateInProvider={!!newAccountFor}
         onCreated={(account) => select(account.id)}
       />
     </Popover>

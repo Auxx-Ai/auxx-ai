@@ -41,6 +41,11 @@ export {
 // which are already on this surface. `mint-rail-accounts.ts` is the write half
 // and stays server-only: it imports `@auxx/database`.
 export { type CodedAccount, nextAccountCode } from './next-account-code'
+export {
+  type ProposedAccount,
+  type ProposeRoleAccountOptions,
+  proposeRoleAccount,
+} from './propose-role-account'
 // The shared `FinancialSourceAccount` label: `name` first, then a
 // provider-aware derivation, so every renderer - and `source-scope.ts`'s
 // `RoleSourceRow.name` - agrees on one answer instead of five copies of
