@@ -74,34 +74,31 @@ export async function batchRecalculateQoH(
 
   // 1. Grouped SUM: one query for all parts
   //    Excludes movements where adjust_subparts=true
+  //    Driven from the part rows with entityId-only joins; see dated-reads.ts aggregatePerPart.
   const sumRows = await database
     .select({
       partId: sql<string>`fv_part."relatedEntityId"`,
       total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
     })
-    .from(schema.FieldValue)
+    .from(sql`"FieldValue" fv_part`)
     .innerJoin(
-      sql`"FieldValue" fv_part`,
+      schema.FieldValue,
       sql`${schema.FieldValue.entityId} = fv_part."entityId"
+        AND ${schema.FieldValue.fieldId} = ${qtyField.id}`
+    )
+    .leftJoin(
+      sql`"FieldValue" fv_flag`,
+      sql`fv_flag."entityId" = fv_part."entityId"
+        AND fv_flag."fieldId" = ${flagField?.id ?? ''}`
+    )
+    .where(
+      sql`fv_part."organizationId" = ${organizationId}
         AND fv_part."fieldId" = ${partRelField.id}
         AND fv_part."relatedEntityId" IN (${sql.join(
           unique.map((id) => sql`${id}`),
           sql`, `
         )})
-        AND fv_part."organizationId" = ${organizationId}`
-    )
-    .leftJoin(
-      sql`"FieldValue" fv_flag`,
-      sql`${schema.FieldValue.entityId} = fv_flag."entityId"
-        AND fv_flag."fieldId" = ${flagField?.id ?? ''}
-        AND fv_flag."organizationId" = ${organizationId}`
-    )
-    .where(
-      and(
-        eq(schema.FieldValue.fieldId, qtyField.id),
-        eq(schema.FieldValue.organizationId, organizationId),
-        sql`(fv_flag."valueBoolean" IS NULL OR fv_flag."valueBoolean" = false)`
-      )
+        AND (fv_flag."valueBoolean" IS NULL OR fv_flag."valueBoolean" = false)`
     )
     .groupBy(sql`fv_part."relatedEntityId"`)
 

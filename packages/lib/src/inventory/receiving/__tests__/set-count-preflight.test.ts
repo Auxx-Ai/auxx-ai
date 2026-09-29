@@ -25,6 +25,7 @@ vi.mock('../../costing/dated-reads', () => ({
     new Map(ids.map((id) => [id, h.nets.get(id) ?? 0])),
   readEarliestMovementAt: async (_org: string, ids: string[]) =>
     new Map(ids.map((id) => [id, h.earliest.get(id) ?? null])),
+  readPartBuiltTotal: async () => new Map<string, number>(),
 }))
 vi.mock('../../movements/initial-queries', () => ({
   readPartInitials: async (_db: unknown, _org: string, ids: string[]) =>
@@ -80,6 +81,7 @@ describe('readSetCountPreflight', () => {
         earliest,
         hasBom: true,
         unbuiltSales: 12,
+        built: 0,
       },
       {
         partId: 'screw',
@@ -88,6 +90,7 @@ describe('readSetCountPreflight', () => {
         earliest,
         hasBom: false,
         unbuiltSales: 0,
+        built: 0,
       },
       {
         partId: 'fresh',
@@ -96,6 +99,7 @@ describe('readSetCountPreflight', () => {
         earliest: null,
         hasBom: false,
         unbuiltSales: 0,
+        built: 0,
       },
     ])
   })
