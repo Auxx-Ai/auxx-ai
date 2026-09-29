@@ -97,6 +97,7 @@ export function ConnectAndGoRailsPage({ flow }: { flow: ConnectAndGoFlow }) {
                       value={flow.draft.railBanks[gateway.id] ?? null}
                       filterTypes={['asset']}
                       subtypePin='bank'
+                      newAccountFor={{ role: 'bank', scopeLabel: gateway.name || undefined }}
                       disabled={flow.finishing}
                       onChange={(value) =>
                         flow.patchDraft({

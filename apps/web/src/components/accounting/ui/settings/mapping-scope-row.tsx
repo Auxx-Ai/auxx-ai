@@ -13,7 +13,11 @@ import { Check, Link2, Plus, RotateCcw, Sparkles, TriangleAlert } from 'lucide-r
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
-import { MappingAccountSelect, type MappingAccountValue } from './mapping-account-select'
+import {
+  MappingAccountSelect,
+  type MappingAccountValue,
+  type NewAccountFor,
+} from './mapping-account-select'
 
 /** The Chart tab with this account selected, where its provider picker lives (89 D9). */
 export function chartAccountHref(glAccountId: string): string {
@@ -49,6 +53,8 @@ export interface MappingScopeRowProps {
   disabled?: boolean
   /** A draft's "Create `<mintLabel>`" option, passed to the picker. */
   mintLabel?: string
+  /** Prefills the picker's "New account" dialog for this row's role. */
+  newAccountFor?: NewAccountFor
   /** A role row with scopes beneath it. `TreeRow` renders its own chevron. */
   expandable?: boolean
   isOpen?: boolean
@@ -92,6 +98,7 @@ export function MappingScopeRow({
   onAddCurrency,
   disabled = false,
   mintLabel,
+  newAccountFor,
   expandable = false,
   isOpen,
   onToggleOpen,
@@ -173,6 +180,7 @@ export function MappingScopeRow({
             subtypePin={subtypePin}
             disabled={disabled || noFeedLinked}
             mintLabel={mintLabel}
+            newAccountFor={newAccountFor}
           />
         </div>
       }>

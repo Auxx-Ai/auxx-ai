@@ -1216,17 +1216,32 @@ export const ledgerRouter = createTRPCRouter({
         subtype: z.enum(GL_ACCOUNT_SUBTYPES).nullable().optional(),
         /** Sub-account parent (CHART-HIERARCHY §4). Omit or `null` for top level. */
         parentId: z.string().min(1).nullable().optional(),
+        /** Also create it in the connected provider and link it (task 119). */
+        createInProvider: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
+      const { createInProvider, ...fields } = input
       const result = await createChartAccount(ctx.db, {
-        ...input,
+        ...fields,
         organizationId,
         actorUserId: userId,
       })
       if (result.isErr()) throw result.error
-      return result.value
+      if (!createInProvider) return { ...result.value, providerError: null }
+
+      // The local account stands if the provider refuses; the caller selects it and shows why.
+      const linked = await createAndLinkProviderAccount(ctx.db, {
+        organizationId,
+        glAccountId: result.value.id,
+        includeAncestors: true,
+        actorUserId: userId,
+      })
+      if (linked.isErr()) return { ...result.value, providerError: linked.error.message }
+      for (const created of [...linked.value.ancestors, linked.value])
+        await rereleaseForAccount(ctx.db, organizationId, created.row.account.id)
+      return { ...result.value, providerError: null }
     }),
 
   /**

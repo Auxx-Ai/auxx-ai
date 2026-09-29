@@ -404,6 +404,9 @@ export function GlAccountPicker({
   // footer row would be torn down by the very click that opened it.
   const [catalogueOpen, setCatalogueOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  // What was typed when "New account" was clicked - no match is why they clicked it.
+  const [createName, setCreateName] = useState('')
 
   const selected = useMemo(
     () =>
@@ -417,6 +420,7 @@ export function GlAccountPicker({
   )
 
   function handleOpenChange(next: boolean) {
+    if (next) setSearch('')
     setOpen(next)
   }
 
@@ -460,6 +464,8 @@ export function GlAccountPicker({
         className='min-w-[max(var(--radix-popover-trigger-width),18rem)] p-0'
         align='start'>
         <GlAccountPickerContent
+          search={search}
+          onSearchChange={setSearch}
           accounts={accounts}
           isLoading={isLoading}
           filterTypes={filterTypes}
@@ -474,6 +480,7 @@ export function GlAccountPicker({
             setCatalogueOpen(true)
           }}
           onAddBlank={() => {
+            setCreateName(search.trim())
             handleOpenChange(false)
             setCreateOpen(true)
           }}
@@ -488,6 +495,7 @@ export function GlAccountPicker({
         // the clearing-account pickers are all `filterTypes={['asset']}`. More
         // than one and there is nothing to presume.
         defaultAccountType={filterTypes?.length === 1 ? filterTypes[0] : undefined}
+        prefill={createName ? { name: createName } : undefined}
         // 🛑 Selected by the SAME key this picker reports, not always the id.
         // A `selectBy='code'` caller handed an id would store a value its own
         // option list can never match, and the trigger would go blank.

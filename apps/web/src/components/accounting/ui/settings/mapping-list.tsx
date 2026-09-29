@@ -580,6 +580,7 @@ function RoleBlock({
       }
       filterTypes={filterTypes}
       subtypePin={subtypePin}
+      newAccountFor={{ role: roleKey }}
       linked={role.linked}
       linkAccountId={role.accountId}
       linkTooltip={linkTooltip}
@@ -670,6 +671,7 @@ function StoreScopeRow({
       inheritedAccountName={inheritedName}
       filterTypes={[ROLE_ACCOUNT_TYPES[roleKey]]}
       subtypePin={SUBTYPE_PIN[roleKey]}
+      newAccountFor={{ role: roleKey, scopeLabel: source.name }}
       description={
         roleKey === 'accounts_receivable' ? storeReceivableNote(providerName) : undefined
       }
@@ -759,6 +761,7 @@ function RailScopeRow({
       inheritedAccountName={inheritedName}
       filterTypes={[ROLE_ACCOUNT_TYPES[roleKey]]}
       subtypePin={SUBTYPE_PIN[roleKey]}
+      newAccountFor={{ role: roleKey, scopeLabel: rail.name }}
       linked={own?.linked ?? null}
       linkAccountId={own?.accountId ?? null}
       linkTooltip={linkTooltip}
@@ -877,6 +880,7 @@ function CurrencyRow({
       inheritedAccountName={inheritedName}
       filterTypes={[ROLE_ACCOUNT_TYPES[roleKey]]}
       subtypePin={SUBTYPE_PIN[roleKey]}
+      newAccountFor={{ role: roleKey, scopeLabel: `${rail.name} ${currency}` }}
       linked={override?.linked ?? null}
       linkAccountId={override?.accountId ?? null}
       linkTooltip={linkTooltip}

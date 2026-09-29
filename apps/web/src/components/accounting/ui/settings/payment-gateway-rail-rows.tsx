@@ -71,6 +71,7 @@ export function RailAccountRows({
           filterTypes={[filterType]}
           subtypePin={subtypePin}
           mintLabel={mintLabels?.[role]}
+          newAccountFor={{ role }}
           disabled={disabled}
           {...rowProps?.(role)}
         />
