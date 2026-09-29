@@ -24,3 +24,7 @@ export const DESTRUCTIVE_ROW = 'bg-destructive/5 text-destructive hover:bg-destr
  */
 export const WARNING_RING = 'border border-yellow-500/50'
 export const DESTRUCTIVE_RING = 'border border-destructive/50 dark:border-destructive'
+
+/** An action button on a {@link WARNING_ROW}. */
+export const WARNING_BUTTON =
+  'border border-amber-300 bg-amber-50/50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-300/30 dark:bg-amber-50/10 dark:text-amber-400 dark:hover:bg-amber-300/10'

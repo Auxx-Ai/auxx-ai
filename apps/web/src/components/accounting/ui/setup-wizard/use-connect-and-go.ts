@@ -88,8 +88,9 @@ export function useConnectAndGo(providerLabel: string) {
     }
     setPreparing(false)
     setReport(next)
-    // Prepare rewrites the chart and role map; the Mapping page reads them live.
+    // Prepare rewrites the chart, role map and gateways; the Mapping and rails pages read them live.
     void utils.ledger.invalidate()
+    void utils.paymentGateway.invalidate()
     // A refresh keeps what the person already typed.
     if (!seeded.current) {
       seeded.current = true

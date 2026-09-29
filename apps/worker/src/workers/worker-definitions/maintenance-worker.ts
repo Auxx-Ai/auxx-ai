@@ -46,6 +46,7 @@ import {
   recurringJournalsJob,
   recurringVisitsJob,
   reseedConnectionProvidersJob,
+  routeRailsJob,
   sendGettingStartedEmailsJob,
   sendMidTrialEmailsJob,
   sendTrialConversionEmailsJob,
@@ -286,6 +287,8 @@ export const jobMappings = {
 
   // Queued when an accounting provider connects (plans/accounting/tasks/105 §4).
   connectAndGoPrepareJob,
+  // Routes rails that appear after setup: a sales channel's first sync, an unmapped handle (118 §2).
+  routeRailsJob,
 
   // Values a part's pending rows once a standard door wrote its first standard (111 Q22).
   pricePartsJob,

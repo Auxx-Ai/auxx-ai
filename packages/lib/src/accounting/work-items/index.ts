@@ -30,7 +30,7 @@ export {
   type WorkItemListRow,
   type WorkItemRow,
 } from './reads'
-export { requestAccountingRecovery } from './recovery'
+export { requestAccountingRecovery, requestRailRouting } from './recovery'
 export {
   refusalFromError,
   refusalFromPost,

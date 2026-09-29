@@ -18,6 +18,7 @@ import { ConnectAndGoFinishPage } from './connect-and-go-finish-page'
 import { ConnectAndGoImportedPage } from './connect-and-go-imported-page'
 import { ConnectAndGoMappingPage } from './connect-and-go-mapping-page'
 import { ConnectAndGoPostingPage } from './connect-and-go-posting-page'
+import { ConnectAndGoRailsPage } from './connect-and-go-rails-page'
 import { useConnectAndGo } from './use-connect-and-go'
 import { WizardAccountsPage } from './wizard-accounts-page'
 import { type BooksMode, WizardBooksChoicePage } from './wizard-books-choice-page'
@@ -40,6 +41,7 @@ const CONNECT_AND_GO_PAGES = [
   'books',
   'accountQuestions',
   'mapping',
+  'paymentRails',
   'posting',
   'finish',
 ] as const
@@ -72,6 +74,7 @@ const PAGE_TITLES: Record<WizardPage, string> = {
   books: 'Books',
   accountQuestions: 'Accounts',
   mapping: 'Mapping',
+  paymentRails: 'Payment rails',
   posting: 'Posting',
   finish: 'Finish',
 }
@@ -221,6 +224,9 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
           </DialogNavPage>
           <DialogNavPage value='mapping' size='xl'>
             <ConnectAndGoMappingPage />
+          </DialogNavPage>
+          <DialogNavPage value='paymentRails' size='xl'>
+            <ConnectAndGoRailsPage flow={flow} />
           </DialogNavPage>
           <DialogNavPage value='posting' size='xl'>
             <ConnectAndGoPostingPage flow={flow} providerLabel={providerLabel} />

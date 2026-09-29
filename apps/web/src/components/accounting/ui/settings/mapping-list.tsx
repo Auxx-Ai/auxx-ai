@@ -49,15 +49,14 @@ import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { Ban, CreditCard, Plus, RotateCcw, Sparkles, Store, Unlink, X } from 'lucide-react'
-import Link from 'next/link'
+import { Ban, CreditCard, Plus, RotateCcw, Sparkles, Store, X } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import type { Dispatch, SetStateAction } from 'react'
 import { useCallback, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import { useChartAccounts } from '../gl-account-picker'
-import { WARNING_RING, WARNING_ROW } from '../tone-rows'
+import { WARNING_BUTTON, WARNING_RING, WARNING_ROW } from '../tone-rows'
 import {
   ACCOUNT_TYPE_OPTIONS,
   accountTypeIcon,
@@ -66,6 +65,7 @@ import {
 } from './accounts-types'
 import type { MappingAccountValue } from './mapping-account-select'
 import { MappingScopeRow } from './mapping-scope-row'
+import { UnlinkedFeedsRow } from './unlinked-feeds-row'
 
 /** Mirrors `ROLES_WITHOUT_DEFAULT` (`postings/build-entry.ts`) - not client-exported. */
 const BANK_ROLE = 'bank'
@@ -131,10 +131,6 @@ export function MappingList({
 }) {
   const roleMap = api.ledger.roleMap.useQuery()
   const gateways = api.paymentGateway.list.useQuery()
-  // The mirror of `bank`'s "no feed linked" gate: a feed with reported activity
-  // and no rail refuses every payout match, silently
-  // (`plans/accounting/payout-links.md` §10.4, "Prevention at setup").
-  const unlinkedFeeds = api.paymentGateway.listUnlinkedFeeds.useQuery()
   const utils = api.useUtils()
   // The Inherit fallback's own label (D8) - same cached `ledger.chartAccounts`
   // read every picker on this tab already shares.
@@ -265,30 +261,7 @@ export function MappingList({
 
   return (
     <div className={cn('flex flex-1 flex-col gap-3 p-3 sm:p-6', className)}>
-      {(unlinkedFeeds.data ?? []).length > 0 && (
-        <div className='flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/40'>
-          <div className='flex flex-wrap items-center gap-2'>
-            <Unlink className='size-4 shrink-0 text-amber-600 dark:text-amber-400' />
-            <span className='text-sm'>
-              {unlinkedFeeds.data?.length} processor feed
-              {unlinkedFeeds.data?.length === 1 ? '' : 's'} are not linked to a payment gateway.
-              Nothing they settle can be matched to a customer payment.
-            </span>
-            <Button variant='outline' size='sm' className='ml-auto shrink-0' asChild>
-              <Link href='/app/accounting/settings/payment-gateways'>Link a feed</Link>
-            </Button>
-          </div>
-          <ul className='flex flex-wrap gap-1.5 ps-6'>
-            {(unlinkedFeeds.data ?? []).map((feed) => (
-              <li key={feed.processorAccountId}>
-                <Badge variant='outline' size='xs'>
-                  {feed.name ?? `${feed.providerKey} ${feed.externalAccountId}`}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <UnlinkedFeedsRow canControl={canControl} />
 
       {suggestedEdits.length > 0 && (
         <TreeRow
@@ -305,7 +278,7 @@ export function MappingList({
               <Button
                 variant='ghost'
                 size='xs'
-                className='border border-amber-300 bg-amber-50/50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-300/30 dark:bg-amber-50/10 dark:text-amber-400 dark:hover:bg-amber-300/10'
+                className={WARNING_BUTTON}
                 loading={saveMapping.isPending}
                 onClick={() => saveMapping.mutate(suggestedEdits)}>
                 Confirm all

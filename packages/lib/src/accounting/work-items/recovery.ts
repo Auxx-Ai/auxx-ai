@@ -52,3 +52,33 @@ export async function requestPartPricing(
     await requestAccountingRecovery(organizationId)
   }
 }
+
+/**
+ * Queue `autoRouteRails` for a finalized org, for when rails appear after setup: a sales
+ * channel's first sync, or a handle no gateway answers to. Collapses while queued; never throws.
+ */
+export async function requestRailRouting(organizationId: string): Promise<void> {
+  try {
+    // Lazy: the queue graph is server-only and heavy.
+    const [{ getQueue }, { Queues }] = await Promise.all([
+      import('../../jobs/queues'),
+      import('../../jobs/queues/types'),
+    ])
+    // Delayed, so a burst of refusals from one sync slice collapses into one run.
+    await getQueue(Queues.maintenanceQueue).add(
+      'routeRailsJob',
+      { organizationId },
+      {
+        jobId: `route-rails-${organizationId}`,
+        delay: 30_000,
+        removeOnComplete: true,
+        removeOnFail: true,
+      }
+    )
+  } catch (error) {
+    logger.warn('Could not enqueue rail routing; an unrouted handle stays blocked until mapped', {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
