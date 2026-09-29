@@ -22,6 +22,8 @@ export type ProviderSyncRun = NonNullable<ProviderSyncRunState['currentRun']>
 
 /** One slice is one provider report call, so a tighter poll would only cost round trips. */
 const POLL_MS = 4_000
+/** Idle, so a run opened by the scheduler or another tab still shows without a reload. */
+const IDLE_POLL_MS = 30_000
 
 export interface UseProviderSyncRunResult {
   /** The open walk, or null. A `stale` one is a chain that died mid-slice (§7.4). */
@@ -43,7 +45,7 @@ export interface UseProviderSyncRunResult {
 export function useProviderSyncRun(): UseProviderSyncRunResult {
   const utils = api.useUtils()
   const query = api.ledger.providerSyncRunState.useQuery(undefined, {
-    refetchInterval: (q) => (q.state.data?.currentRun ? POLL_MS : false),
+    refetchInterval: (q) => (q.state.data?.currentRun ? POLL_MS : IDLE_POLL_MS),
     retry: false,
   })
 

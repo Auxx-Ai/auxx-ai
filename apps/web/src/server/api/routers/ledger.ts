@@ -1946,7 +1946,7 @@ export const ledgerRouter = createTRPCRouter({
         db: ctx.db,
       })
       await syncProviderSyncScheduler(ctx.session.organizationId)
-      return { cadence: input.cadence }
+      return { cadence: input.cadence, config }
     }),
 
   /**
