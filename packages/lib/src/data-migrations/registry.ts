@@ -50,6 +50,7 @@ import { migration200PartKindConfirmed } from './migrations/200-part-kind-confir
 import { migration201StockMovementTable } from './migrations/201-stock-movement-table'
 import { migration202ResetBuilds } from './migrations/202-reset-builds'
 import { migration203StockMovementConsumptionClass } from './migrations/203-stock-movement-consumption-class'
+import { migration204FieldValueAliasDefIds } from './migrations/204-field-value-alias-def-ids'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -236,6 +237,8 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   migration202ResetBuilds,
   // Stamps StockMovement.consumptionClass on rows written before the column (plans/mrp/21 §1).
   migration203StockMovementConsumptionClass,
+  // Repoints FieldValue rows stamped with a bare entity type by alias RecordId writes.
+  migration204FieldValueAliasDefIds,
 ]
 
 /**
