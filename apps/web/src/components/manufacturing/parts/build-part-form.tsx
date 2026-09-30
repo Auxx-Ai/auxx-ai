@@ -20,7 +20,7 @@
 // same arithmetic is how a preview and a write come to disagree.
 
 import { FieldType } from '@auxx/database/enums'
-import { summarizeBuildCompletion } from '@auxx/lib/inventory/builds/client'
+import { BUILD_VARIANCE_ACCOUNT, summarizeBuildCompletion } from '@auxx/lib/inventory/builds/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -353,7 +353,7 @@ export function BuildPartForm({
                 className='border-border/50 border-t pt-1'
               />
               <SummaryLine
-                label='Variance → 5090'
+                label={`Variance → ${BUILD_VARIANCE_ACCOUNT}`}
                 value={`${summary.varianceAmount > 0 ? '+' : ''}${money(summary.varianceAmount)}`}
                 className='border-border/50 border-t pt-1 font-medium'
               />

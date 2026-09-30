@@ -33,6 +33,8 @@ export function useBuildsRealtime(): void {
         void utils.builds.list.invalidate()
         void utils.builds.getBatchRun.invalidate()
         void utils.mrp.partItem.invalidate()
+        // A completion or reversal posts in the same transaction, so the sheet's ledger moves too.
+        void utils.ledger.listPostingsForSource.invalidate({ sourceKind: 'build' })
       }, BUILDS_REFRESH_MS)
     },
     [utils]
