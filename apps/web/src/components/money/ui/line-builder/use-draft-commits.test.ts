@@ -54,6 +54,18 @@ describe('useDraftCommits', () => {
     expect(draftsRef.current).toEqual([])
   })
 
+  it('keys the created line by its draft id, so its row stays mounted', async () => {
+    const { result, settleCreate } = setup()
+    let created: Promise<void> = Promise.resolve()
+    act(() => {
+      created = result.current.createDraft('d1', { name: 'Widget A' })
+    })
+    expect(result.current.rowKeys.size).toBe(0)
+    await settleCreate()
+    await act(() => created)
+    expect(result.current.rowKeys.get('line_1')).toBe('d1')
+  })
+
   it('sends a commit that reaches the draft after the swap to its line', async () => {
     const { result, writes, settleCreate } = setup()
     let created: Promise<void> = Promise.resolve()

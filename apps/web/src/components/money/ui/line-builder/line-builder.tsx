@@ -57,7 +57,6 @@ import { type ResolvedCatalogGroup, resolveCatalogGroup } from './catalog-group-
 import {
   type CategoryOption,
   type DraftLine,
-  DraftLineRow,
   freshDraft,
   type LandedBillEditorRenderer,
   LINE_COLS,
@@ -413,7 +412,7 @@ export function LineBuilder({
 
   const deleteLine = useCallback((lineId: string) => writes.remove([lineId]), [writes])
 
-  const { createDraft, createDrafts, applyPrefillPatch, deleteDraft } = useDraftCommits({
+  const { createDraft, createDrafts, applyPrefillPatch, deleteDraft, rowKeys } = useDraftCommits({
     kind,
     visitId,
     enabled: !!entityDefinitionId,
@@ -592,60 +591,56 @@ export function LineBuilder({
             disabled={readOnly}>
             {/* Only real line ids are sortable; drafts pin under their anchor or the tail. */}
             {visualRows.map((row) => {
+              const shared = {
+                rowIndex: row.rowIndex,
+                entityDefinitionId,
+                categoryOptions,
+                photosField,
+                readOnly,
+                currencyCode,
+                documentType,
+                catalogParts,
+                catalogGroups,
+                catalogPartMap,
+                catalogLoading,
+                matchScopeRecordId,
+                renderMatchKeyEditor,
+                renderLandedBillEditor,
+                weightRevealed,
+                resolvePartPrefill: boundResolvePartPrefill,
+                onRevealWeight: revealWeight,
+              }
               if (row.kind === 'draft') {
+                const { draftId } = row.draft
                 return (
-                  <DraftLineRow
-                    key={row.draft.draftId}
-                    draft={row.draft}
-                    rowIndex={row.rowIndex}
-                    autoFocus={row.draft.draftId === lastAddedDraftId}
-                    categoryOptions={categoryOptions}
-                    currencyCode={currencyCode}
-                    documentType={documentType}
-                    catalogParts={catalogParts}
-                    catalogGroups={catalogGroups}
-                    catalogPartMap={catalogPartMap}
-                    catalogLoading={catalogLoading}
-                    matchScopeRecordId={matchScopeRecordId}
-                    renderMatchKeyEditor={renderMatchKeyEditor}
-                    renderLandedBillEditor={renderLandedBillEditor}
-                    weightRevealed={weightRevealed}
-                    resolvePartPrefill={boundResolvePartPrefill}
-                    onRevealWeight={revealWeight}
-                    deleteDraft={deleteDraft}
-                    createDraft={createDraft}
-                    applyPrefillPatch={applyPrefillPatch}
-                    onSelectGroup={handleGroupPickDraft}
+                  <LineRow
+                    key={draftId}
+                    {...shared}
+                    id={draftId}
+                    values={row.draft}
+                    autoFocus={draftId === lastAddedDraftId}
+                    onCommit={(patch) => createDraft(draftId, patch)}
+                    onApplyPrefill={(patch) => applyPrefillPatch(draftId, patch)}
+                    onDelete={() => deleteDraft(draftId)}
+                    onSelectGroup={(group) => handleGroupPickDraft(draftId, group)}
                   />
                 )
               }
-              const values = rowValues.get(row.line.id)
+              const lineId = row.line.id
+              const values = rowValues.get(lineId)
               if (!values) return null
               return (
                 <LineRow
-                  key={row.line.id}
+                  // A created draft's row keeps its key, so it stays mounted mid-edit.
+                  key={rowKeys.get(lineId) ?? lineId}
+                  {...shared}
+                  id={lineId}
                   line={row.line}
                   values={values}
-                  rowIndex={row.rowIndex}
-                  entityDefinitionId={entityDefinitionId}
-                  categoryOptions={categoryOptions}
-                  photosField={photosField}
-                  readOnly={readOnly}
-                  currencyCode={currencyCode}
-                  documentType={documentType}
-                  catalogParts={catalogParts}
-                  catalogGroups={catalogGroups}
-                  catalogPartMap={catalogPartMap}
-                  catalogLoading={catalogLoading}
-                  matchScopeRecordId={matchScopeRecordId}
-                  renderMatchKeyEditor={renderMatchKeyEditor}
-                  renderLandedBillEditor={renderLandedBillEditor}
-                  weightRevealed={weightRevealed}
-                  resolvePartPrefill={boundResolvePartPrefill}
-                  onRevealWeight={revealWeight}
-                  onUpdateLine={updateLine}
-                  deleteLine={deleteLine}
-                  onSelectGroup={handleGroupPick}
+                  onCommit={(patch) => updateLine(lineId, patch)}
+                  onApplyPrefill={(patch) => updateLine(lineId, patch)}
+                  onDelete={() => deleteLine(lineId)}
+                  onSelectGroup={(group) => handleGroupPick(lineId, group)}
                 />
               )
             })}

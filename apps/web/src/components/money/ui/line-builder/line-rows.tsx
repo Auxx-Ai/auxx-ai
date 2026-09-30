@@ -4,9 +4,9 @@
 
 // Row + cell components for the line-items builder (line-builder.tsx). Split
 // out once the builder file crossed the ~800-line component threshold:
-// this file owns presentational cell views and the two row shells (`LineRow`
-// for real records, `DraftLineRow` for phantom
-// draft lines — see line-builder.tsx's file-header comment for the draft
+// this file owns presentational cell views and the row shells (`LineRow`, the
+// builder's one row for drafts and lines alike; `DraftLineRow` for intake's
+// phantom lines — see line-builder.tsx's file-header comment for the draft
 // lifecycle). `LineBuilder` itself (state, mutations, data fetching) stays in
 // line-builder.tsx.
 //
@@ -2239,42 +2239,9 @@ export async function applyPartPrefill({
   apply(patch)
 }
 
-/** One sortable line row — a grid row whose leading slot is the drag grip. */
-export function LineRow({
-  line: storedLine,
-  values: line,
-  rowIndex,
-  entityDefinitionId,
-  categoryOptions,
-  photosField,
-  readOnly,
-  currencyCode,
-  documentType,
-  catalogParts,
-  catalogGroups,
-  catalogPartMap,
-  catalogLoading,
-  matchScopeRecordId,
-  renderMatchKeyEditor,
-  renderLandedBillEditor,
-  weightRevealed = false,
-  resolvePartPrefill,
-  onRevealWeight,
-  onUpdateLine,
-  deleteLine,
-  onSelectGroup,
-}: {
-  /** The cached line; `values` is the same line in the row's vocabulary. */
-  line: Line
-  values: LineValues
-  rowIndex: number
-  /** The line entity's def id, for the photo popover's record id. */
-  entityDefinitionId: string
+/** What every row passes straight through to its cells. */
+interface LineRowCellProps {
   categoryOptions: CategoryOption[]
-  /** `line_item.photos` field def (plan 37b §4) — `null` skips the photo chip
-   * entirely (pre-migration org). */
-  photosField: ResourceField | null
-  readOnly: boolean
   currencyCode: string
   documentType: LineDocumentType
   catalogParts: CatalogPart[]
@@ -2289,229 +2256,15 @@ export function LineRow({
   weightRevealed?: boolean
   resolvePartPrefill?: PartPrefillResolver
   onRevealWeight: () => void
-  onUpdateLine: (lineId: string, patch: LinePatch) => void
-  deleteLine: (lineId: string) => void
-  onSelectGroup: (lineId: string, group: CatalogGroup) => void
-}) {
-  const lineId = storedLine.id
-  const recordId = toRecordId(entityDefinitionId, lineId)
-  const kind = lineKindFor(documentType)
-  const attrs = partCellAttrs(kind)
-  const showOptional = kind.capabilities.optional
-  const vendorCode = storedLine.vendorCode?.trim() ?? ''
-  const vendorCodeChip = vendorCode ? (
-    <SimpleTooltip content='Vendor code'>
-      <span className='max-w-28 truncate font-mono text-muted-foreground text-xs'>
-        {vendorCode}
-      </span>
-    </SimpleTooltip>
-  ) : undefined
-  const partUnit = usePartUnit(kind.capabilities.partPicker ? line.partRecordId : null)
-  // Only the purchase order has an offer link (§2.9 item 2).
-  const { purchaseUnit, purchaseRatio } = useVendorPartPurchaseUnit(
-    attrs.vendorPart ? line.vendorPartRecordId : null
-  )
-  // Read at prefill-completion time, never at pick time — see `applyPartPrefill`.
-  const priceRef = useLatestRef(line.unitPriceCents)
-  // The popover writes photos through the field store, not the lines module, so that
-  // store is fresher than the cached line once this tab has touched them.
-  const { values: photoValues } = useSystemValues(
-    recordId,
-    kind.photosAttr ? [kind.photosAttr] : [],
-    {
-      autoFetch: false,
-      enabled: !!kind.photosAttr,
-    }
-  )
-  const storedPhotos = kind.photosAttr ? photoValues[kind.photosAttr] : undefined
-  const photoCount = Array.isArray(storedPhotos)
-    ? storedPhotos.length
-    : (storedLine.photos?.length ?? 0)
-  // Photo popover open state lives here (not in LinePhotoPopover) so the `⋯`
-  // menu's "Add images" and the ⇧P shortcut can open it (plan 40).
-  const [photosOpen, setPhotosOpen] = useState(false)
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: lineId,
-    disabled: readOnly,
-  })
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn(isDragging && 'relative z-10 opacity-80')}>
-      <LineGridRow
-        rowIndex={rowIndex}
-        optional={line.optional}
-        grip={readOnly ? null : <GripSlot attributes={attributes} listeners={listeners} />}
-        name={
-          kind.capabilities.partPicker && attrs.part ? (
-            <LinePartCellView
-              partAttribute={attrs.part}
-              partRecordId={line.partRecordId}
-              description={line.description}
-              matchKeyAttribute={attrs.matchKey}
-              matchKeyRecordId={line.purchaseOrderLineRecordId}
-              landedBillAttribute={attrs.landedBill}
-              landedBillRecordId={line.landedBillRecordId}
-              renderLandedBillEditor={renderLandedBillEditor}
-              matchScopeRecordId={matchScopeRecordId}
-              renderMatchKeyEditor={renderMatchKeyEditor}
-              currencyCode={currencyCode}
-              glAccountAttribute={attrs.glAccount}
-              glAccount={line.glAccount}
-              weightAttribute={attrs.weight}
-              weight={line.weight}
-              weightRevealed={weightRevealed}
-              returnsStockAttribute={attrs.returnsStock}
-              returnsStock={line.returnsStock}
-              onToggleReturnsStock={(returnsStock) => onUpdateLine(lineId, { returnsStock })}
-              readOnly={readOnly}
-              // The part write and the prefill are two separate patches on
-              // purpose: the pick must land in this frame (it is what the person
-              // just did, and on a draft it is what materializes the row), while
-              // the supplier lookup is a round trip that may resolve to nothing.
-              onPickPart={(partRecordId) => {
-                // 🛑 Clearing the part clears the supplier link with it.
-                // `vendorPartRecordId` is provenance FOR that part, so a link
-                // left behind names a `vendor_part` for a part the line no
-                // longer carries — the same reason `applyPartPrefill` rewrites
-                // it on every pick. It cannot do that job here, because it
-                // returns early on a null part.
-                onUpdateLine(lineId, {
-                  partRecordId,
-                  ...(partRecordId === null ? { vendorPartRecordId: null } : {}),
-                })
-                void applyPartPrefill({
-                  partRecordId,
-                  resolve: resolvePartPrefill,
-                  currentPriceRef: priceRef,
-                  apply: (patch) => onUpdateLine(lineId, patch),
-                })
-              }}
-              onCommitDescription={(description) => onUpdateLine(lineId, { description })}
-              onPickMatchKey={(purchaseOrderLineRecordId) =>
-                onUpdateLine(lineId, { purchaseOrderLineRecordId })
-              }
-              onPickLandedBill={(landedBillRecordId) =>
-                onUpdateLine(lineId, { landedBillRecordId })
-              }
-              onCommitGlAccount={(glAccount) => onUpdateLine(lineId, { glAccount })}
-              onCommitWeight={(weight) => onUpdateLine(lineId, { weight })}
-              onRevealWeight={onRevealWeight}
-              onDelete={() => deleteLine(lineId)}
-              chips={vendorCodeChip}
-            />
-          ) : (
-            <LineNameCellView
-              name={line.name}
-              sourceRecordId={kind.lineEntityType === 'line_item' ? line.partRecordId : null}
-              description={line.description}
-              category={line.category}
-              categoryOptions={categoryOptions}
-              taxable={line.taxable}
-              readOnly={readOnly}
-              currencyCode={currencyCode}
-              catalogParts={catalogParts}
-              catalogGroups={catalogGroups}
-              catalogPartMap={catalogPartMap}
-              catalogLoading={catalogLoading}
-              showOptionalControls={showOptional}
-              optional={line.optional}
-              optionalSelected={line.optionalSelected}
-              onToggleOptional={(optional) => onUpdateLine(lineId, { optional })}
-              onToggleOptionalSelected={(optionalSelected) =>
-                onUpdateLine(lineId, { optionalSelected })
-              }
-              onToggleTaxable={(taxable) => onUpdateLine(lineId, { taxable })}
-              onPickPart={(part) => onUpdateLine(lineId, partToLinePatch(part))}
-              onSelectGroup={(group) => onSelectGroup(lineId, group)}
-              onFreeText={(name) => onUpdateLine(lineId, { name })}
-              onCommitDescription={(description) => onUpdateLine(lineId, { description })}
-              onCommitCategory={(category) => onUpdateLine(lineId, { category })}
-              onDelete={() => deleteLine(lineId)}
-              photoChip={
-                photosField ? (
-                  <LinePhotoPopover
-                    recordId={recordId}
-                    field={photosField}
-                    photoCount={photoCount}
-                    readOnly={readOnly}
-                    open={photosOpen}
-                    onOpenChange={setPhotosOpen}
-                  />
-                ) : undefined
-              }
-              hasPhotos={photoCount > 0}
-              onOpenPhotos={photosField && !readOnly ? () => setPhotosOpen(true) : undefined}
-            />
-          )
-        }
-        qty={
-          <QuantityCellView
-            quantity={line.qty}
-            // A purchasing line's unit is the PART's; the kind's own `unit`
-            // attribute is `null` there, so `line.unit` is always null too.
-            unit={kind.capabilities.partPicker ? partUnit : line.unit}
-            unitEditable={kind.capabilities.unit}
-            readOnly={readOnly}
-            purchaseUnit={purchaseUnit}
-            purchaseRatio={purchaseRatio}
-            onCommit={(next) => {
-              const patch: LinePatch = {}
-              if (next.quantity !== line.qty) patch.qty = next.quantity
-              if (next.unit !== line.unit) patch.unit = next.unit
-              onUpdateLine(lineId, patch)
-            }}
-          />
-        }
-        price={
-          <PriceCellView
-            value={line.unitPriceCents}
-            readOnly={readOnly}
-            currencyCode={currencyCode}
-            // 🛑 The rate and the amount are the ONE pair that cross-fills. This
-            // arm — rate → amount — only ever runs on a `stored` document, and
-            // there it fills a blank amount and never rewrites one already
-            // entered: see `crossFillAmount` for why correcting the pair would
-            // delete the match finding. On the PO there is no amount field to
-            // fill, so it passes straight through.
-            onCommit={(unitPriceCents) =>
-              onUpdateLine(lineId, crossFillAmount({ unitPriceCents }, line, kind))
-            }
-          />
-        }
-        totalNavigable={kind.amountMode === 'stored' || kind.amountMode === 'derived-editable'}
-        total={
-          <LineTotalCellView
-            amountMode={kind.amountMode}
-            qty={line.qty}
-            unitPrice={line.unitPriceCents}
-            lineTotal={line.lineTotal}
-            mismatch={hasAmountMismatch(line, kind)}
-            readOnly={readOnly}
-            currencyCode={currencyCode}
-            onCommit={(lineTotal) =>
-              onUpdateLine(lineId, crossFillAmount({ lineTotal }, line, kind))
-            }
-          />
-        }
-      />
-    </div>
-  )
 }
 
-/**
- * A phantom draft line row — same grid layout as {@link LineRow}, wired to local
- * draft state instead of the field-value store. Not drag-sortable (empty,
- * disabled grip slot in place of the handle, so columns stay aligned). Every
- * commit callback routes through `createDraft`, which fires the record's first
- * `record.create` on the draft's first real edit.
- */
-export function DraftLineRow({
-  draft,
+/** The grid row over one line's values, shared by {@link LineRow} and {@link DraftLineRow}. */
+function LineRowCells({
+  values: line,
   rowIndex,
-  autoFocus,
+  readOnly,
+  grip,
+  autoFocus = false,
   categoryOptions,
   currencyCode,
   documentType,
@@ -2524,119 +2277,80 @@ export function DraftLineRow({
   renderLandedBillEditor,
   weightRevealed = false,
   resolvePartPrefill,
-  grip = null,
-  cellChips = null,
-  cellMenuItems = null,
+  chips,
+  menuItems,
   allowClearPart = false,
+  photoChip,
+  hasPhotos = false,
+  onOpenPhotos,
   onRevealWeight,
-  deleteDraft,
-  createDraft,
-  applyPrefillPatch,
+  onCommit,
+  onApplyPrefill,
+  onDelete,
   onSelectGroup,
-}: {
-  draft: DraftLine
+}: LineRowCellProps & {
+  values: LineValues
   rowIndex: number
-  /** Focus the name input on mount — set for the just-added draft. */
-  autoFocus: boolean
-  categoryOptions: CategoryOption[]
-  currencyCode: string
-  documentType: LineDocumentType
-  catalogParts: CatalogPart[]
-  catalogGroups: CatalogGroup[]
-  catalogPartMap: Map<string, CatalogPart>
-  catalogLoading: boolean
-  matchScopeRecordId: RecordId | null
-  renderMatchKeyEditor?: MatchKeyEditorRenderer
-  renderLandedBillEditor?: LandedBillEditorRenderer
-  weightRevealed?: boolean
-  resolvePartPrefill?: PartPrefillResolver
-  /**
-   * What rides in the left gutter slot the drag grip occupies on a real row.
-   *
-   * Draft rows are not sortable, so this slot has always been empty here
-   * (`grip={null}` was hardcoded). It is a prop rather than a fifth column
-   * because `LINE_COLS` is shared by every document and widening it for one
-   * screen widens it for all six (see the note at `LineRowMenu`). Purchase-order
-   * intake puts its match-tier badge here; every other caller omits it and gets
-   * the previous behaviour unchanged.
-   */
-  grip?: ReactNode
-  /**
-   * Standing controls appended to the leading cell's chip run, just before the
-   * `⋯` menu. Purchase-order intake puts the vendor's printed line there; every
-   * other caller omits it. Part-picker documents only — the sell-side cell has
-   * its own fixed anatomy.
-   */
-  cellChips?: ReactNode
-  /**
-   * Extra `⋯` menu items, rendered above the delete separator.
-   *
-   * 🛑 This exists so a screen with its own line vocabulary extends the ONE row
-   * menu instead of drawing a second `⋯` beside it. See {@link LineRowMenu}.
-   */
-  cellMenuItems?: ReactNode
-  /** @see LinePartCellView's `allowClearPart` — off by default, and why. */
+  readOnly: boolean
+  grip: ReactNode
+  autoFocus?: boolean
+  chips?: ReactNode
+  menuItems?: ReactNode
   allowClearPart?: boolean
-  onRevealWeight: () => void
-  deleteDraft: (draftId: string) => void
-  createDraft: (draftId: string, overrides?: LinePatch) => Promise<void>
-  applyPrefillPatch: (draftId: string, patch: LinePatch) => Promise<void>
-  onSelectGroup: (draftId: string, group: CatalogGroup) => void
+  photoChip?: ReactNode
+  hasPhotos?: boolean
+  onOpenPhotos?: () => void
+  onCommit: (patch: LinePatch) => Promise<void> | void
+  /** Lands the supplier price prefill once the pick's own commit has settled. */
+  onApplyPrefill: (patch: LinePatch) => Promise<void> | void
+  onDelete: () => void
+  onSelectGroup: (group: CatalogGroup) => void
 }) {
   const kind = lineKindFor(documentType)
   const attrs = partCellAttrs(kind)
   const showOptional = kind.capabilities.optional
-  const partUnit = usePartUnit(kind.capabilities.partPicker ? draft.partRecordId : null)
+  const partUnit = usePartUnit(kind.capabilities.partPicker ? line.partRecordId : null)
+  // Only the purchase order has an offer link (§2.9 item 2).
   const { purchaseUnit, purchaseRatio } = useVendorPartPurchaseUnit(
-    attrs.vendorPart ? draft.vendorPartRecordId : null
+    attrs.vendorPart ? line.vendorPartRecordId : null
   )
-  const priceRef = useLatestRef(draft.unitPriceCents)
+  // Read at prefill-completion time, never at pick time — see `applyPartPrefill`.
+  const priceRef = useLatestRef(line.unitPriceCents)
+  const commit = (patch: LinePatch) => void onCommit(patch)
 
   return (
     <LineGridRow
       rowIndex={rowIndex}
-      optional={showOptional && draft.optional}
+      optional={showOptional && line.optional}
       grip={grip}
       name={
         kind.capabilities.partPicker && attrs.part ? (
           <LinePartCellView
             partAttribute={attrs.part}
-            partRecordId={draft.partRecordId}
-            description={draft.description}
+            partRecordId={line.partRecordId}
+            description={line.description}
             matchKeyAttribute={attrs.matchKey}
-            matchKeyRecordId={draft.purchaseOrderLineRecordId}
+            matchKeyRecordId={line.purchaseOrderLineRecordId}
             landedBillAttribute={attrs.landedBill}
-            landedBillRecordId={draft.landedBillRecordId}
+            landedBillRecordId={line.landedBillRecordId}
             renderLandedBillEditor={renderLandedBillEditor}
             matchScopeRecordId={matchScopeRecordId}
             renderMatchKeyEditor={renderMatchKeyEditor}
             currencyCode={currencyCode}
             glAccountAttribute={attrs.glAccount}
-            glAccount={draft.glAccount}
+            glAccount={line.glAccount}
             weightAttribute={attrs.weight}
-            weight={draft.weight}
+            weight={line.weight}
             weightRevealed={weightRevealed}
             returnsStockAttribute={attrs.returnsStock}
-            returnsStock={draft.returnsStock}
-            onToggleReturnsStock={(returnsStock) =>
-              void createDraft(draft.draftId, { returnsStock })
-            }
-            readOnly={false}
-            // On a PURCHASE ORDER the part IS the line's identity, so picking one
-            // is what fires the draft's first `record.create` — carrying any
-            // description already typed. On a bill it is not
-            // (`capabilities.draftRequiresPart`), and any of these commits can
-            // materialize the row. See LinePartCellView and `createDraft`.
-            //
-            // The create fires immediately, so the row still appears the instant
-            // the part is picked. The PREFILL is then sequenced after it rather
-            // than racing it: `applyPrefillPatch` needs a settled target, and a
-            // patch that lands mid-create used to either flicker a placeholder
-            // row or be silently dropped. See `applyPrefillPatch` for both.
+            returnsStock={line.returnsStock}
+            onToggleReturnsStock={(returnsStock) => commit({ returnsStock })}
+            readOnly={readOnly}
+            // On a draft this commit is the create; the prefill waits for it so
+            // `onApplyPrefill` has a settled target (plans/purchasing/05 §5.2).
             onPickPart={(partRecordId) => {
-              // Clearing drops the supplier link too — see the note on the
-              // persisted row's `onPickPart` above.
-              const created = createDraft(draft.draftId, {
+              // Clearing the part clears its supplier link: that link is provenance for the part.
+              const committed = onCommit({
                 partRecordId,
                 ...(partRecordId === null ? { vendorPartRecordId: null } : {}),
               })
@@ -2644,35 +2358,29 @@ export function DraftLineRow({
                 partRecordId,
                 resolve: resolvePartPrefill,
                 currentPriceRef: priceRef,
-                apply: (patch) => void created.then(() => applyPrefillPatch(draft.draftId, patch)),
+                apply: (patch) => void Promise.resolve(committed).then(() => onApplyPrefill(patch)),
               })
             }}
-            // Also routed through `createDraft`, which accumulates rather than
-            // creating while a required part is still unset — every draft-state
-            // write goes through `mutateDrafts`, never a direct mutation.
-            onCommitDescription={(description) => void createDraft(draft.draftId, { description })}
-            onPickMatchKey={(purchaseOrderLineRecordId) =>
-              void createDraft(draft.draftId, { purchaseOrderLineRecordId })
-            }
-            onPickLandedBill={(landedBillRecordId) =>
-              void createDraft(draft.draftId, { landedBillRecordId })
-            }
-            onCommitGlAccount={(glAccount) => void createDraft(draft.draftId, { glAccount })}
-            onCommitWeight={(weight) => void createDraft(draft.draftId, { weight })}
+            onCommitDescription={(description) => commit({ description })}
+            onPickMatchKey={(purchaseOrderLineRecordId) => commit({ purchaseOrderLineRecordId })}
+            onPickLandedBill={(landedBillRecordId) => commit({ landedBillRecordId })}
+            onCommitGlAccount={(glAccount) => commit({ glAccount })}
+            onCommitWeight={(weight) => commit({ weight })}
             onRevealWeight={onRevealWeight}
-            onDelete={() => deleteDraft(draft.draftId)}
-            chips={cellChips}
-            menuItems={cellMenuItems}
+            onDelete={onDelete}
+            chips={chips}
+            menuItems={menuItems}
             allowClearPart={allowClearPart}
           />
         ) : (
           <LineNameCellView
-            name={draft.name}
-            description={draft.description}
-            category={draft.category}
+            name={line.name}
+            sourceRecordId={kind.lineEntityType === 'line_item' ? line.partRecordId : null}
+            description={line.description}
+            category={line.category}
             categoryOptions={categoryOptions}
-            taxable={draft.taxable}
-            readOnly={false}
+            taxable={line.taxable}
+            readOnly={readOnly}
             currencyCode={currencyCode}
             catalogParts={catalogParts}
             catalogGroups={catalogGroups}
@@ -2680,60 +2388,222 @@ export function DraftLineRow({
             catalogLoading={catalogLoading}
             autoFocus={autoFocus}
             showOptionalControls={showOptional}
-            optional={draft.optional}
-            optionalSelected={draft.optionalSelected}
-            onToggleOptional={(next) => void createDraft(draft.draftId, { optional: next })}
-            onToggleOptionalSelected={(next) =>
-              void createDraft(draft.draftId, { optionalSelected: next })
-            }
-            onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
-            onPickPart={(part) => void createDraft(draft.draftId, partToLinePatch(part))}
-            onSelectGroup={(group) => onSelectGroup(draft.draftId, group)}
-            onFreeText={(text) => void createDraft(draft.draftId, { name: text })}
-            onCommitDescription={(value) => void createDraft(draft.draftId, { description: value })}
-            onCommitCategory={(value) => void createDraft(draft.draftId, { category: value })}
-            onDelete={() => deleteDraft(draft.draftId)}
+            optional={line.optional}
+            optionalSelected={line.optionalSelected}
+            onToggleOptional={(optional) => commit({ optional })}
+            onToggleOptionalSelected={(optionalSelected) => commit({ optionalSelected })}
+            onToggleTaxable={(taxable) => commit({ taxable })}
+            onPickPart={(part) => commit(partToLinePatch(part))}
+            onSelectGroup={onSelectGroup}
+            onFreeText={(name) => commit({ name })}
+            onCommitDescription={(description) => commit({ description })}
+            onCommitCategory={(category) => commit({ category })}
+            onDelete={onDelete}
+            photoChip={photoChip}
+            hasPhotos={hasPhotos}
+            onOpenPhotos={onOpenPhotos}
           />
         )
       }
       qty={
         <QuantityCellView
-          quantity={draft.qty}
-          unit={kind.capabilities.partPicker ? partUnit : draft.unit}
+          quantity={line.qty}
+          // A purchasing line's unit is the PART's; the kind has no `unit` attribute there.
+          unit={kind.capabilities.partPicker ? partUnit : line.unit}
           unitEditable={kind.capabilities.unit}
-          readOnly={false}
+          readOnly={readOnly}
           purchaseUnit={purchaseUnit}
           purchaseRatio={purchaseRatio}
-          onCommit={(next) =>
-            void createDraft(draft.draftId, { qty: next.quantity, unit: next.unit })
-          }
+          onCommit={(next) => {
+            const patch: LinePatch = {}
+            if (next.quantity !== line.qty) patch.qty = next.quantity
+            if (next.unit !== line.unit) patch.unit = next.unit
+            commit(patch)
+          }}
         />
       }
       price={
         <PriceCellView
-          value={draft.unitPriceCents}
-          readOnly={false}
+          value={line.unitPriceCents}
+          readOnly={readOnly}
           currencyCode={currencyCode}
-          onCommit={(next) =>
-            void createDraft(draft.draftId, crossFillAmount({ unitPriceCents: next }, draft, kind))
-          }
+          // Rate → amount fills a blank amount only; see `crossFillAmount`.
+          onCommit={(unitPriceCents) => commit(crossFillAmount({ unitPriceCents }, line, kind))}
         />
       }
       totalNavigable={kind.amountMode === 'stored' || kind.amountMode === 'derived-editable'}
       total={
         <LineTotalCellView
           amountMode={kind.amountMode}
-          qty={draft.qty}
-          unitPrice={draft.unitPriceCents}
-          lineTotal={draft.lineTotal}
-          mismatch={hasAmountMismatch(draft, kind)}
-          readOnly={false}
+          qty={line.qty}
+          unitPrice={line.unitPriceCents}
+          lineTotal={line.lineTotal}
+          mismatch={hasAmountMismatch(line, kind)}
+          readOnly={readOnly}
           currencyCode={currencyCode}
-          onCommit={(lineTotal) =>
-            void createDraft(draft.draftId, crossFillAmount({ lineTotal }, draft, kind))
-          }
+          onCommit={(lineTotal) => commit(crossFillAmount({ lineTotal }, line, kind))}
         />
       }
+    />
+  )
+}
+
+/**
+ * One builder row, draft or line. A single component so the row a person is typing in stays
+ * mounted, with its in-progress input, when its draft becomes a line.
+ */
+export function LineRow({
+  id,
+  line: storedLine,
+  values,
+  rowIndex,
+  entityDefinitionId,
+  photosField,
+  readOnly,
+  autoFocus = false,
+  onCommit,
+  onApplyPrefill,
+  onDelete,
+  onSelectGroup,
+  ...cellProps
+}: LineRowCellProps & {
+  /** The line id, or the draft id while the row is a draft. */
+  id: string
+  /** The cached line; absent while the row is a draft. */
+  line?: Line
+  values: LineValues
+  rowIndex: number
+  /** The line entity's def id, for the photo popover's record id. */
+  entityDefinitionId: string
+  /** `line_item.photos` field def (plan 37b §4); `null` skips the photo chip. */
+  photosField: ResourceField | null
+  readOnly: boolean
+  /** Focus the name input on mount — set for the just-added draft. */
+  autoFocus?: boolean
+  onCommit: (patch: LinePatch) => Promise<void> | void
+  onApplyPrefill: (patch: LinePatch) => Promise<void> | void
+  onDelete: () => void
+  onSelectGroup: (group: CatalogGroup) => void
+}) {
+  const kind = lineKindFor(cellProps.documentType)
+  const recordId = storedLine ? toRecordId(entityDefinitionId, storedLine.id) : null
+  const vendorCode = storedLine?.vendorCode?.trim() ?? ''
+  const vendorCodeChip = vendorCode ? (
+    <SimpleTooltip content='Vendor code'>
+      <span className='max-w-28 truncate font-mono text-muted-foreground text-xs'>
+        {vendorCode}
+      </span>
+    </SimpleTooltip>
+  ) : undefined
+  // The popover writes photos through the field store, not the lines module, so that
+  // store is fresher than the cached line once this tab has touched them.
+  const { values: photoValues } = useSystemValues(
+    recordId,
+    kind.photosAttr ? [kind.photosAttr] : [],
+    { autoFetch: false, enabled: !!kind.photosAttr && !!recordId }
+  )
+  const storedPhotos = kind.photosAttr ? photoValues[kind.photosAttr] : undefined
+  const photoCount = Array.isArray(storedPhotos)
+    ? storedPhotos.length
+    : (storedLine?.photos?.length ?? 0)
+  // Open state lives here so the `⋯` menu and the ⇧P shortcut can open the popover (plan 40).
+  const [photosOpen, setPhotosOpen] = useState(false)
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: readOnly || !storedLine,
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(isDragging && 'relative z-10 opacity-80')}>
+      <LineRowCells
+        {...cellProps}
+        values={values}
+        rowIndex={rowIndex}
+        readOnly={readOnly}
+        autoFocus={autoFocus}
+        grip={
+          storedLine && !readOnly ? (
+            <GripSlot attributes={attributes} listeners={listeners} />
+          ) : null
+        }
+        chips={vendorCodeChip}
+        photoChip={
+          photosField && recordId ? (
+            <LinePhotoPopover
+              recordId={recordId}
+              field={photosField}
+              photoCount={photoCount}
+              readOnly={readOnly}
+              open={photosOpen}
+              onOpenChange={setPhotosOpen}
+            />
+          ) : undefined
+        }
+        hasPhotos={photoCount > 0}
+        onOpenPhotos={photosField && recordId && !readOnly ? () => setPhotosOpen(true) : undefined}
+        onCommit={onCommit}
+        onApplyPrefill={onApplyPrefill}
+        onDelete={onDelete}
+        onSelectGroup={onSelectGroup}
+      />
+    </div>
+  )
+}
+
+/**
+ * A phantom draft line row outside the builder (purchase-order intake): the same cells as
+ * {@link LineRow}, every commit routed through `createDraft`, not drag-sortable.
+ */
+export function DraftLineRow({
+  draft,
+  rowIndex,
+  autoFocus,
+  grip = null,
+  cellChips = null,
+  cellMenuItems = null,
+  allowClearPart = false,
+  deleteDraft,
+  createDraft,
+  applyPrefillPatch,
+  onSelectGroup,
+  ...cellProps
+}: LineRowCellProps & {
+  draft: DraftLine
+  rowIndex: number
+  /** Focus the name input on mount — set for the just-added draft. */
+  autoFocus: boolean
+  /** The left gutter slot a real row's drag grip occupies; intake puts its match-tier badge here. */
+  grip?: ReactNode
+  /** Controls appended to the leading cell's chip run, before the `⋯` menu (part-picker kinds). */
+  cellChips?: ReactNode
+  /** Extra `⋯` menu items above the delete separator, so a screen extends the one row menu. */
+  cellMenuItems?: ReactNode
+  /** @see LinePartCellView's `allowClearPart` — off by default, and why. */
+  allowClearPart?: boolean
+  deleteDraft: (draftId: string) => void
+  createDraft: (draftId: string, overrides?: LinePatch) => Promise<void>
+  applyPrefillPatch: (draftId: string, patch: LinePatch) => Promise<void>
+  onSelectGroup: (draftId: string, group: CatalogGroup) => void
+}) {
+  const { draftId } = draft
+  return (
+    <LineRowCells
+      {...cellProps}
+      values={draft}
+      rowIndex={rowIndex}
+      readOnly={false}
+      grip={grip}
+      autoFocus={autoFocus}
+      chips={cellChips}
+      menuItems={cellMenuItems}
+      allowClearPart={allowClearPart}
+      onCommit={(patch) => createDraft(draftId, patch)}
+      onApplyPrefill={(patch) => applyPrefillPatch(draftId, patch)}
+      onDelete={() => deleteDraft(draftId)}
+      onSelectGroup={(group) => onSelectGroup(draftId, group)}
     />
   )
 }
