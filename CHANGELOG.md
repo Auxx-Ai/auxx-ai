@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.240](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.239...auxx-v0.1.240) (2026-09-30)
+
+
+### Bug Fixes
+
+* app Form registry TDZ crash and retired data migration 160 ([#2453](https://github.com/Auxx-Ai/auxx-ai/issues/2453)) ([363c83b](https://github.com/Auxx-Ai/auxx-ai/commit/363c83b9d073b8b1bc1232d4e45ccae67786183a))
+
 ## [0.1.239](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.238...auxx-v0.1.239) (2026-09-30)
 
 
