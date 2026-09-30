@@ -123,7 +123,7 @@ function relationshipConfig(field: CustomFieldEntity): RelationshipConfig | null
  * **Why the child side.** A relation is two mirror `FieldValue` rows, and the
  * parent's mirror row is the one that historically went missing: the relation
  * sweep exists because 1,619 of them dangled, and the stored self-relation
- * pairs (`build_reversal_of` / `build_reversed_by`) only ever wrote the child's row.
+ * pairs only ever wrote the child's row.
  * Reading `FieldValue.relatedEntityId IN (parents)` on the child's field is
  * the shape `field-hooks/pre/related-rows.ts` already reads, and it is served
  * by `FieldValue_relatedEntityId_idx`.

@@ -41,14 +41,8 @@ const db = () => getTestDb() as unknown as Database
 
 // ── The two queue-backed externals, mocked OFF ───────────────────────────────
 //
-// ⚠️ Not decoration — without these the suite hangs forever rather than failing.
-// `publisher.publishLater` and `enqueueDuplicateScan` are BullMQ writes, and
-// BullMQ's default `maxRetriesPerRequest: null` means a command issued against
-// an unreachable Redis never settles. `publishLater` is AWAITED on the
-// interactive write lane (`publishFieldTriggerEvents` ->
-// `setValuesForEntity`), so a single `startBuild` blocks the process. Neither
-// is part of any claim below: the field pre-hook chain, the transaction and
-// `batchRecalculateQoH` all run for real.
+// BullMQ writes against an unreachable Redis never settle, so these would hang the suite rather
+// than fail it. The fixture's part writes go through the field chain, which reaches both.
 
 vi.mock('../../../events/publisher', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
@@ -280,7 +274,7 @@ describe('completeBuild commits its whole ledger', () => {
 })
 
 describe('completeBuild sends only its covering frames', () => {
-  it('build update, records:changed for parts and build, and the QoH frame', async () => {
+  it('build:changed for the build, records:changed and the QoH frame for the parts', async () => {
     const buildId = await anInProgressBuild()
     h.frames = []
 
@@ -289,36 +283,30 @@ describe('completeBuild sends only its covering frames', () => {
       quantityProduced: QUANTITY_PRODUCED,
     })
     if (done.isErr()) throw done.error
-    // The covering publishes are fire-and-forget.
     await vi.waitFor(() =>
-      expect(h.frames.filter((frame) => frame.event === 'records:changed')).toHaveLength(2)
+      expect(h.frames.filter((frame) => frame.event === 'records:changed')).toHaveLength(1)
     )
     await new Promise((resolve) => setTimeout(resolve, 50))
+
+    const buildFrames = h.frames.filter((frame) => frame.event === 'build:changed')
+    expect(buildFrames.map((frame) => frame.data)).toEqual([
+      { buildIds: [buildId], partIds: [f.producedPartId], orderIds: [], batchRuns: [] },
+    ])
 
     const defOf = (roomKey: string) => roomKey.split('-records-')[1]
     const recordFrames = h.frames.filter((frame) => frame.roomKey.includes('-records-'))
     expect(recordFrames.map((frame) => `${frame.event} ${defOf(frame.roomKey)}`).sort()).toEqual(
-      [
-        `fieldValues:updated ${f.buildDefId}`,
-        `fieldValues:updated ${f.partDefId}`,
-        `records:changed ${f.buildDefId}`,
-        `records:changed ${f.partDefId}`,
-      ].sort()
+      [`fieldValues:updated ${f.partDefId}`, `records:changed ${f.partDefId}`].sort()
     )
-
-    const changed = (defId: string) =>
-      (
-        recordFrames.find(
-          (frame) => frame.event === 'records:changed' && defOf(frame.roomKey) === defId
-        )?.data as { entries: Array<{ recordId: string; fieldIds?: string[] }> }
-      ).entries
-    expect(changed(f.buildDefId)).toEqual([{ recordId: buildId }])
-    expect(
-      changed(f.partDefId)
-        .map((entry) => entry.recordId)
-        .sort()
-    ).toEqual([f.producedPartId, ...f.componentPartIds].sort())
-    expect(changed(f.partDefId).every((entry) => entry.fieldIds === undefined)).toBe(true)
+    const changed = (
+      recordFrames.find((frame) => frame.event === 'records:changed')?.data as {
+        entries: Array<{ recordId: string; fieldIds?: string[] }>
+      }
+    ).entries
+    expect(changed.map((entry) => entry.recordId).sort()).toEqual(
+      [f.producedPartId, ...f.componentPartIds].sort()
+    )
+    expect(changed.every((entry) => entry.fieldIds === undefined)).toBe(true)
   })
 })
 
@@ -348,9 +336,7 @@ describe('a failure partway through rolls the whole completion back', () => {
     expect(await movementInstanceIds()).toHaveLength(0)
   })
 
-  // 🛑 The one that matters most. A build left reading `completed` with no
-  // ledger behind it is exactly the state `build-status-guard.ts` exists to
-  // prevent a human from creating by hand.
+  // A build left reading `completed` with no ledger behind it is the corruption B8 guards against.
   it('does not leave the build reading completed', async () => {
     const buildId = await anInProgressBuild()
 

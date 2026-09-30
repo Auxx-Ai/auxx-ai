@@ -15,6 +15,7 @@ import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { UnprocessableEntityError } from '../../../errors'
 import type { BuildRecord } from '../types'
+import { buildRecord } from './support/build-record'
 
 const ORG = 'org_1'
 const USER = 'user_1'
@@ -51,34 +52,10 @@ vi.mock('../complete-build', () => ({
 import { buildNow } from '../build-now'
 
 const planned = (over: Partial<BuildRecord> = {}): BuildRecord =>
-  ({
-    buildId: BUILD,
-    recordId: `buildDef:${BUILD}`,
-    number: 'B-0042',
-    partId: PART,
-    status: 'planned',
-    quantityPlanned: 5,
-    quantityProduced: null,
-    quantityScrapped: null,
-    startedAt: null,
-    completedAt: null,
-    materialCost: null,
-    laborCost: null,
-    overheadCost: null,
-    producedValue: null,
-    varianceAmount: null,
-    postedAt: null,
-    notes: null,
-    orderId: null,
-    source: 'manual',
-    reversalOfBuildId: null,
-    orderRevision: null,
-    ...over,
-  }) as BuildRecord
+  buildRecord({ buildId: BUILD, number: 'B-0042', partId: PART, quantityPlanned: 5, ...over })
 
 const completion = {
   buildId: BUILD,
-  recordId: `buildDef:${BUILD}`,
   quantityProduced: 5,
   quantityScrapped: 0,
   materialCost: 1000,
@@ -174,7 +151,6 @@ describe('🛑 it is not atomic, and the result says so', () => {
     expect(outcome.stage).toBe('complete')
     expect(outcome.build.buildId).toBe(BUILD)
     expect(outcome.build.number).toBe('B-0042')
-    expect(outcome.build.recordId).toBe(`buildDef:${BUILD}`)
     // The actual reason survives verbatim — it is what the person has to fix.
     expect(outcome.reason).toBe('Feet Bracket has no standard cost')
   })

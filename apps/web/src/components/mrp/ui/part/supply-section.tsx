@@ -8,6 +8,7 @@ import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { FileText, Hammer } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useMemo } from 'react'
+import { openBuildSheet } from '~/components/manufacturing/builds/build-sheet-store'
 import { useResourceProperty } from '~/components/resources'
 import { RecordLink } from '~/components/resources/ui/record-link'
 import { api } from '~/trpc/react'
@@ -25,7 +26,6 @@ export function SupplySection({ partId }: { partId: string }) {
   const [runParam] = useQueryState('run')
   const partItem = api.mrp.partItem.useQuery({ partId, runId: runParam || null })
   const purchaseOrderDefId = useResourceProperty('purchase_order', 'id')
-  const buildDefId = useResourceProperty('build', 'id')
 
   const docs = useMemo<SupplyDoc[]>(
     () => [
@@ -85,13 +85,8 @@ export function SupplySection({ partId }: { partId: string }) {
               <TreeRow
                 icon={<Hammer className='size-4' />}
                 rowClassName='hover:bg-primary-100'
-                title={
-                  <RecordLink
-                    recordId={buildDefId ? toRecordId(buildDefId, doc.build.buildId) : null}
-                    openInStack>
-                    {doc.build.number ?? 'Build'}
-                  </RecordLink>
-                }
+                onToggleOpen={() => openBuildSheet(doc.build.buildId)}
+                title={<span className='font-mono text-sm'>{doc.build.number}</span>}
                 secondary={BUILD_STATUS_LABEL[doc.build.status]}
                 actions={
                   <div className='flex items-center gap-3 pe-1 font-mono text-xs tabular-nums'>

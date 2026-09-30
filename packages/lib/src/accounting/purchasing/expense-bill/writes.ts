@@ -80,8 +80,7 @@ const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/
  *
  * No `bypassFieldGuards`: `vendor_bill_status` carries no field pre-hook today
  * (`field-hooks/register-hooks.ts` registers one for `invoice_status`,
- * `quote_status`, `purchase_order_status` and `build_status`, and none for
- * this). 🛑 The day one is added, this is the call site that has to name
+ * `quote_status` and `purchase_order_status`, and none for this). 🛑 The day one is added, this is the call site that has to name
  * `vendor_bill_status` in a bypass, or Post stops working - that is the failure
  * `plans/dispatch/money/21-lifecycle-status-guards-are-inert.md` §4 documents.
  */

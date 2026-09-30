@@ -233,12 +233,7 @@ interface Candidate {
  * `component` parts skipped before the BOM read (step 3 before step 2 — a
  * purchased part never needs its bill of materials read).
  *
- * ⚠️ **{@link readOrderRaisedBuilds} is the one read that is per-order**, because
- * `listBuilds` has no multi-order filter — `build-queries.ts` builds `orderId`
- * as a single-valued INNER JOIN. That is one read per order and it is accepted
- * rather than worked around: inventing a batched variant would mean a second
- * build-read path, and the filter-dropping hazard its header documents is
- * exactly the kind of thing that must not exist twice.
+ * {@link readOrderRaisedBuilds} is the one read that is per-order (an indexed `orderId` lookup).
  *
  * Only the parts the orders WANT are read. A part that appears solely on an
  * existing build can never reach the admission tests — the pure layer consults
@@ -270,11 +265,7 @@ export async function reconcileOrderBuilds(
       const [kinds, quantitiesOnHand, systemUserId] = await Promise.all([
         readPartKinds(db, organizationId, partIds),
         readPartQuantitiesOnHand(db, organizationId, partIds),
-        // The reconcile runs unattended, so it writes as the org's system user.
-        // 🛑 NOT `drift-reconciler.ts`'s empty `SYSTEM_STAMP_USER`: that actor is
-        // only ever handed to a `FieldValueService` writing an `updatable: false`
-        // field, and the build mutations reach `UnifiedCrudHandler`, which does
-        // read its actor.
+        // Unattended, so it writes as the org's system user (it becomes the build's `createdById`).
         SystemUserService.getSystemUserForActions(organizationId),
       ])
 

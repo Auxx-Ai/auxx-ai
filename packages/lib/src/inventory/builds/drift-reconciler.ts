@@ -48,12 +48,8 @@ export const ORDER_DRIFT_LINE = 'order-build-drift:line_item'
  * writer and the reconciler is not acting for any particular person. The empty
  * actor matches what `system-record-rules.ts` passes for the same reason — the
  * wrapped writers never read it.
- *
- * 🛑 **Only the STAMP may use it.** The build mutations reach
- * `UnifiedCrudHandler`, which does read its actor, so the convergence half
- * resolves a real `SystemUserService.getSystemUserForActions(organizationId)` —
- * inside `reconcile-order-builds.ts`, once for the batch, exactly as
- * `auto-build.ts:176` does.
+ * Only the stamp uses it: build writes record `createdById`, so the convergence half resolves the
+ * org's system user in `reconcile-order-builds.ts`.
  */
 const SYSTEM_STAMP_USER = ''
 
@@ -117,7 +113,7 @@ export function registerOrderDriftReconcilers(): void {
  * moves again.** Nothing re-drives a drain, and the fingerprint the failing pass
  * stamped is now the stored one. The safety net is that this is precisely the
  * situation Model A+ was built for: the builds still carry their old
- * `build_order_revision`, so `readBuildDrift` reports them as drifted and the
+ * `orderRevision`, so `readBuildDrift` reports them as drifted and the
  * divergence stays VISIBLE. B sits on top of A+; it does not replace it.
  *
  * Lazy imports throughout, matching `auto-build-rule.ts`: the query layer pulls

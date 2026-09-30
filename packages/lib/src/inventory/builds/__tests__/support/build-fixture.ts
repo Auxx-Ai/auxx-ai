@@ -1,22 +1,9 @@
 // packages/lib/src/inventory/builds/__tests__/support/build-fixture.ts
 //
-// A real, DB-backed organization that the build write paths can run against
-// end to end, for the two `*.int.test.ts` files next door.
-//
-// Everything here is REAL: the entity definitions and their `CustomField` rows
-// come from the same two seeder passes `EntitySeeder` runs
-// (`createEntityDefinitions` + `createAllFields`, then the relationship and
-// display links), the parts and subparts are written through
-// `UnifiedCrudHandler`, and the org cache is the production one falling back to
-// its in-memory layer. That is the point — both gaps these fixtures serve are
-// about WIRING (does a write land on `tx`; does a bypass reach the guard), and
-// wiring is precisely what a double cannot answer.
-//
-// The one thing written as raw `FieldValue` rows is the frozen standard cost.
-// `part_standard_cost` and its three components are `creatable: false,
-// updatable: false` — `rollStandardCost` is their only writer — so there is no
-// CRUD door to write them through. They are an INPUT to every test here, never
-// the thing under test.
+// A real, DB-backed organization the build paths run against end to end: the `part` and
+// `subpart` defs and fields from the seeder passes `EntitySeeder` runs, parts and BOM edges
+// written through `UnifiedCrudHandler`, builds inserted into the `Build` table. The frozen
+// standard cost is written as raw `FieldValue` rows because `rollStandardCost` is its only writer.
 
 import { type Database, schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
@@ -30,17 +17,19 @@ import { createAllFields } from '../../../../seed/entity-seeder/create-fields'
 import { linkDisplayFields } from '../../../../seed/entity-seeder/link-display-fields'
 import { linkRelationships } from '../../../../seed/entity-seeder/link-relationships'
 import type { EntityDefMap } from '../../../../seed/entity-seeder/types'
+import { readBuild } from '../../build-queries'
+import { insertBuild, type NewBuild } from '../../build-writes'
+import type { BuildRecord } from '../../types'
 
 const db = () => getTestDb() as unknown as Database
 
-/** The only defs whose registry fields a build path ever reads or writes. */
-const BUILD_ENTITY_TYPES = ['build', 'part', 'subpart'] as const
+/** The defs whose registry fields every build path reads. */
+const BUILD_ENTITY_TYPES = ['part', 'subpart'] as const
 
 /** Everything the build tests need to address the seeded org. */
 export interface BuildFixture {
   organizationId: string
   userId: string
-  buildDefId: string
   partDefId: string
   subpartDefId: string
   /** The finished good the build produces. */
@@ -56,12 +45,13 @@ export interface BuildFixture {
 export interface SeedBuildOrgOptions {
   /** How many BOM components the produced part gets. Default 3. */
   components?: number
+  /** Further defs whose registry fields to materialise, e.g. `['order']`. */
+  entityTypes?: string[]
 }
 
 /**
- * Seed an organization whose `build`, `part` and `subpart`
- * definitions and fields are the registry's own, then give it one buildable
- * finished good with a priced bill of materials.
+ * Seed an organization whose `part` and `subpart` definitions and fields are the registry's own,
+ * then give it one buildable finished good with a priced bill of materials.
  */
 export async function seedBuildOrg(options: SeedBuildOrgOptions = {}): Promise<BuildFixture> {
   const componentCount = options.components ?? 3
@@ -73,21 +63,11 @@ export async function seedBuildOrg(options: SeedBuildOrgOptions = {}): Promise<B
     .set({ systemUserId: user.id })
     .where(eq(schema.Organization.id, org.id))
 
-  // The two passes that materialise defs + fields, plus the two link passes the
-  // relationship writes below need. Views and dashboards are not read by any
-  // build path, so passes 6 to 8 are skipped.
-  //
-  // EVERY definition — `getCachedEntityDefId` and the resource cache read the
-  // whole org, and defs are one cheap insert each.
+  // Every definition (the caches read the whole org), but fields only for the defs a test reads:
+  // materialising all ~1,000 registry fields makes the fixture ten times slower.
   const entityDefMap = await createEntityDefinitions(db(), org.id)
-
-  // ...but only the three defs a build actually touches get their ~1,000
-  // registry fields materialised. `createAllFields` keys off the map it is
-  // handed, so narrowing it here is the difference between a ~1.2s fixture and
-  // a ~12s one, repeated once per test because `per-test-setup` truncates every
-  // table after each one. Nothing below reads a field on any other def.
   const buildDefMap: EntityDefMap = new Map()
-  for (const entityType of BUILD_ENTITY_TYPES) {
+  for (const entityType of [...BUILD_ENTITY_TYPES, ...(options.entityTypes ?? [])]) {
     const def = entityDefMap.get(entityType)
     if (!def) throw new Error(`fixture: no ${entityType} entity definition was seeded`)
     buildDefMap.set(entityType, def)
@@ -103,7 +83,6 @@ export async function seedBuildOrg(options: SeedBuildOrgOptions = {}): Promise<B
     return def.id
   }
 
-  const buildDefId = defId('build')
   const partDefId = defId('part')
   const subpartDefId = defId('subpart')
 
@@ -148,7 +127,6 @@ export async function seedBuildOrg(options: SeedBuildOrgOptions = {}): Promise<B
   return {
     organizationId: org.id,
     userId: user.id,
-    buildDefId,
     partDefId,
     subpartDefId,
     producedPartId,
@@ -225,4 +203,24 @@ export async function listMovementIds(organizationId: string): Promise<string[]>
     .from(schema.StockMovement)
     .where(eq(schema.StockMovement.organizationId, organizationId))
   return rows.map((row) => row.id)
+}
+
+/** A `planned` manual build of the fixture's finished good, numbered like a real one. */
+export async function insertTestBuild(
+  f: Pick<BuildFixture, 'organizationId' | 'userId' | 'producedPartId'>,
+  overrides: Partial<NewBuild> = {}
+): Promise<BuildRecord> {
+  return insertBuild(db(), f.organizationId, f.userId, {
+    partId: f.producedPartId,
+    quantityPlanned: 1,
+    ...overrides,
+  })
+}
+
+/** One build of the fixture's org, or `undefined`. */
+export async function readTestBuild(
+  f: Pick<BuildFixture, 'organizationId'>,
+  buildId: string
+): Promise<BuildRecord | undefined> {
+  return readBuild(db(), f.organizationId, buildId)
 }

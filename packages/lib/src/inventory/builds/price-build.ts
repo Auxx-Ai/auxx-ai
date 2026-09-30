@@ -9,14 +9,12 @@ import { postInventoryDocument } from '../../accounting/ledger/post/post-invento
 import type { PostResult } from '../../accounting/ledger/types'
 import { getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
-import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { StockMovementType } from '../../resources/registry/enum-values'
-import type { RecordId } from '../../resources/resource-id'
 import { loadPartAbsorptionRates } from '../costing/standard-cost-queries'
-import { getBuild, readBuildMovements, requireBuildContext } from './build-queries'
+import { getBuild, readBuildMovements } from './build-queries'
+import { publishBuildsChanged } from './build-realtime'
+import { updateBuild } from './build-writes'
 import { summarizeBuildCompletion } from './client'
-import { publishBuildUpdate } from './complete-build'
-import { buildWriteSession } from './write-lane'
 
 const logger = createScopedLogger('builds:price')
 
@@ -36,20 +34,17 @@ export async function finishPricedBuild(
   organizationId: string,
   buildId: string
 ): Promise<FinishPricedBuildResult> {
-  const ctx = await requireBuildContext(organizationId)
   const legs = await readBuildMovements(db, organizationId, buildId)
   if (legs.length === 0 || legs.some((leg) => leg.extendedCost == null)) {
     return { finished: false, post: null }
   }
   const build = await getBuild(db, organizationId, buildId)
   if (build.isErr()) throw build.error
-  if (!build.value?.partId) {
-    throw new UnprocessableEntityError(`Build ${buildId} was not found or names no part`, {
-      buildId,
-    })
+  if (!build.value) {
+    throw new UnprocessableEntityError(`Build ${buildId} was not found`, { buildId })
   }
   const record = build.value
-  const partId = record.partId as string
+  const partId = record.partId
   const produce = legs.find((leg) => leg.type === StockMovementType.BUILD_PRODUCE)
   if (!produce || produce.unitCost == null) {
     throw new UnprocessableEntityError(`Build ${buildId} has no valued produce leg`, { buildId })
@@ -70,31 +65,16 @@ export async function finishPricedBuild(
   })
 
   const userId = await getOrgCache().get(organizationId, 'systemUser')
-  const crud = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
-    session: buildWriteSession(),
-  })
-  await crud.update(record.recordId as RecordId, {
-    build_material_cost: summary.materialCost,
-    build_labor_cost: summary.laborCost,
-    build_overhead_cost: summary.overheadCost,
-    build_produced_value: summary.producedValue,
-    build_variance_amount: summary.varianceAmount,
-  })
-  publishBuildUpdate(
-    organizationId,
-    ctx,
-    {
-      buildId,
-      recordId: record.recordId,
-      quantityProduced: record.quantityProduced ?? produce.quantity,
-      quantityScrapped: record.quantityScrapped ?? 0,
-      ...summary,
-      pendingPartIds: [],
-      movementIds: legs.map((leg) => leg.movementId),
-      recalculatedPartIds: [],
-    },
-    record.completedAt ?? new Date()
+  const priced = await db.transaction((tx) =>
+    updateBuild(tx, organizationId, buildId, {
+      materialCost: summary.materialCost,
+      laborCost: summary.laborCost,
+      overheadCost: summary.overheadCost,
+      producedValue: summary.producedValue,
+      varianceAmount: summary.varianceAmount,
+    })
   )
+  await publishBuildsChanged(organizationId, [priced])
 
   // The poster reads the build back, so the stamps above are what its `absorbed` carries.
   const post = await postInventoryDocument(

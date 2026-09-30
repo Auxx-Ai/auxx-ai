@@ -209,6 +209,13 @@ export class OrganizationSeeder {
         .delete(schema.DataConnectorItem)
         .where(eq(schema.DataConnectorItem.organizationId, organizationId))
 
+      // Their part FKs are `no action`, so they go before the instances.
+      console.log('  ↳ Deleting builds and stock movements...')
+      await db.delete(schema.Build).where(eq(schema.Build.organizationId, organizationId))
+      await db
+        .delete(schema.StockMovement)
+        .where(eq(schema.StockMovement.organizationId, organizationId))
+
       console.log('  ↳ Deleting entity instances...')
       await db
         .delete(schema.EntityInstance)

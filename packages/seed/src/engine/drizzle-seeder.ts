@@ -313,6 +313,13 @@ export class DrizzleSeeder {
         .delete(schema.FieldValue)
         .where(eq(schema.FieldValue.organizationId, organizationId))
 
+      // Their part FKs are `no action`, so they go before the instances.
+      console.log('  ↳ Deleting builds and stock movements...')
+      await this.db.delete(schema.Build).where(eq(schema.Build.organizationId, organizationId))
+      await this.db
+        .delete(schema.StockMovement)
+        .where(eq(schema.StockMovement.organizationId, organizationId))
+
       console.log('  ↳ Deleting entity instances...')
       await this.db
         .delete(schema.EntityInstance)

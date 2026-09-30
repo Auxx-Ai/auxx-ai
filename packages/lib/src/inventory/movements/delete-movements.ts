@@ -12,7 +12,6 @@ import { touchedBy } from './write-movements'
 /** The parent documents whose movements go with them. At least one list must be non-empty. */
 export interface DeleteMovementsForInput {
   partIds?: readonly string[]
-  buildIds?: readonly string[]
   purchaseOrderLineIds?: readonly string[]
   fulfillmentLineIds?: readonly string[]
 }
@@ -37,10 +36,9 @@ export async function deleteMovementsFor(
   return guard(
     async () => {
       const partIds = [...new Set(input.partIds ?? [])]
-      const buildIds = [...new Set(input.buildIds ?? [])]
       const poLineIds = [...new Set(input.purchaseOrderLineIds ?? [])]
       const flIds = [...new Set(input.fulfillmentLineIds ?? [])]
-      if (partIds.length + buildIds.length + poLineIds.length + flIds.length === 0) {
+      if (partIds.length + poLineIds.length + flIds.length === 0) {
         throw new BadRequestError('Name at least one parent whose movements to delete')
       }
 
@@ -64,8 +62,7 @@ export async function deleteMovementsFor(
         WITH RECURSIVE doomed(id) AS (
           SELECT id FROM "StockMovement"
           WHERE "organizationId" = ${organizationId}
-            AND (${anyOf('partId', partIds)} OR ${anyOf('buildId', buildIds)}
-              OR ${anyOf('purchaseOrderLineId', poLineIds)}
+            AND (${anyOf('partId', partIds)} OR ${anyOf('purchaseOrderLineId', poLineIds)}
               OR ${anyOf('fulfillmentLineId', flIds)})
           UNION
           SELECT m.id FROM "StockMovement" m
@@ -87,7 +84,7 @@ export async function deleteMovementsFor(
           partIds: without(all.partIds, partIds),
           purchaseOrderLineIds: without(all.purchaseOrderLineIds, poLineIds),
           fulfillmentLineIds: without(all.fulfillmentLineIds, flIds),
-          buildIds: without(all.buildIds, buildIds),
+          buildIds: all.buildIds,
         },
       }
     },

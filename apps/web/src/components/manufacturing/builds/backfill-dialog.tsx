@@ -77,7 +77,6 @@ import {
   BatchDialogResultPage,
   BatchDialogShell,
 } from '~/components/money/ui/batch-posting/batch-dialog-shell'
-import { useResourceProperty } from '~/components/resources'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
 import { BackfillExclusions } from './backfill-exclusions'
@@ -113,7 +112,6 @@ export function BackfillDialog({ open, onOpenChange, onCompleted }: BackfillDial
   const [acknowledged, setAcknowledged] = useState(false)
   const [result, setResult] = useState<BackfillRunSummary | null>(null)
 
-  const buildDefId = useResourceProperty('build', 'id')
   const utils = api.useUtils()
 
   // A fresh dialog on every open. A range somebody abandoned yesterday would
@@ -192,12 +190,7 @@ export function BackfillDialog({ open, onOpenChange, onCompleted }: BackfillDial
       })
       setResult(summary)
       setPage('result')
-      await Promise.all([
-        utils.builds.list.invalidate(),
-        buildDefId
-          ? utils.record.listFiltered.invalidate({ entityDefinitionId: buildDefId })
-          : Promise.resolve(),
-      ])
+      await utils.builds.list.invalidate()
       onCompleted?.()
     } catch {
       // onError already surfaced the toast.

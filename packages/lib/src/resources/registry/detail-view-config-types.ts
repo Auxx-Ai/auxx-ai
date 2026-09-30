@@ -112,7 +112,6 @@ export type DetailViewEntityType =
   | 'order'
   | 'purchase_order'
   | 'vendor_bill'
-  | 'build'
 
 /** Registry type mapping entity types to their configurations */
 export type DetailViewConfigRegistry = Record<DetailViewEntityType, DetailViewConfig>

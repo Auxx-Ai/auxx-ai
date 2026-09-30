@@ -1,16 +1,8 @@
 // apps/web/src/components/manufacturing/builds/backfill-builds-button.tsx
 'use client'
 
-// The entry point on the builds list — `RecordsView`'s `pageActions` slot,
-// beside Create (plans/money/tasks/44 §11.3). Same shape as
-// `purchasing/intake/ui/read-quote-button.tsx`, which is the precedent for a
-// list-level action that opens a dialog.
-//
-// 🛑 A standalone tool, not a wizard step (§7). The cutover checklist links here
-// at its step 6, but the other half of this dialog's life is ordinary: a
-// connector was off for a week, or auto-build was switched on late, and demand
-// has run ahead of builds. An entry point that only existed inside an onboarding
-// flow could not be reached then.
+// Inventory > General's entry to the backfill (plans/money/tasks/44 §7): raise batch builds for
+// orders placed before auto-build's cutoff. A standing tool, not a wizard step.
 
 import { Button } from '@auxx/ui/components/button'
 import { Layers } from 'lucide-react'
@@ -27,15 +19,12 @@ export function BackfillBuildsButton() {
       <Button variant='outline' size='sm' onClick={() => setOpen(true)}>
         <Layers /> Backfill builds
       </Button>
-      {/* Mounted only while open so the preview query does not run on every
-          visit to the list. Same reasoning as `ReadQuoteButton`. */}
+      {/* Mounted only while open so the preview query does not run on every visit. */}
       {open && (
         <BackfillDialog
           open={open}
           onOpenChange={setOpen}
-          // The run writes builds the list is showing, and a batch build is
-          // written on a lane the list does not learn about on its own.
-          onCompleted={() => void utils.invalidate()}
+          onCompleted={() => void utils.builds.invalidate()}
         />
       )}
     </>

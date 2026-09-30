@@ -13,6 +13,7 @@ import { GlobalCreateRoot } from '~/components/global-create/global-create-root'
 import { CommandPalette } from '~/components/kbar'
 import { SimpleLayout } from '~/components/layouts/simple-layout'
 import { FloatingComposeRoot } from '~/components/mail/email-editor/floating-compose-root'
+import { BuildSheetRoot } from '~/components/manufacturing/builds/build-sheet-root'
 import { GlobalRecordEditorRoot } from '~/components/records/global-record-editor-root'
 import { SignatureDialogRoot } from '~/components/signatures/ui/signature-dialog-root'
 import { SnippetDialogRoot } from '~/components/snippets/ui/snippet-dialog-root'
@@ -135,6 +136,7 @@ export function AppLayoutWrapper({
               <GlobalRecordEditorRoot />
               <SignatureDialogRoot />
               <SnippetDialogRoot />
+              <BuildSheetRoot />
               <CommandPalette />
             </ThreadActionsProvider>
           </ThreadDataProvider>

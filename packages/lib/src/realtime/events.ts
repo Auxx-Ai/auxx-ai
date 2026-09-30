@@ -65,6 +65,7 @@ export type ResourceSyncEvent =
   | DataExportJobEvent
   | BackflushRunEvent
   | UndoBackflushRunEvent
+  | BuildChangedEvent
   | ExportBatchChangedEvent
   | AccountingWorkChangedEvent
   | RunCompletedEvent
@@ -301,6 +302,20 @@ export interface BackflushRunEvent {
     total: number
     written: number
     failed: number
+  }
+}
+
+/**
+ * Builds were written (plans/mrp/23 §4 Realtime). Ids only, a refresh signal: a sheet or card that
+ * shows one of these builds, parts, orders or runs refetches its build query.
+ */
+export interface BuildChangedEvent {
+  event: 'build:changed'
+  data: {
+    buildIds: string[]
+    partIds: string[]
+    orderIds: string[]
+    batchRuns: number[]
   }
 }
 

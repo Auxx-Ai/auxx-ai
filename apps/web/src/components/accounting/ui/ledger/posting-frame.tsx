@@ -35,6 +35,7 @@ import {
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
+import { BuildBadge } from '~/components/manufacturing/builds/build-badge'
 import { toFrame, useOpenRecord } from '~/components/records/record-drill-panels'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -410,6 +411,8 @@ export function PostingFrame({
                         <RecordBadge recordId={recordId} size='sm' link openInStack />
                       ) : source.stockMovement ? (
                         <StockMovementBadge movement={source.stockMovement} size='sm' />
+                      ) : source.build ? (
+                        <BuildBadge build={source.build} size='sm' />
                       ) : movement ? (
                         <MovementBadge
                           movement={movement}

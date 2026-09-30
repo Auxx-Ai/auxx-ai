@@ -173,7 +173,7 @@ describe('the restamp', () => {
     const { db, writes } = fakeDb(
       rowsAllCorrectExcept({
         part: { icon: 'package', color: 'orange' },
-        build: { icon: 'hammer', color: 'orange' },
+        subpart: { icon: 'hammer', color: 'orange' },
         quote: { icon: 'file-text', color: 'violet' },
       })
     )

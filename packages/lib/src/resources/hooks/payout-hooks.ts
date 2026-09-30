@@ -41,7 +41,7 @@ const autoGeneratePayoutNumber: SystemHook = async ({
  * `payout` system hooks: the RecordSequence number on create, and nothing else.
  *
  * 🛑 **`payout_status` is deliberately NOT guarded here**, for the reason
- * `journal-entry-hooks.ts` and `build-hooks.ts` both give:
+ * `journal-entry-hooks.ts` gives:
  * `UnifiedCrudHandler.runPreHooks` consults no equivalent of
  * `bypassFieldGuards`, and the sync writes the status through
  * `UnifiedCrudHandler.update` when a payout goes `in_transit` to `paid` or

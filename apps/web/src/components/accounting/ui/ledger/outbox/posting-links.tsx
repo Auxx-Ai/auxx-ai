@@ -2,6 +2,7 @@
 
 'use client'
 
+import { BuildBadge } from '~/components/manufacturing/builds/build-badge'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import type { RouterOutputs } from '~/trpc/react'
 import { MovementBadge } from '../../movement-badge'
@@ -28,6 +29,8 @@ export function PostingLinks({ sources }: { sources: PostingSource[] }) {
           <RecordBadge key={source.id} recordId={source.recordId} size='sm' />
         ) : source.stockMovement ? (
           <StockMovementBadge key={source.id} movement={source.stockMovement} size='sm' />
+        ) : source.build ? (
+          <BuildBadge key={source.id} build={source.build} size='sm' />
         ) : source.movement ? (
           <MovementBadge key={source.id} movement={source.movement} size='sm' detail='compact' />
         ) : (

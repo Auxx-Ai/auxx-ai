@@ -116,7 +116,7 @@ describe('guardVendorBillDelete: status', () => {
   })
 
   it('unwraps a coerced SINGLE_SELECT value', async () => {
-    // The `build-status-guard.ts` trap: on the field chain a select arrives as
+    // The coerced-select trap: on the field chain a select arrives as
     // `{ type: 'option', optionId }`, and a guard comparing the raw value is
     // inert while reading perfectly in review.
     await expect(

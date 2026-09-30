@@ -4,7 +4,7 @@
 // sweep and the close's `inventory_unposted` count share this one definition (plans/mrp/22 §8).
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, inArray, isNotNull, ne, notInArray, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, ne, notInArray, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { StockMovementCostBasis } from '../../../resources/registry/enum-values'
 
@@ -29,18 +29,13 @@ export function buildsWithNothingToPost(db: Database, organizationId: string) {
     .groupBy(leg.buildId, leg.glRole)
     .as('np_role')
 
-  const absorbedField = alias(schema.CustomField, 'np_absorbed_field')
-  const absorbedValue = alias(schema.FieldValue, 'np_absorbed_value')
   const absorbing = db
-    .select({ buildId: absorbedValue.entityId })
-    .from(absorbedValue)
-    .innerJoin(absorbedField, eq(absorbedField.id, absorbedValue.fieldId))
+    .select({ buildId: schema.Build.id })
+    .from(schema.Build)
     .where(
       and(
-        eq(absorbedField.organizationId, organizationId),
-        inArray(absorbedField.systemAttribute, ['build_labor_cost', 'build_overhead_cost']),
-        isNotNull(absorbedValue.valueNumber),
-        ne(absorbedValue.valueNumber, 0)
+        eq(schema.Build.organizationId, organizationId),
+        or(ne(schema.Build.laborCost, 0), ne(schema.Build.overheadCost, 0))
       )
     )
 

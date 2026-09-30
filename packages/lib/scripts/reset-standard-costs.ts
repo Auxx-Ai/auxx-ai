@@ -11,12 +11,12 @@
 //
 // Read-only without `--confirm`. Every step re-reads current state, so a re-run is safe.
 
-import { inspect } from 'node:util'
 import { database as db, schema } from '@auxx/database'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { withAccountingCommitLock } from '../src/accounting/ledger/post/accounting-commit-lock'
 import { getOrgCache } from '../src/cache'
-import { deleteEntityInstances } from '../src/entity-instances'
+import { batchRecalculateQoH } from '../src/inventory/costing/qoh'
+import { deleteMovementFacts } from '../src/inventory/movements/fact/writes'
 import { syncReliefWorkItems } from '../src/inventory/relief/relieve'
 import { readOrganizationSettings } from '../src/settings/read'
 
@@ -41,7 +41,7 @@ const PART_STANDARD_ATTRS = [
   'part_standard_cost_origin',
 ] as const
 
-const OTHER_ATTRS = ['build_source', 'build_status', 'fulfillment_line_fulfillment'] as const
+const OTHER_ATTRS = ['fulfillment_line_fulfillment'] as const
 
 type Attr = (typeof PART_STANDARD_ATTRS)[number] | (typeof OTHER_ATTRS)[number]
 
@@ -181,22 +181,6 @@ async function readMovements(organizationId: string): Promise<Map<string, Moveme
   return new Map(rows.map((row) => [row.id, row]))
 }
 
-/** `deleteEntityInstances`, exiting with the Postgres error when it fails. */
-async function deleteInstancesOrExit(
-  organizationId: string,
-  ids: string[],
-  what: string
-): Promise<number> {
-  const result = await deleteEntityInstances({ ids, organizationId })
-  if (result.isOk()) return result.value.count
-  let root: { cause?: unknown } = result.error
-  while (root.cause && typeof root.cause === 'object') root = root.cause as { cause?: unknown }
-  const { message, code, detail, constraint, table } = root as Record<string, unknown>
-  console.error(`\n${what}: ${result.error.message}`)
-  console.error(inspect({ message, code, detail, constraint, table }, { breakLength: 120 }))
-  process.exit(1)
-}
-
 async function main() {
   const org = await resolveOrg()
   const orgId = org.id
@@ -323,28 +307,20 @@ async function main() {
 
   heading('2. Backflush builds and their legs')
 
-  const buildIds = await readInstanceIds(orgId, 'build')
-  const buildValues = await readValues(orgId, [fid('build_source'), fid('build_status')])
-  const buildSource = new Map<string, string | null>()
-  const buildStatus = new Map<string, string | null>()
-  for (const row of buildValues) {
-    if (row.fieldId === fid('build_source')) buildSource.set(row.entityId, row.optionId)
-    else buildStatus.set(row.entityId, row.optionId)
-  }
-  const backflushBuilds = buildIds.filter((id) => buildSource.get(id) === 'backflush')
-  const otherBuilds = buildIds.filter((id) => buildSource.get(id) !== 'backflush')
-  const backflushSet = new Set(backflushBuilds)
+  const builds = await db
+    .select({ id: schema.Build.id, source: schema.Build.source, status: schema.Build.status })
+    .from(schema.Build)
+    .where(eq(schema.Build.organizationId, orgId))
+  const backflushBuilds = builds.filter((b) => b.source === 'backflush')
+  const otherBuilds = builds.filter((b) => b.source !== 'backflush')
+  const backflushSet = new Set(backflushBuilds.map((b) => b.id))
 
-  console.log(`builds           ${buildIds.length}`)
+  console.log(`builds           ${builds.length}`)
   console.log(
-    `  backflush      ${backflushBuilds.length}  status: ${tally(backflushBuilds.map((id) => buildStatus.get(id) ?? '(none)'))}`
+    `  backflush      ${backflushBuilds.length}  status: ${tally(backflushBuilds.map((b) => b.status))}`
   )
   console.log(`  kept (other)   ${otherBuilds.length}`)
-  for (const id of otherBuilds) {
-    console.log(
-      `    ${id}  source=${buildSource.get(id) ?? '-'} status=${buildStatus.get(id) ?? '-'}`
-    )
-  }
+  for (const b of otherBuilds) console.log(`    ${b.id}  source=${b.source} status=${b.status}`)
 
   const movements = await readMovements(orgId)
   const legIds = new Set(
@@ -358,36 +334,7 @@ async function main() {
   console.log(
     `\nstock_movement legs  ${legs.length}  ${tally(legs.map((m) => `${m.type}/${m.basis}`))}`
   )
-  console.log(`parts touched        ${touchedPartIds.length} (QoH re-derived by the build delete)`)
-
-  // Legs are table rows: only the builds carry rule runs and bindings.
-  const deletedIds = [...backflushBuilds]
-  let ruleRuns = 0
-  let bindings = 0
-  for (const chunk of chunked(deletedIds)) {
-    const [rr] = await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(schema.RecordRuleRun)
-      .where(
-        and(
-          eq(schema.RecordRuleRun.organizationId, orgId),
-          inArray(schema.RecordRuleRun.entityInstanceId, chunk)
-        )
-      )
-    ruleRuns += rr?.n ?? 0
-    const [dc] = await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(schema.DataConnectorItem)
-      .where(
-        and(
-          eq(schema.DataConnectorItem.organizationId, orgId),
-          inArray(schema.DataConnectorItem.entityInstanceId, chunk)
-        )
-      )
-    bindings += dc?.n ?? 0
-  }
-  console.log(`RecordRuleRun        ${ruleRuns} (no FK, cleared explicitly)`)
-  console.log(`DataConnectorItem    ${bindings} (SET NULL FK, cleared explicitly)`)
+  console.log(`parts touched        ${touchedPartIds.length} (QoH re-derived after the delete)`)
 
   const runs = await db
     .select({ status: schema.SyncJob.status })
@@ -459,7 +406,7 @@ async function main() {
     .from(schema.AccountingWorkItem)
     .where(eq(schema.AccountingWorkItem.organizationId, orgId))
   const priceItems = items.filter((i) => i.stage === 'price')
-  const deletedSet = new Set([...legIds, ...backflushBuilds])
+  const deletedSet = new Set([...legIds, ...backflushSet])
   const orphanItems = items.filter(
     (i) =>
       i.stage !== 'price' &&
@@ -543,28 +490,23 @@ async function main() {
     `1. deleted ${postingIds.length} inventory_movement posting(s) with their lines and sources`
   )
 
-  // 2. Builds: side rows, then the builds; `deleteEntityInstances` deletes their legs (with
-  // exploded children and reversals) and re-derives the touched parts' QoH.
-  for (const chunk of chunked(deletedIds)) {
-    await db
-      .delete(schema.RecordRuleRun)
-      .where(
-        and(
-          eq(schema.RecordRuleRun.organizationId, orgId),
-          inArray(schema.RecordRuleRun.entityInstanceId, chunk)
-        )
-      )
-    await db
-      .delete(schema.DataConnectorItem)
-      .where(
-        and(
-          eq(schema.DataConnectorItem.organizationId, orgId),
-          inArray(schema.DataConnectorItem.entityInstanceId, chunk)
-        )
-      )
-  }
-  const buildsDeleted = await deleteInstancesOrExit(orgId, backflushBuilds, 'build delete failed')
-  console.log(`2. deleted ${buildsDeleted} backflush build(s) and their ${legIds.size} leg(s)`)
+  // 2. Legs, then builds, each in one statement so the self-FKs (children, reversals) hold.
+  const legIdList = [...legIds]
+  const backflushIdList = [...backflushSet]
+  await db.transaction(async (tx) => {
+    await withAccountingCommitLock(tx, orgId)
+    await deleteMovementFacts(tx, legIdList)
+    await tx.execute(sql`
+      DELETE FROM "StockMovement" WHERE "organizationId" = ${orgId}
+        AND id = ANY(string_to_array(${legIdList.join(',')}, ','))`)
+    await tx.execute(sql`
+      DELETE FROM "Build" WHERE "organizationId" = ${orgId}
+        AND id = ANY(string_to_array(${backflushIdList.join(',')}, ','))`)
+  })
+  for (const chunk of chunked(touchedPartIds, 500)) await batchRecalculateQoH(orgId, chunk)
+  console.log(
+    `2. deleted ${backflushIdList.length} backflush build(s) and their ${legIds.size} leg(s)`
+  )
 
   // 3. Un-price sale rows in bulk: a costed row becomes indistinguishable from a fresh pending one.
   const saleIds = sales.map((m) => m.id)

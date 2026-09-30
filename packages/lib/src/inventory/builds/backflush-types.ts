@@ -35,7 +35,7 @@ export interface BackflushPlan {
 
 /** What one run did. Never throws; a failure is a row in here. */
 export interface BackflushRunSummary {
-  /** The `build_batch_run` every build carries, `undoBatchRun`'s handle; `null` when nothing was raised. */
+  /** The `batchRun` every build carries, `undoBatchRun`'s handle; `null` when nothing was raised. */
   batchRun: number | null
   days: string[]
   /** Builds completed. */

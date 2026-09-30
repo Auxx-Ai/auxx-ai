@@ -7,6 +7,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BuildRecord } from '../types'
+import { buildRecord } from './support/build-record'
 
 const h = vi.hoisted(() => ({ bySystemAttributes: vi.fn(), rows: vi.fn() }))
 
@@ -24,31 +25,14 @@ const ORG = 'org_1'
 const REVISION_FIELD = 'f-order-build-revision'
 
 function build(overrides: Partial<BuildRecord> & { buildId: string }): BuildRecord {
-  return {
-    recordId: `def_build:${overrides.buildId}`,
-    number: null,
+  return buildRecord({
     partId: 'p',
-    status: 'planned',
     quantityPlanned: 1,
-    quantityProduced: null,
-    quantityScrapped: null,
-    startedAt: null,
-    completedAt: null,
-    materialCost: null,
-    laborCost: null,
-    overheadCost: null,
-    producedValue: null,
-    varianceAmount: null,
-    postedAt: null,
-    notes: null,
     orderId: 'ord-1',
     source: 'order',
-    reversalOfBuildId: null,
-    batchRun: null,
     orderRevision: 'hash-at-raise',
-    createdAt: new Date('2026-08-28T00:00:00.000Z'),
     ...overrides,
-  }
+  })
 }
 
 beforeEach(() => {

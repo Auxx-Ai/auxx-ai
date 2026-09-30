@@ -3,54 +3,32 @@
 /**
  * Every READ over the build event: the list and detail surfaces, the
  * transaction-only locking read the write paths open with, and
- * {@link explodeBuildComponents} — the priced component plan a completion form
- * shows before anything is written.
+ * {@link explodeBuildComponents}, the priced component plan a completion form
+ * shows before anything is written. Writes live in `build-writes.ts`.
  *
- * plans/products/build/01-build-plan.md section 3.4.
- *
- * Reads only. The writes live in `build-mutations.ts`, `complete-build.ts` and
- * `reverse-build.ts`, because a file that both queries and mutates is the first
- * step back toward a service class (`docs/lib-module-guide.md` section 5).
- *
- * No permission checks anywhere in this file. The router asserts and hands the
- * narrowed filters down (`docs/lib-module-guide.md` section 6).
+ * No permission checks anywhere in this file (`docs/lib-module-guide.md` section 6).
  */
 
 import type { Transaction } from '@auxx/database'
 import { type Database, schema } from '@auxx/database'
 import { and, desc, eq, inArray, isNotNull, isNull, type SQL } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { batchGetRelatedDisplayNames } from '../../field-values/field-value-helpers'
 import { readFieldScalars } from '../../field-values/read-field-scalars'
+import { chunkArray } from '../../import/utils/chunk-array'
 import { StockMovementCostBasis } from '../../resources/registry/enum-values'
-import { BUILD_FIELDS } from '../../resources/registry/resources/build-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { toRecordId } from '../../resources/resource-id'
-import {
-  readSystemRecords,
-  type SystemFieldContext,
-  type SystemRecord,
-  systemDefId,
-  systemFieldMap,
-  systemFields,
-  systemInstanceColumns,
-  systemRecordScope,
-  systemValueJoin,
-} from '../../resources/system-records'
+import { systemDefId, systemFieldMap } from '../../resources/system-records'
 import { loadDirectSubparts } from '../bom/subpart-graph'
 import { loadStandardCostFields, readStandardCost } from '../costing/standard-cost-queries'
 import type { AbsorptionRates, PartStandardCost } from '../costing/types'
 import { computeExtendedCost, resolveInventoryRoleForPartKind } from '../movements/client'
 import { readMovementsByBuilds } from '../movements/reads'
-import {
-  type BuildStatusValue,
-  componentConsumption,
-  resolveBuildStatus,
-  unitsStarted,
-} from './client'
+import { toBuildRecord } from './build-row'
+import { type BuildStatusValue, componentConsumption, unitsStarted } from './client'
 import { guard } from './guard'
 import type {
   BuildComponentLine,
@@ -61,324 +39,137 @@ import type {
   ListBuildsFilters,
 } from './types'
 
-/**
- * Every attribute a {@link BuildRecord} is assembled from.
- *
- * All optional below: entity migration 109 provisions them, and an org that has
- * not run it must read an empty list rather than 500.
- */
-const BUILD_PICK = pickSystemAttributes(BUILD_FIELDS, [
-  'build_number',
-  'build_part',
-  'build_status',
-  'build_quantity_planned',
-  'build_quantity_produced',
-  'build_quantity_scrapped',
-  'build_started_at',
-  'build_completed_at',
-  'build_material_cost',
-  'build_labor_cost',
-  'build_overhead_cost',
-  'build_produced_value',
-  'build_variance_amount',
-  'build_posted_at',
-  'build_notes',
-  'build_order',
-  'build_source',
-  'build_reversal_of',
-  'build_order_revision',
-  // The demand period a `batch` build claims (plans/money/tasks/44 §6.2). Both
-  // are `updatable: false`, so `createBuild` is the only writer and this is the
-  // only place the ids are resolved. Absent on an org short of migration 124,
-  // which is why every reader guards on them rather than assuming.
-  'build_period_start',
-  'build_period_end',
-  // Which batch run raised this build (45 §3). `updatable: false` like the two
-  // above, so `createBuild` is the only writer, and absent on an org short of
-  // entity migration 141.
-  'build_batch_run',
-] as const)
-
-type BuildAttribute = (typeof BUILD_PICK)[number]
+type Db = Database | Transaction
 
 const DEFAULT_LIMIT = 50
-
-/** The `build` def and the fields every build read is scoped by. */
-export type BuildContext = SystemFieldContext<BuildAttribute>
-
-/**
- * Resolve the `build` def and its fields, or `null` when the org has no build
- * entity yet.
- *
- * `null` rather than a throw so a list surface on an unmigrated org renders
- * empty. The WRITE paths use {@link requireBuildContext} instead, because
- * a write that silently did nothing would be worse than a refusal.
- */
-export async function loadBuildContext(organizationId: string): Promise<BuildContext | null> {
-  const ctx = await systemFields(undefined, organizationId, 'build', BUILD_PICK)
-  // Without `status` there is no lifecycle at all, and every write gate below
-  // reduces to "yes". An org in that state must not be written to.
-  if (!ctx || !ctx.fields.build_status || !ctx.fields.build_part) return null
-  return ctx
-}
-
-/** {@link loadBuildContext}, as the refusal a write path needs. */
-export async function requireBuildContext(organizationId: string): Promise<BuildContext> {
-  const ctx = await loadBuildContext(organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Builds are not available until the build entity and its fields are provisioned'
-    )
-  }
-  return ctx
-}
+const ID_CHUNK = 1000
 
 // ─── Detail and list ────────────────────────────────────────────────────
 
-/** One build, or `null` when it does not exist, is archived, or is another org's. */
+/** One build, or `null` when it does not exist or is another org's. */
 export async function getBuild(
   db: Database,
   organizationId: string,
   buildId: string
 ): Promise<Result<BuildRecord | null, Error>> {
   return guard(
-    async () => {
-      const ctx = await loadBuildContext(organizationId)
-      if (!ctx) return null
-
-      const records = await readSystemRecords(db, organizationId, ctx, { ids: [buildId] })
-      const record = records[0]
-      return record ? toBuildRecord(record) : null
-    },
+    async () => (await readBuild(db, organizationId, buildId)) ?? null,
     'Failed to read build',
     { organizationId, buildId }
   )
 }
 
 /**
- * List builds, newest first.
- *
- * Ordering is `createdAt` and not `completedAt`: a planned build has no
- * completion date at all, and ordering on it would sort every open run to one
- * end of the list — which is the half of the list a shop floor is looking at.
- * Filters are applied in SQL, so a caller asking for page two gets page two of
- * the filtered set.
+ * List builds, newest first, filtered and paged in SQL. Ordered on `createdAt`, not
+ * `completedAt`: a planned build has no completion date.
  */
 export async function listBuilds(
   db: Database,
   organizationId: string,
   filters: ListBuildsFilters = {}
 ): Promise<Result<BuildRecord[], Error>> {
-  return guard(
-    async () => {
-      const ctx = await loadBuildContext(organizationId)
-      if (!ctx) return []
-      return queryBuilds(db, organizationId, ctx, filters, [])
-    },
-    'Failed to list builds',
-    { organizationId, filters }
-  )
+  return guard(async () => queryBuilds(db, organizationId, filters), 'Failed to list builds', {
+    organizationId,
+    filters,
+  })
 }
 
-/**
- * Completed builds that carry no `postedAt` — what a GL export would pick up.
- *
- * ⚠️ **`postedAt` is a denormalized convenience, not the authority** (section
- * 1.1). GL posting is out of scope for this directory (README B9), so nothing
- * writes it yet and this returns every completed build. When the posting ledger
- * lands, the authority becomes a `gl_posting` row referencing the build, and
- * this function's predicate moves there — the shape of the answer does not
- * change, so callers do not.
- */
+/** Completed builds with no `postedAt`. A convenience column; the GL posting is the authority. */
 export async function listUnpostedBuilds(
   db: Database,
   organizationId: string,
   filters: Pick<ListBuildsFilters, 'limit' | 'offset'> = {}
 ): Promise<Result<BuildRecord[], Error>> {
   return guard(
-    async () => {
-      const ctx = await loadBuildContext(organizationId)
-      if (!ctx) return []
-
-      // A LEFT JOIN plus `IS NULL` on the joined column, so a build with no
-      // `postedAt` ROW at all is included alongside one whose row is present and
-      // empty. An inner join would drop the first group, which today is every
-      // completed build there is.
-      const postedField = ctx.fields.build_posted_at
-      const unposted: AbsentValueJoin[] = postedField
-        ? [{ fieldId: postedField.id, name: 'build_unposted' }]
-        : []
-
-      return queryBuilds(db, organizationId, ctx, { ...filters, status: 'completed' }, unposted)
-    },
+    async () =>
+      queryBuilds(
+        db,
+        organizationId,
+        { ...filters, status: 'completed' },
+        isNull(schema.Build.postedAt)
+      ),
     'Failed to list unposted builds',
     { organizationId }
   )
 }
 
-/** A LEFT JOIN whose joined row must be absent or empty. See {@link listUnpostedBuilds}. */
-interface AbsentValueJoin {
-  fieldId: string
-  name: string
-}
-
-/**
- * The page itself, in SQL: the filters are value joins and the window is
- * `LIMIT`/`OFFSET`, neither of which {@link readSystemRecords} expresses. The
- * page's ids then go back through the reader for their cells.
- */
 async function queryBuilds(
-  db: Database,
+  db: Db,
   organizationId: string,
-  ctx: BuildContext,
   filters: ListBuildsFilters,
-  absent: AbsentValueJoin[]
+  extra?: SQL
 ): Promise<BuildRecord[]> {
-  const limit = filters.limit ?? DEFAULT_LIMIT
-  const offset = filters.offset ?? 0
-
-  const where: SQL[] = [systemRecordScope(organizationId, ctx.defId)]
-
-  let query = db.select(systemInstanceColumns).from(schema.EntityInstance).$dynamic()
-
-  if (filters.status && ctx.fields.build_status) {
-    const statusValue = alias(schema.FieldValue, 'build_status_v')
-    query = query.innerJoin(
-      statusValue,
-      and(
-        systemValueJoin(statusValue, ctx.fields.build_status.id),
-        eq(statusValue.optionId, filters.status)
-      )
-    )
-  }
-
-  if (filters.source && ctx.fields.build_source) {
-    const sourceValue = alias(schema.FieldValue, 'build_source_v')
-    query = query.innerJoin(
-      sourceValue,
-      and(
-        systemValueJoin(sourceValue, ctx.fields.build_source.id),
-        eq(sourceValue.optionId, filters.source)
-      )
-    )
-  }
-
-  if (filters.partId && ctx.fields.build_part) {
-    const partValue = alias(schema.FieldValue, 'build_part_v')
-    query = query.innerJoin(
-      partValue,
-      and(
-        systemValueJoin(partValue, ctx.fields.build_part.id),
-        eq(partValue.relatedEntityId, filters.partId)
-      )
-    )
-  }
-
-  if (filters.orderId && ctx.fields.build_order) {
-    const orderValue = alias(schema.FieldValue, 'build_order_v')
-    query = query.innerJoin(
-      orderValue,
-      and(
-        systemValueJoin(orderValue, ctx.fields.build_order.id),
-        eq(orderValue.relatedEntityId, filters.orderId)
-      )
-    )
-  }
-
-  for (const join of absent) {
-    const absentValue = alias(schema.FieldValue, join.name)
-    query = query.leftJoin(absentValue, systemValueJoin(absentValue, join.fieldId))
-    where.push(isNull(absentValue.valueDate))
-  }
-
-  const rows = await query
+  const t = schema.Build
+  const where: Array<SQL | undefined> = [
+    eq(t.organizationId, organizationId),
+    filters.status ? eq(t.status, filters.status) : undefined,
+    filters.source ? eq(t.source, filters.source) : undefined,
+    filters.partId ? eq(t.partId, filters.partId) : undefined,
+    filters.orderId ? eq(t.orderId, filters.orderId) : undefined,
+    filters.batchRun !== undefined ? eq(t.batchRun, filters.batchRun) : undefined,
+    extra,
+  ]
+  const rows = await db
+    .select()
+    .from(t)
     .where(and(...where))
-    .orderBy(desc(schema.EntityInstance.createdAt))
-    .limit(limit)
-    .offset(offset)
-
-  if (rows.length === 0) return []
-  const records = await readSystemRecords(db, organizationId, ctx, { instances: rows })
-  return records.map(toBuildRecord)
+    .orderBy(desc(t.createdAt), desc(t.id))
+    .limit(filters.limit ?? DEFAULT_LIMIT)
+    .offset(filters.offset ?? 0)
+  return rows.map(toBuildRecord)
 }
 
-function toBuildRecord(record: SystemRecord<BuildAttribute>): BuildRecord {
-  const date = (attribute: BuildAttribute) => {
-    const raw = record.date(attribute)
-    return raw ? new Date(raw) : null
-  }
+/** One build by id, unwrapped, on a pool or a transaction; `undefined` when absent. */
+export async function readBuild(
+  db: Db,
+  organizationId: string,
+  buildId: string
+): Promise<BuildRecord | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.Build)
+    .where(and(eq(schema.Build.organizationId, organizationId), eq(schema.Build.id, buildId)))
+  return row ? toBuildRecord(row) : undefined
+}
 
-  return {
-    buildId: record.id,
-    recordId: record.recordId,
-    number: record.text('build_number'),
-    partId: record.related('build_part'),
-    status: resolveBuildStatus(record.option('build_status')),
-    quantityPlanned: record.number('build_quantity_planned'),
-    quantityProduced: record.number('build_quantity_produced'),
-    quantityScrapped: record.number('build_quantity_scrapped'),
-    startedAt: date('build_started_at'),
-    completedAt: date('build_completed_at'),
-    materialCost: record.number('build_material_cost'),
-    laborCost: record.number('build_labor_cost'),
-    overheadCost: record.number('build_overhead_cost'),
-    producedValue: record.number('build_produced_value'),
-    varianceAmount: record.number('build_variance_amount'),
-    postedAt: date('build_posted_at'),
-    notes: record.text('build_notes'),
-    orderId: record.related('build_order'),
-    source: record.option('build_source'),
-    reversalOfBuildId: record.related('build_reversal_of'),
-    orderRevision: record.text('build_order_revision'),
-    batchRun: record.number('build_batch_run'),
-    createdAt: record.createdAt,
+/** Builds by id, chunked; ids that do not exist are simply absent. Order is not the input's. */
+export async function readBuildsByIds(
+  db: Db,
+  organizationId: string,
+  buildIds: readonly string[]
+): Promise<BuildRecord[]> {
+  const out: BuildRecord[] = []
+  for (const chunk of chunkArray([...new Set(buildIds)], ID_CHUNK)) {
+    const rows = await db
+      .select()
+      .from(schema.Build)
+      .where(and(eq(schema.Build.organizationId, organizationId), inArray(schema.Build.id, chunk)))
+    out.push(...rows.map(toBuildRecord))
   }
+  return out
 }
 
 // ─── The transaction-only reads ─────────────────────────────────────────
 
 /**
- * Re-read a build `FOR UPDATE`, inside the caller's transaction.
- *
- * 🛑 **This is the whole of B8's enforcement.** Two concurrent completions both
- * reach here; the row lock serialises them, the loser reads the status the
- * winner committed, and `canCompleteBuild` refuses it. Reading the status
- * BEFORE taking the lock — or taking no lock — makes "one completion per build"
- * a race, and the losing side would write a second full set of movements that
- * nothing downstream can tell from the first.
- *
- * `tx` is positional-first and typed as {@link Transaction}, not `Database`, so
- * a connection pool cannot typecheck into the slot
- * (`docs/lib-module-guide.md` section 4).
+ * Re-read a build `FOR UPDATE` inside the caller's transaction. This lock is B8's whole
+ * enforcement: two concurrent completions serialise here and the loser sees the winner's status.
  */
 export async function lockBuild(
   tx: Transaction,
   organizationId: string,
-  ctx: BuildContext,
   buildId: string
 ): Promise<BuildRecord> {
-  // The one query the reader cannot express: `FOR UPDATE` is the lock, and the
-  // reader's own instance query would take none.
-  const [instance] = await tx
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(and(eq(schema.EntityInstance.id, buildId), systemRecordScope(organizationId, ctx.defId)))
+  const [row] = await tx
+    .select()
+    .from(schema.Build)
+    .where(and(eq(schema.Build.organizationId, organizationId), eq(schema.Build.id, buildId)))
     .for('update')
-
-  if (!instance) throw new NotFoundError(`Build ${buildId} not found`)
-
-  const [record] = await readSystemRecords(tx, organizationId, ctx, { ids: [instance.id] })
-  if (!record) throw new NotFoundError(`Build ${buildId} not found`)
-  return toBuildRecord(record)
+  if (!row) throw new NotFoundError(`Build ${buildId} not found`)
+  return toBuildRecord(row)
 }
 
-/**
- * Assert a build is in one of the statuses an action accepts.
- *
- * A `null` status is refused with the same `ConflictError`: see
- * {@link resolveBuildStatus} for why an absent status is never defaulted on a
- * path that writes.
- */
+/** Assert a build is in one of the statuses an action accepts, else `ConflictError`. */
 export function assertBuildStatus(
   build: BuildRecord,
   allowed: (status: BuildStatusValue | null) => boolean,
@@ -388,24 +179,44 @@ export function assertBuildStatus(
 }
 
 /**
- * Does a live build already point its `reversalOf` at this one?
- *
- * Joins `EntityInstance` so an ARCHIVED reversal does not block a legitimate
- * second attempt — an archived build contributes nothing to any roll-up, so
- * treating it as a standing reversal would leave the mistake uncorrectable.
- * Same rule, and the same reason, as `reverse-movement.ts`'s `hasReversal`.
+ * Whether a reversal already points at this build. A friendly pre-check only: the unique index
+ * `Build_reversalOfBuildId_key` is the guard, and `insertBuilds` turns its violation into a 409.
  */
 export async function hasBuildReversal(
-  db: Database,
+  db: Db,
   organizationId: string,
-  ctx: BuildContext,
   buildId: string
 ): Promise<boolean> {
-  if (!ctx.fields.build_reversal_of) return false
-  const reversals = await readSystemRecords(db, organizationId, ctx, {
-    by: { attribute: 'build_reversal_of', in: [buildId] },
-  })
-  return reversals.length > 0
+  const [row] = await db
+    .select({ id: schema.Build.id })
+    .from(schema.Build)
+    .where(
+      and(
+        eq(schema.Build.organizationId, organizationId),
+        eq(schema.Build.reversalOfBuildId, buildId)
+      )
+    )
+    .limit(1)
+  return !!row
+}
+
+/** The build that reverses `buildId`, or `undefined` when it has not been reversed. */
+export async function readBuildReversal(
+  db: Db,
+  organizationId: string,
+  buildId: string
+): Promise<BuildRecord | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.Build)
+    .where(
+      and(
+        eq(schema.Build.organizationId, organizationId),
+        eq(schema.Build.reversalOfBuildId, buildId)
+      )
+    )
+    .limit(1)
+  return row ? toBuildRecord(row) : undefined
 }
 
 /**

@@ -10,7 +10,7 @@ export interface GuardedMovement {
 }
 
 /** The `StockMovement` parent columns a delete guard can hang off. A PO names the line, never the order. */
-export type MovementRelationColumn = 'partId' | 'buildId' | 'purchaseOrderLineId'
+export type MovementRelationColumn = 'partId' | 'purchaseOrderLineId'
 
 /**
  * Every stock movement whose `column` names one of `targetInstanceIds`

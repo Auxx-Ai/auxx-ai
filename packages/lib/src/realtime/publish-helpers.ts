@@ -10,6 +10,7 @@ import type {
   ApprovalPingEvent,
   ApprovalResolvedEvent,
   BackflushRunEvent,
+  BuildChangedEvent,
   DashboardDraftUpdatedEvent,
   DashboardKopilotTurnEvent,
   DataConnectorSyncEvent,
@@ -310,6 +311,17 @@ export async function publishBackflushRunEvent(
 ) {
   await realtimeService
     .publish(rooms.orgPresence(organizationId), 'backflush:run', data)
+    .catch(() => {})
+}
+
+/** Publish `build:changed` on the org channel (see `BuildChangedEvent`); fire-and-forget. */
+export async function publishBuildChangedEvent(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  data: BuildChangedEvent['data']
+) {
+  await realtimeService
+    .publish(rooms.orgPresence(organizationId), 'build:changed', data)
     .catch(() => {})
 }
 

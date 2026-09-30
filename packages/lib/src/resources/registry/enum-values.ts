@@ -1,6 +1,11 @@
 // packages/lib/src/resources/registry/enum-values.ts
 
-import type { StockMovementCostBasisValue, StockMovementTypeValue } from '@auxx/database/enums'
+import type {
+  BuildSourceValue,
+  BuildStatusValue,
+  StockMovementCostBasisValue,
+  StockMovementTypeValue,
+} from '@auxx/database/enums'
 import { GL_ACCOUNT_TYPE_META } from './gl-account-type-meta'
 import type { FieldOptionItem } from './option-helpers'
 
@@ -939,6 +944,16 @@ export const BuildSource = {
     { value: 'backflush', label: 'Backflush', color: 'teal' },
   ] satisfies FieldOptionItem[],
 } as const
+
+/** Type-only: breaks the build when these options drift from the `Build` pgEnums. */
+export type BuildEnumsInSync = [
+  SameUnion<ConstValues<typeof BuildStatus>, BuildStatusValue>,
+  SameUnion<ConstValues<typeof BuildSource>, BuildSourceValue>,
+] extends [true, true]
+  ? true
+  : never
+const buildEnumsInSync: BuildEnumsInSync = true
+void buildEnumsInSync
 
 /**
  * Journal Entry Kind

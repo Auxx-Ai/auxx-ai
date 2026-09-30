@@ -82,13 +82,9 @@ export function BackflushRunPanel({ run }: { run: BackflushRun }) {
             Run {run.batchRun}
           </Badge>
           {run.written > 0 && (
-            <Button
-              variant='outline'
-              size='xs'
-              disabled={!openBatchRun}
-              onClick={() => openBatchRun?.(run.batchRun)}>
+            <Button variant='outline' size='xs' onClick={() => openBatchRun(run.batchRun)}>
               <ListFilter />
-              Show the builds (undo from any build's run card)
+              Show the builds
             </Button>
           )}
         </div>

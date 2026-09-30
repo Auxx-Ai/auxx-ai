@@ -163,8 +163,6 @@ const DELETE_WAVES: readonly (readonly string[])[] = [
   // The shipment and return families, children first; all hang off the order.
   ['fulfillment', 'shipment', 'return_line'],
   ['return'],
-  // What wrote the inventory ledger; the ledger itself is a side table.
-  ['build'],
   // Purchasing: lines before documents.
   ['purchase_order_line', 'vendor_bill_line', 'purchase_order', 'vendor_bill', 'vendor_credit'],
   // The accounting documents.
@@ -202,27 +200,10 @@ function* chunked<T>(items: readonly T[], size = 5000): Generator<T[]> {
 }
 
 /**
- * Every `RecordSequence.scope` this script puts back to 0.
- *
- * Almost all of them are entity types, so `CLEARED_TYPES` covers them: the
- * scope a document numbers under is its own type, and clearing the type is what
- * makes resetting the counter correct.
- *
- * 🛑 `build_batch` is NOT an entity type, so it can never appear in
- * `DELETE_WAVES` and would never be reset on its own. It is an INTERNAL scope
- * (`records/record-numbering.ts`'s `INTERNAL_SEQUENCE_SCOPES`), numbering batch
- * build RUNS rather than records, and the runs it numbered live entirely on the
- * `build` rows that wave 2 deletes. Leaving it alone means an org with zero
- * builds opens its next batch run reading "run 14", and 45 §3's whole argument
- * is that the run number is the handle undo hangs on. See
- * plans/money/tasks/45-batch-only-builds.md §11.6.
- *
- * Listed by hand rather than spread from `INTERNAL_SEQUENCE_SCOPES`, so a later
- * internal scope that has nothing to do with the books cannot silently join
- * this reset. Every wave always runs, so `build` is always cleared and this is
- * unconditional.
+ * Every `RecordSequence.scope` this script puts back to 0: the cleared entity types, plus the
+ * `Build` table's own scopes (`build` numbers builds, `build_batch` their runs).
  */
-const CLEARED_SEQUENCE_SCOPES: readonly string[] = [...CLEARED_TYPES, 'build_batch']
+const CLEARED_SEQUENCE_SCOPES: readonly string[] = [...CLEARED_TYPES, 'build', 'build_batch']
 
 /**
  * Drizzle tables cleared before the instances, all org-scoped.
@@ -238,9 +219,11 @@ const SIDE_TABLES = [
   { name: 'InvoiceVisitAllocation', table: schema.InvoiceVisitAllocation },
   { name: 'WorkOrderBillingInstallment', table: schema.WorkOrderBillingInstallment },
   { name: 'WorkOrderVisit', table: schema.WorkOrderVisit },
-  // The inventory ledger: its part/build/line FKs are NO ACTION, so it goes before the waves.
+  // The inventory ledger: its part/line FKs are NO ACTION, so it goes before the waves.
   { name: 'StockMovement', table: schema.StockMovement },
   { name: 'InventoryMovementFact', table: schema.InventoryMovementFact },
+  // `Build.partId` is NO ACTION, so builds go before a `--catalog` part delete.
+  { name: 'Build', table: schema.Build },
   // Planned from the movements and documents above; `MrpPlanRunItem` cascades.
   { name: 'MrpPlanRun', table: schema.MrpPlanRun },
 ] as const

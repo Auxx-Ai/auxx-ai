@@ -13,6 +13,7 @@ import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-z
 import { requestAccountingRecovery } from '../../accounting/work-items/recovery'
 import { getCachedEntityDefId, onCacheEvent } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
+import { getRealtimeService, publishRecordsChanged } from '../../realtime'
 import { recordNumbering } from '../../records/record-numbering'
 import { batchRecalculateQoH } from '../costing/qoh'
 import { backflushBuilds } from './backflush'
@@ -27,10 +28,10 @@ import {
 import { type BackflushRunRow, readBackflushRunRow } from './backflush-run-queries'
 import { publishBackflushRun } from './backflush-run-realtime'
 import type { BackflushRunFailure, BackflushRunMetadata } from './backflush-types'
-import { readBatchRunBuilds } from './batch-run-queries'
+import { type BatchRunBuild, readBatchRunBuilds } from './batch-run-queries'
+import { publishBuildsChanged } from './build-realtime'
 import { guard } from './guard'
 import { readKindConflicts } from './kind-conflicts'
-import { publishQuietBuildWrites } from './write-lane'
 
 const logger = createScopedLogger('builds:backflush-run')
 
@@ -199,11 +200,7 @@ export async function finalizeBackflushRun(
 
       const builds = await readBatchRunBuilds(db, organizationId, meta.batchRun)
       if (builds.isErr()) throw builds.error
-      await announce(
-        organizationId,
-        builds.value.map((b) => b.buildId),
-        [...parts]
-      )
+      await announce(organizationId, builds.value, [...parts])
       await requestAccountingRecovery(organizationId)
 
       const finished: BackflushRunMetadata = {
@@ -250,14 +247,27 @@ export async function publishBackflushRunFailed(
   if (row) await publish(organizationId, row, 'finished', 'FAILED')
 }
 
-/** Coarse frames for clients that missed per-build ones (a worker killed after a commit). */
-async function announce(organizationId: string, buildIds: string[], partIds: string[]) {
-  const [buildDefId, partDefId] = await Promise.all([
-    getCachedEntityDefId(organizationId, 'build'),
-    getCachedEntityDefId(organizationId, 'part'),
-  ])
-  if (buildDefId) publishQuietBuildWrites(organizationId, buildDefId, buildIds)
-  if (partDefId) publishQuietBuildWrites(organizationId, partDefId, partIds)
+/** Coarse frames for clients that missed per-slice ones (a worker killed after a commit). */
+async function announce(organizationId: string, builds: BatchRunBuild[], partIds: string[]) {
+  await publishBuildsChanged(
+    organizationId,
+    builds.map((b) => ({
+      buildId: b.buildId,
+      partId: b.partId,
+      orderId: null,
+      batchRun: b.runNumber,
+    }))
+  )
+  const partDefId = await getCachedEntityDefId(organizationId, 'part')
+  if (!partDefId || partIds.length === 0) return
+  try {
+    await publishRecordsChanged(getRealtimeService(), organizationId, {
+      entityDefinitionId: partDefId,
+      entries: partIds.map((recordId) => ({ recordId })),
+    })
+  } catch {
+    // Best effort, after the commit; the next fetch catches the parts up.
+  }
 }
 
 /** Why a backflush is refused while kinds conflict with parts lists. */

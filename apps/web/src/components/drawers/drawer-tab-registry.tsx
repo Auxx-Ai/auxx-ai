@@ -215,31 +215,6 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     })),
 
   // ─────────────────────────────────────────────────────────────────
-  // BUILD OVERVIEW CARDS (plans/products/build/01-build-plan.md §3.6) — shared
-  // with the build detail-view sidebar, which reads this same registry.
-  // ─────────────────────────────────────────────────────────────────
-  // The run's numbers plus the ONLY surface for Start / Cancel / Complete /
-  // Reverse. `build_status` is `showInDialogs: false` and each transition is a
-  // procedure with its own preconditions, so there is no status dropdown.
-  'build:run': () =>
-    import('../manufacturing/builds/build-run-card').then((m) => ({ default: m.BuildRunCard })),
-  // The postings this build produced (accounting migration step 1c). No
-  // writer exists for `sourceKind: 'build'` until MIGRATION step 5, so this
-  // renders `Nothing posted yet` today - see `ledger-card-registrations.tsx`.
-  'build:ledger': () =>
-    import('../accounting/ui/ledger-card-registrations').then((m) => ({
-      default: m.BuildLedgerCard,
-    })),
-  // The batch run this build belongs to, and the ONE verb whose scope is the
-  // whole run rather than this build (plans/money/tasks/45 §11). Deliberately
-  // NOT part of `build:run`: every verb there acts on one build, Undo acts on
-  // hundreds. It renders nothing at all for a build carrying no run.
-  'build:batch-run': () =>
-    import('../manufacturing/builds/build-batch-run-card').then((m) => ({
-      default: m.BuildBatchRunCard,
-    })),
-
-  // ─────────────────────────────────────────────────────────────────
   // INVOICE OVERVIEW CARDS (money MI1 build spec §J.1 — drawer-only entity,
   // hasDetailPage: false, so these are the invoice's ONLY UI surface)
   // ─────────────────────────────────────────────────────────────────
@@ -296,6 +271,8 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   // "refunds inside the order" (plans/accounting/tasks/done/10-credit-memos.md §6.1).
   'order:credit-memos': () =>
     import('./cards/order-credit-memos-card').then((m) => ({ default: m.OrderCreditMemosCard })),
+  'order:builds': () =>
+    import('./cards/order-builds-card').then((m) => ({ default: m.OrderBuildsCard })),
 
   // ─────────────────────────────────────────────────────────────────
   // LEDGER CARDS (plans/accounting/HANDOFF.md slot 2J, ui-plan §2.3 / §4.4)

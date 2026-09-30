@@ -1,10 +1,11 @@
 // packages/lib/scripts/audit-part-references.ts
 //
-// Read-only audit of everything the four visible money parents are attached to,
+// Read-only audit of everything the visible money parents are attached to,
 // and a before/after diff for the "delete them all and see what stays" test
-// (plans/money/tasks/20-part-delete-safety.md §7, widened to `builds`,
+// (plans/money/tasks/20-part-delete-safety.md §7, widened to
 // `purchase-orders` and `vendor-bills` by
-// plans/money/tasks/21-money-parent-delete-safety.md §8).
+// plans/money/tasks/21-money-parent-delete-safety.md §8). Builds are a table
+// with no delete door (plans/mrp/23-build-table.md); only their count is watched.
 //
 // ⚠️ **The diff now measures the GUARDS as much as the strands.** Before task 20
 // and 21 every parent deleted clean and every child was left behind; now a
@@ -118,8 +119,6 @@ const REFERENCE_ATTRIBUTES = [
   'subpart_child_part',
   'line_item_part',
   'product_parts',
-  // → build
-  'build_reversal_of',
   // → purchase_order
   'purchase_order_line_purchase_order',
   'vendor_bill_purchase_order',
@@ -147,11 +146,11 @@ interface ParentSpec {
   slug: string
   children: readonly { entityType: string; attribute: string; disposition: Disposition }[]
   /** The `StockMovement` column naming this parent, when movements hang off it. */
-  movementColumn?: 'partId' | 'buildId'
+  movementColumn?: 'partId'
 }
 
 /**
- * The four `isVisible` money parents
+ * The `isVisible` money parents
  * (`docs/inventory-costing-architecture-guide.md` §3), each with the children
  * that hang off it and what its guard does with them.
  *
@@ -174,12 +173,6 @@ const PARENTS: readonly ParentSpec[] = [
       { entityType: 'vendor_bill_line', attribute: 'vendor_bill_line_part', disposition: 'leave' },
       { entityType: 'line_item', attribute: 'line_item_part', disposition: 'leave' },
     ],
-  },
-  {
-    entityType: 'build',
-    slug: 'builds',
-    movementColumn: 'buildId',
-    children: [{ entityType: 'build', attribute: 'build_reversal_of', disposition: 'refuse' }],
   },
   {
     entityType: 'purchase_order',
@@ -418,6 +411,15 @@ async function snapshotOrg(org: { id: string; name: string }): Promise<OrgSnapsh
   }
 
   const defId = partDef
+
+  // A build names its part with a NO ACTION FK, so a part delete is refused while one exists.
+  push(
+    'builds.rows',
+    'must-hold',
+    await scalar(sql`
+    SELECT count(*)::int AS n FROM "Build" WHERE "organizationId" = ${org.id}`),
+    'a build refuses its part delete'
+  )
 
   // The BOM row whose displayName IS its child part: after a part delete the
   // display cascade nulls it and the row renders as nothing at all.

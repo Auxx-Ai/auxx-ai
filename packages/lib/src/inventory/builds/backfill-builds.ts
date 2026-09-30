@@ -28,7 +28,7 @@
  * ## 🛑 The run number is allocated ONCE, in {@link prepareRun}
  *
  * `plans/money/tasks/45-batch-only-builds.md` section 3. Every build a run
- * raises carries the same `build_batch_run`, which is the only handle
+ * raises carries the same `batchRun`, which is the only handle
  * `undoBatchRun` has, so the allocation belongs where everything else for the
  * run is resolved and nowhere near the bucket loop. Allocating per build would
  * burn the sequence and turn one four-hundred-build run into four hundred runs.
@@ -71,9 +71,6 @@ import { periodKeyForDate } from '../../accounting/ledger/periods/periods'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { UnprocessableEntityError } from '../../errors'
 import { recordNumbering } from '../../records/record-numbering'
-import { BUILD_FIELDS } from '../../resources/registry/resources/build-fields'
-import { pickSystemAttributes } from '../../resources/registry/system-attributes'
-import { systemFieldMap } from '../../resources/system-records'
 import type {
   BackfillBucket,
   BackfillPlan,
@@ -85,13 +82,6 @@ import { recordCompletedBuild } from './complete-build'
 import { guard } from './guard'
 
 const logger = createScopedLogger('builds:backfill')
-
-/** The three fields a run stamps on every build it raises; see {@link prepareRun} for which are required. */
-const RUN_PICK = pickSystemAttributes(BUILD_FIELDS, [
-  'build_period_start',
-  'build_period_end',
-  'build_batch_run',
-] as const)
 
 /** One progress line per this many buckets, so a long run is observable. */
 const PROGRESS_EVERY = 25
@@ -139,8 +129,7 @@ interface RunContext {
  *   chronological; this executes them in exactly that order.
  * @param request what the dialog was asked for. Only `status` changes what is
  *   written — the range and grouping are already baked into the plan's buckets.
- * @returns a summary, never a throw. `err` is reserved for the refusals that
- *   write NOTHING AT ALL: no build entity, no demand-period fields.
+ * @returns a summary, never a throw; `err` only when something failed before any build was written.
  */
 export async function executeBackfill(
   db: Database,
@@ -226,7 +215,7 @@ export async function executeBackfill(
  * THE accounting date for one bucket, derived from the demand it covers.
  *
  * The period is half-open — `periodStart` inclusive, `periodEnd` exclusive — and
- * `build_completed_at` must land INSIDE it, so this takes the end of the last
+ * `completedAt` must land INSIDE it, so this takes the end of the last
  * calendar day the period contains, in the book timezone. A monthly bucket for
  * January in `America/New_York` therefore completes at 23:59:59.999 on
  * January 31 local, which is February 1 05:59 UTC: derive that in UTC instead
@@ -303,52 +292,11 @@ export async function raiseAndCompleteBuild(
   return { buildId: written.value.buildId }
 }
 
-/**
- * Resolve the run's ambient facts, and refuse before writing anything.
- *
- * 🛑 **The two demand-period fields are required, not optional.** `createBuild`
- * writes them only when the build entity carries them and otherwise raises the
- * build regardless, which is the right call for one build and the wrong shape
- * for four hundred: a batch build with no period is invisible to the netting
- * read that decides what the NEXT run owes (section 6.2), so an unprovisioned
- * org would get the whole range built and then get it all built again on the
- * second pass. Refusing here writes nothing; discovering it on build one has
- * already written one.
- *
- * ⚠️ **`build_batch_run` is NOT required, and deliberately so.** The asymmetry
- * with the two fields above is the point: coverage depends on the period, so a
- * run without it computes the wrong thing; nothing about the netting depends on
- * the run number, so an org short of entity migration 141 gets un-numbered
- * builds and a correct backfill. What it loses is undo, which is worth a warning
- * and not a refusal (plans/money/tasks/45 §3).
- */
+/** Resolve the run's ambient facts and allocate its number, once, before any build is written. */
 async function prepareRun(organizationId: string): Promise<RunContext> {
-  const [fields, timeZone] = await Promise.all([
-    systemFieldMap(undefined, organizationId, RUN_PICK),
-    readBookTimeZoneOrUtc(organizationId),
-  ])
-
-  if (!fields.build_period_start || !fields.build_period_end) {
-    throw new UnprocessableEntityError(
-      'Backfilling builds is not available until the build demand-period fields are provisioned'
-    )
-  }
-
-  if (!fields.build_batch_run) {
-    logger.warn('This organization has no build_batch_run field, so the run will be un-numbered', {
-      organizationId,
-    })
-  }
-
-  // 🛑 ONCE per run, here, which is the single place everything for a run is
-  // resolved (plans/money/tasks/45 §3.2). `recordNumbering.create` is an atomic
-  // `UPDATE ... RETURNING`, so two concurrent runs can never share a number; the
-  // failure this placement prevents is the other one, allocating inside the
-  // bucket loop, which would burn the sequence and give every build its own run.
-  // `sequenceNumber` is the raw integer `build_batch_run` stores. The formatted
-  // `recordNumber` is cosmetic and nothing renders it.
+  const timeZone = await readBookTimeZoneOrUtc(organizationId)
+  // `recordNumbering.create` is an atomic `UPDATE ... RETURNING`; the raw integer is the `batchRun`.
   const { sequenceNumber } = await recordNumbering.create(organizationId, 'build_batch')
-
   return { timeZone, now: new Date(), batchRun: sequenceNumber }
 }
 
@@ -375,19 +323,8 @@ async function executeBucket(
     }
   }
 
-  // 🛑 The period and the run number go in HERE or never: `raiseBuildValues` is the
-  // only writer of `build_period_start`, `build_period_end` and
-  // `build_batch_run`, because moving a claimed period silently restates what
-  // the next netting run believes is already covered (section 6.2) and moving a
-  // run number silently rewrites what an undo would touch
-  // (plans/money/tasks/45 §3). All three are written at create time and ignored
-  // unless the source is `batch`.
-  //
-  // `run.batchRun` and never a fresh allocation: every bucket in this run passes
-  // the SAME number, which is what makes "the builds run 2 made" a plain filter.
-  // A refused raise wrote nothing at all, so it is a `failed` bucket rather than
-  // a build somebody has to go and finish. Thrown, not returned, so the bucket
-  // layer records it and the run steps over it.
+  // Period and run number are write-once columns, so they go in at insert or never. A refused
+  // raise wrote nothing and is thrown, so the bucket layer records it as `failed`.
   const { buildId } = await raiseAndCompleteBuild(db, organizationId, userId, {
     partId: bucket.partId,
     quantity: bucket.quantityToBuild,

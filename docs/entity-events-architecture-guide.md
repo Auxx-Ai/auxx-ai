@@ -288,8 +288,8 @@ The buffered lane is every write inside a `TxWriteScope`: `accounting/money/comm
 suppressed in-transaction and replayed after commit.
 
 A `quiet` session (`quietSession(reason)`) is on none of the three: its bus event, rules, triggers
-and post-hooks are off, and the writer discharges what it needs after commit (builds and relief
-recalculate QoH themselves). `coveredBy` on it changes realtime only, not rules or marks: see the
+and post-hooks are off, and the writer discharges what it needs after commit (the salvage writer
+recalculates QoH itself). Builds and movements are tables and never touch the lanes. `coveredBy` on it changes realtime only, not rules or marks: see the
 realtime guide §5.
 
 Money's evidence triggers are mark hooks on all three lanes, not record rules: the five in

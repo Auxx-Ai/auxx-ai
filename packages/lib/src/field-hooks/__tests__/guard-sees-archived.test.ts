@@ -43,7 +43,7 @@ import { describe, expect, it } from 'vitest'
 const PRE_DIR = join(__dirname, '..', 'pre')
 
 /** Guards that read children for a conditional refusal, through the archive-aware readers. */
-const FIXED = ['build-delete-guard.ts', 'part-delete-guard.ts', 'purchase-order-delete-guard.ts']
+const FIXED = ['part-delete-guard.ts', 'purchase-order-delete-guard.ts']
 
 /**
  * **The quote guard carries the SAME defect and is not fixed here.** It

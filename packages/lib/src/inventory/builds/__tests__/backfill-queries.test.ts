@@ -118,7 +118,6 @@ beforeEach(() => {
   h.defs = new Map([
     ['order', 'def_order'],
     ['line_item', 'def_line'],
-    ['build', 'def_build'],
     ['subpart', 'def_subpart'],
   ])
   h.fields = new Map(
@@ -130,13 +129,6 @@ beforeEach(() => {
       'line_item_qty',
       'part_kind',
       'part_quantity_on_hand',
-      'build_part',
-      'build_status',
-      'build_quantity_planned',
-      'build_order',
-      'build_reversal_of',
-      'build_period_start',
-      'build_period_end',
       'subpart_parent_part',
       'subpart_child_part',
       'subpart_quantity',
@@ -262,8 +254,8 @@ describe('readBackfillPlanReads — coverage attribution', () => {
     h.rows.set(COVERAGE, [
       coverageRow({
         plannedQuantity: 7,
-        periodStart: '2026-01-01T00:00:00.000Z',
-        periodEnd: '2026-02-01T00:00:00.000Z',
+        periodStart: new Date('2026-01-01T00:00:00.000Z'),
+        periodEnd: new Date('2026-02-01T00:00:00.000Z'),
       }),
     ])
 
@@ -280,8 +272,8 @@ describe('readBackfillPlanReads — coverage attribution', () => {
     // committed.
     h.rows.set(COVERAGE, [
       coverageRow({
-        periodStart: '2026-01-01T00:00:00.000Z',
-        periodEnd: '2026-02-01T00:00:00.000Z',
+        periodStart: new Date('2026-01-01T00:00:00.000Z'),
+        periodEnd: new Date('2026-02-01T00:00:00.000Z'),
       }),
     ])
 
@@ -299,8 +291,8 @@ describe('readBackfillPlanReads — coverage attribution', () => {
   it('drops a period that ends before the range opens', async () => {
     h.rows.set(COVERAGE, [
       coverageRow({
-        periodStart: '2025-11-01T00:00:00.000Z',
-        periodEnd: '2025-12-01T00:00:00.000Z',
+        periodStart: new Date('2025-11-01T00:00:00.000Z'),
+        periodEnd: new Date('2025-12-01T00:00:00.000Z'),
       }),
     ])
 
@@ -357,7 +349,7 @@ describe('readBackfillPlanReads — the per-part maps', () => {
   })
 })
 
-describe('readBackfillPlanReads — refusals', () => {
+describe('readBackfillPlanReads — an org without demand', () => {
   it('reads an org with no order entity as having no demand', async () => {
     // Nothing to build from. Refusing loudly would turn opening the dialog on an
     // unmigrated org into an error rather than an empty preview.
@@ -367,28 +359,5 @@ describe('readBackfillPlanReads — refusals', () => {
 
     expect(reads.lines).toEqual([])
     expect(h.issued).toEqual([])
-  })
-
-  it('🛑 refuses an org that HAS demand but no provisioned build entity', async () => {
-    // The opposite call from the one above, and for the reason
-    // `reconcile-queries.ts` documents: reading coverage as empty here would
-    // plan builds on top of production that already exists.
-    h.rows.set(DEMAND, [demandRow()])
-    h.defs.delete('build')
-
-    const result = await readBackfillPlanReads(db, ORG, RANGE)
-
-    expect(result.isErr()).toBe(true)
-  })
-
-  it('🛑 refuses when `build_quantity_planned` is not materialised', async () => {
-    // Every coverage row would read zero and be dropped, which is a silently
-    // widened answer handed to a writer.
-    h.rows.set(DEMAND, [demandRow()])
-    h.fields.delete('build_quantity_planned')
-
-    const result = await readBackfillPlanReads(db, ORG, RANGE)
-
-    expect(result.isErr()).toBe(true)
   })
 })

@@ -8,8 +8,6 @@ import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createEntityDefinitions } from '../../../../seed/entity-seeder/create-entity-defs'
-import { createAllFields } from '../../../../seed/entity-seeder/create-fields'
-import type { EntityDefMap } from '../../../../seed/entity-seeder/types'
 import { buildsWaitingOnACost, buildsWithNothingToPost } from '../nothing-to-post'
 
 const db = () => getTestDb() as unknown as Database
@@ -19,16 +17,16 @@ const FG = 'inventory_finished_goods'
 const DAY = new Date('2026-03-10T07:59:59.999Z')
 
 let organizationId: string
-let defIds: Map<string, string>
-let fieldIds: Map<string, string>
+let partDefId: string
+let buildCount = 0
 
-async function instance(entityType: string): Promise<string> {
+async function part(): Promise<string> {
   const [row] = await db()
     .insert(schema.EntityInstance)
     .values({
       organizationId,
-      entityDefinitionId: defIds.get(entityType)!,
-      displayName: entityType,
+      entityDefinitionId: partDefId,
+      displayName: 'part',
       updatedAt: new Date(),
     })
     .returning({ id: schema.EntityInstance.id })
@@ -44,8 +42,13 @@ interface Leg {
 
 /** One build and its legs, raw inserts: no hooks, no ledger. */
 async function build(legs: Leg[]): Promise<string> {
-  const buildId = await instance('build')
-  const partId = await instance('part')
+  const partId = await part()
+  buildCount += 1
+  const [row] = await db()
+    .insert(schema.Build)
+    .values({ organizationId, number: `B-${buildCount}`, partId, status: 'completed' })
+    .returning({ id: schema.Build.id })
+  const buildId = row!.id
   await db()
     .insert(schema.StockMovement)
     .values(
@@ -66,17 +69,11 @@ async function build(legs: Leg[]): Promise<string> {
   return buildId
 }
 
-async function absorb(buildId: string, attribute: 'build_labor_cost' | 'build_overhead_cost') {
+async function absorb(buildId: string, column: 'laborCost' | 'overheadCost') {
   await db()
-    .insert(schema.FieldValue)
-    .values({
-      organizationId,
-      entityId: buildId,
-      entityDefinitionId: defIds.get('build')!,
-      fieldId: fieldIds.get(attribute)!,
-      valueNumber: 250,
-      updatedAt: new Date(),
-    })
+    .update(schema.Build)
+    .set({ [column]: 250 })
+    .where(eq(schema.Build.id, buildId))
 }
 
 async function ids(query: PromiseLike<{ buildId: string | null }[]>): Promise<Set<string>> {
@@ -86,16 +83,8 @@ async function ids(query: PromiseLike<{ buildId: string | null }[]>): Promise<Se
 beforeEach(async () => {
   const org = await createTestOrganization()
   organizationId = org.id
-  const all = await createEntityDefinitions(db(), organizationId)
-  const narrowed: EntityDefMap = new Map()
-  for (const type of ['part', 'build'] as const) narrowed.set(type, all.get(type)!)
-  await createAllFields(db(), organizationId, narrowed)
-  defIds = new Map([...narrowed].map(([type, def]) => [type, def.id]))
-  const fields = await db()
-    .select({ id: schema.CustomField.id, attribute: schema.CustomField.systemAttribute })
-    .from(schema.CustomField)
-    .where(eq(schema.CustomField.organizationId, organizationId))
-  fieldIds = new Map(fields.flatMap((f) => (f.attribute ? [[f.attribute, f.id]] : [])))
+  const defs = await createEntityDefinitions(db(), organizationId)
+  partDefId = defs.get('part')!.id
 })
 
 describe('buildsWithNothingToPost', () => {
@@ -147,8 +136,8 @@ describe('buildsWithNothingToPost', () => {
       { role: RAW, cost: 780 },
       { role: RAW, cost: -780 },
     ])
-    await absorb(labour, 'build_labor_cost')
-    await absorb(overhead, 'build_overhead_cost')
+    await absorb(labour, 'laborCost')
+    await absorb(overhead, 'overheadCost')
     const found = await ids(buildsWithNothingToPost(db(), organizationId))
     expect(found.has(labour)).toBe(false)
     expect(found.has(overhead)).toBe(false)

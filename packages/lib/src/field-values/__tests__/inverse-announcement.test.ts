@@ -366,7 +366,7 @@ describe('covered quiet sessions leave the inverse to their caller', () => {
     getAmbientTxWriteScope.mockReturnValue({ marker: 'buffered' })
 
     await runWithWriteSession(
-      quietSession('build completion', { coveredBy: 'publishQuietBuildWrites' }),
+      quietSession('salvage', { coveredBy: 'announceQuietSalvageWrites' }),
       () =>
         syncInverseRelationships(
           { db: fakeDb([[], [], manyRows(1)]), organizationId: 'org-1' },

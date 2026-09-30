@@ -9,7 +9,6 @@
 
 import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { Result } from 'neverthrow'
 import type { InventoryMovementLine } from '../../accounting/ledger/builders/inventory-movement'
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
@@ -21,17 +20,10 @@ import type { WorkItemRefusal } from '../../accounting/work-items/refusal'
 import { upsertWorkItem, type WorkItemKey } from '../../accounting/work-items/write'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import {
-  type FieldValueUpdateEntry,
-  getRealtimeService,
-  publishFieldValueUpdates,
-} from '../../realtime'
-import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
-import {
   BuildStatus,
   StockMovementCostBasis,
   StockMovementType,
 } from '../../resources/registry/enum-values'
-import { type RecordId, toRecordId } from '../../resources/resource-id'
 import { isServicePartKind } from '../costing/client'
 import { loadPartAbsorptionRates } from '../costing/standard-cost-queries'
 import type { AbsorptionRates } from '../costing/types'
@@ -43,15 +35,10 @@ import {
   writeStockMovements,
 } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
-import { BUILD_STATUS_BYPASS, raiseBuildValues } from './build-mutations'
-import {
-  assertBuildStatus,
-  type BuildContext,
-  lockBuild,
-  planBuildComponents,
-  readPartKinds,
-  requireBuildContext,
-} from './build-queries'
+import { raiseBuildValues } from './build-mutations'
+import { assertBuildStatus, lockBuild, planBuildComponents, readPartKinds } from './build-queries'
+import { publishBuildsChanged } from './build-realtime'
+import { type BuildPatch, insertBuild, updateBuild } from './build-writes'
 import {
   absorbedRunCost,
   type BuildCompletionSummary,
@@ -60,8 +47,12 @@ import {
   unitsStarted,
 } from './client'
 import { guard } from './guard'
-import type { BuildComponentPlan, CompleteBuildInput, CompleteBuildResult } from './types'
-import { buildCompletionSession, publishQuietBuildWrites } from './write-lane'
+import type {
+  BuildComponentPlan,
+  BuildRecord,
+  CompleteBuildInput,
+  CompleteBuildResult,
+} from './types'
 
 const logger = createScopedLogger('builds:complete')
 
@@ -102,12 +93,10 @@ export async function completeBuild(
       const quantityScrapped = input.quantityScrapped ?? 0
       assertQuantities(quantityProduced, quantityScrapped)
 
-      const ctx = await requireBuildContext(organizationId)
       const completedAt = input.completedAt ?? new Date()
 
       const written = await db.transaction(async (tx) =>
         writeCompletion(tx, organizationId, userId, {
-          ctx,
           input,
           quantityProduced,
           quantityScrapped,
@@ -115,7 +104,7 @@ export async function completeBuild(
         })
       )
 
-      await finishCompletion(db, organizationId, { ctx, written, completedAt })
+      await finishCompletion(db, organizationId, written)
       return written.result
     },
     'Failed to complete build',
@@ -127,19 +116,13 @@ export async function completeBuild(
 async function finishCompletion(
   db: Database,
   organizationId: string,
-  args: {
-    ctx: BuildContext
-    written: WrittenCompletion
-    completedAt: Date
-  }
+  written: WrittenCompletion
 ): Promise<void> {
-  const { ctx, written, completedAt } = args
   // After the commit, so QoH re-sums a ledger that holds the rows; also announces the parts.
   await settleStockMovements(organizationId, written.touched)
   await exportInventoryMovement(db, written.post)
   await parkPendingBuild(db, organizationId, written)
-  publishBuildUpdate(organizationId, ctx, written.result, completedAt)
-  publishQuietBuildWrites(organizationId, ctx.defId, [written.result.buildId])
+  await publishBuildsChanged(organizationId, [written.build])
 
   logger.info('Completed build', {
     organizationId,
@@ -154,7 +137,6 @@ async function finishCompletion(
 }
 
 interface WriteCompletionArgs {
-  ctx: BuildContext
   input: CompleteBuildInput
   quantityProduced: number
   quantityScrapped: number
@@ -164,6 +146,8 @@ interface WriteCompletionArgs {
 /** Everything the post-commit work needs, plus the caller's answer. */
 export interface WrittenCompletion {
   result: CompleteBuildResult
+  /** The build row as the transaction left it, for the `build:changed` frame. */
+  build: BuildRecord
   /** The build's own inventory entry, awaiting its export. `null` on a pending build. */
   post: InTxPostResult | null
   /** The legs written `pending`, and the name of the first uncosted part, for the park. */
@@ -197,19 +181,16 @@ async function writeCompletion(
   userId: string,
   args: WriteCompletionArgs
 ): Promise<WrittenCompletion> {
-  const { ctx, input, quantityProduced, quantityScrapped, completedAt } = args
+  const { input, quantityProduced, quantityScrapped, completedAt } = args
   const txDb = tx as unknown as Database
 
   // Step 1. The lock IS B8's enforcement - see `lockBuild`.
-  const build = await lockBuild(tx, organizationId, ctx, input.buildId)
+  const build = await lockBuild(tx, organizationId, input.buildId)
   assertBuildStatus(
     build,
     canCompleteBuild,
     'This build has already been completed or cancelled. A run finished in tranches is a second build.'
   )
-  if (!build.partId) {
-    throw new UnprocessableEntityError('This build names no part and cannot be completed')
-  }
 
   const priced = await priceCompletion(txDb, organizationId, {
     partId: build.partId,
@@ -220,15 +201,6 @@ async function writeCompletion(
     overheadCost: input.overheadCost,
   })
 
-  // The one construction site for the quiet lane. See `write-lane.ts`.
-  const session = buildCompletionSession()
-  // 🛑 Step 6 writes `build_status: 'completed'`, which `build-status-guard.ts` refuses on a
-  // manual write; the bypass names `build_status` alone, so it is inert on the movement rows.
-  const crud = new UnifiedCrudHandler(organizationId, userId, txDb, undefined, {
-    session,
-    bypassFieldGuards: BUILD_STATUS_BYPASS,
-  })
-  const buildRecordId = toRecordId(ctx.defId, build.buildId)
   const movements = await writeCompletionMovements(tx, organizationId, userId, {
     priced,
     buildId: build.buildId,
@@ -237,20 +209,12 @@ async function writeCompletion(
   })
 
   // Step 6. On a pending build only labour and overhead are stamped; `price-build.ts` stamps the rest.
-  const buildValues = completionBuildValues(priced, {
-    quantityProduced,
-    quantityScrapped,
-    completedAt,
-  })
-  if (input.notes && ctx.fields.build_notes) {
-    buildValues.build_notes = build.notes ? `${build.notes}\n${input.notes}` : input.notes
-  }
-  await crud.update(buildRecordId as RecordId, buildValues)
+  const patch = completionBuildValues(priced, { quantityProduced, quantityScrapped, completedAt })
+  if (input.notes) patch.notes = build.notes ? `${build.notes}\n${input.notes}` : input.notes
+  const completed = await updateBuild(tx, organizationId, build.buildId, patch)
 
   return postCompletion(tx, organizationId, userId, {
-    buildId: build.buildId,
-    orderId: build.orderId,
-    buildRecordId,
+    build: completed,
     priced,
     movements,
     quantityProduced,
@@ -279,11 +243,7 @@ async function priceCompletion(
     quantityScrapped,
     componentOverrides: args.componentOverrides,
   })
-  // 🛑 The rates this RUN absorbs must be the same ones the produced part's
-  // frozen standard was rolled from, or the variance stops closing to zero and
-  // the difference lands in 5090 on `updatable: false` rows, on every single
-  // completion. Read on `txDb` so it is the same snapshot `planBuildComponents`
-  // took its standard costs from.
+  // The rates the standard was rolled from, on the same snapshot, or the variance stops closing.
   const rates = await loadPartAbsorptionRates(txDb, organizationId, partId)
   const producedKinds = await readPartKinds(txDb, organizationId, [partId])
   return priceFromPlan(plan, rates, producedKinds.get(partId) ?? null, args)
@@ -309,10 +269,8 @@ export function priceFromPlan(
   const pendingPartIds = plan.missingStandardPartIds
   const producedUnitCost = plan.producedUnitCost
 
-  // 🛑 The SAME function the completion form runs to preview these five numbers
-  // (`client.ts`): a preview computed by a second implementation is only
-  // accidentally the number that gets stored. A pending build has no summary
-  // yet: the pricer computes and stamps it when the last leg is priced.
+  // The function the completion form previews with (`client.ts`). A pending build has no summary:
+  // the pricer stamps it when the last leg is priced.
   const summary =
     producedUnitCost != null && pendingPartIds.length === 0
       ? summarizeBuildCompletion({
@@ -395,8 +353,7 @@ export function completionMovementInputs(
   const produceInput: StockMovementInput = {
     partInstanceId: priced.plan.partId,
     type: StockMovementType.BUILD_PRODUCE,
-    // 🛑 `quantityProduced`, never `unitsStarted` (B7): scrapped units consume material and
-    // produce nothing; their cost falls out in `varianceAmount`.
+    // `quantityProduced`, never `unitsStarted` (B7): scrap's cost falls out in `varianceAmount`.
     quantity: args.quantityProduced,
     unitCost: produceUnitCost,
     extendedCost: priced.summary?.producedValue,
@@ -413,21 +370,18 @@ export function completionMovementInputs(
 export function completionBuildValues(
   priced: PricedCompletion,
   run: { quantityProduced: number; quantityScrapped: number; completedAt: Date }
-): Record<string, unknown> {
-  const values: Record<string, unknown> = {
-    build_status: BuildStatus.COMPLETED,
-    build_quantity_produced: run.quantityProduced,
-    build_quantity_scrapped: run.quantityScrapped,
-    build_completed_at: run.completedAt.toISOString(),
-    build_labor_cost: priced.laborCost,
-    build_overhead_cost: priced.overheadCost,
+): BuildPatch {
+  return {
+    status: BuildStatus.COMPLETED,
+    quantityProduced: run.quantityProduced,
+    quantityScrapped: run.quantityScrapped,
+    completedAt: run.completedAt,
+    laborCost: priced.laborCost,
+    overheadCost: priced.overheadCost,
+    materialCost: priced.summary?.materialCost ?? null,
+    producedValue: priced.summary?.producedValue ?? null,
+    varianceAmount: priced.summary?.varianceAmount ?? null,
   }
-  if (priced.summary) {
-    values.build_material_cost = priced.summary.materialCost
-    values.build_produced_value = priced.summary.producedValue
-    values.build_variance_amount = priced.summary.varianceAmount
-  }
-  return values
 }
 
 /**
@@ -440,9 +394,7 @@ export async function postCompletion(
   organizationId: string,
   userId: string,
   args: {
-    buildId: string
-    orderId: string | null
-    buildRecordId: RecordId
+    build: BuildRecord
     priced: PricedCompletion
     movements: WriteStockMovementsResult
     quantityProduced: number
@@ -450,7 +402,8 @@ export async function postCompletion(
     completedAt: Date
   }
 ): Promise<WrittenCompletion> {
-  const { buildId, orderId, priced, movements, completedAt } = args
+  const { build, priced, movements, completedAt } = args
+  const { buildId, orderId } = build
   const { summary, pendingPartIds } = priced
   const movementLines: InventoryMovementLine[] = movements.records
     .filter((record) => record.glRole && record.extendedCost != null && record.extendedCost !== 0)
@@ -481,9 +434,9 @@ export async function postCompletion(
     pendingPartName:
       priced.plan.components.find((line) => line.partId === firstPendingPartId)?.partName ?? null,
     touched: movements.touched,
+    build,
     result: {
       buildId,
-      recordId: args.buildRecordId,
       quantityProduced: args.quantityProduced,
       quantityScrapped: args.quantityScrapped,
       materialCost: summary?.materialCost ?? null,
@@ -524,14 +477,13 @@ export async function recordCompletedBuild(
   return guard(
     async () => {
       assertQuantities(input.quantity, 0)
-      const ctx = await requireBuildContext(organizationId)
       const { completedAt } = input
       // `startBuild` stamps the wall clock, not the completion date; kept so both paths agree.
       const startedAt = new Date()
 
       const written = await db.transaction(async (tx) => {
         const txDb = tx as unknown as Database
-        const raised = await raiseBuildValues(txDb, organizationId, ctx, {
+        const raised = await raiseBuildValues(txDb, organizationId, {
           partId: input.partId,
           quantityPlanned: input.quantity,
           source: input.source,
@@ -544,34 +496,23 @@ export async function recordCompletedBuild(
           quantityProduced: input.quantity,
           quantityScrapped: 0,
         })
-
-        const session = buildCompletionSession()
-        const crud = new UnifiedCrudHandler(organizationId, userId, txDb, undefined, {
-          session,
-          bypassFieldGuards: BUILD_STATUS_BYPASS,
-        })
-        const values: Record<string, unknown> = {
+        const build = await insertBuild(tx, organizationId, userId, {
           ...raised,
           ...completionBuildValues(priced, {
             quantityProduced: input.quantity,
             quantityScrapped: 0,
             completedAt,
           }),
-        }
-        if (ctx.fields.build_started_at) values.build_started_at = startedAt.toISOString()
-        const created = await crud.create(ctx.defId, values)
-        const buildRecordId = toRecordId(ctx.defId, created.instance.id)
-
+          startedAt,
+        })
         const movements = await writeCompletionMovements(tx, organizationId, userId, {
           priced,
-          buildId: created.instance.id,
+          buildId: build.buildId,
           quantityProduced: input.quantity,
           completedAt,
         })
         return postCompletion(tx, organizationId, userId, {
-          buildId: created.instance.id,
-          orderId: null,
-          buildRecordId,
+          build,
           priced,
           movements,
           quantityProduced: input.quantity,
@@ -580,7 +521,7 @@ export async function recordCompletedBuild(
         })
       })
 
-      await finishCompletion(db, organizationId, { ctx, written, completedAt })
+      await finishCompletion(db, organizationId, written)
       return written.result
     },
     'Failed to record a completed build',
@@ -649,43 +590,4 @@ export function assertQuantities(quantityProduced: number, quantityScrapped: num
   if (!Number.isFinite(quantityScrapped) || quantityScrapped < 0) {
     throw new BadRequestError('Scrapped units cannot be negative')
   }
-}
-
-/**
- * Push the completed build's own numbers to every open client.
- *
- * The quiet lane deliberately suppresses the per-write realtime frame for
- * everything this function writes, which is right for 51 movement rows and
- * wrong for the build row itself: without this the list and the detail page
- * would keep rendering `planned` with empty costs until a reload. Fire and
- * forget, after the commit, exactly as the standard-cost roll publishes.
- */
-export function publishBuildUpdate(
-  organizationId: string,
-  ctx: BuildContext,
-  result: CompleteBuildResult,
-  completedAt: Date
-): void {
-  const entries: FieldValueUpdateEntry[] = []
-  const push = (field: { id: string } | null, value: Record<string, unknown>) => {
-    // A pending build has no cost figures yet; nothing to push for them.
-    if (!field || ('value' in value && value.value == null)) return
-    entries.push({
-      key: buildFieldValueKey(result.recordId as RecordId, field.id as FieldId),
-      value,
-    })
-  }
-
-  push(ctx.fields.build_status, { type: 'option', optionId: BuildStatus.COMPLETED })
-  push(ctx.fields.build_quantity_produced, { type: 'number', value: result.quantityProduced })
-  push(ctx.fields.build_quantity_scrapped, { type: 'number', value: result.quantityScrapped })
-  push(ctx.fields.build_material_cost, { type: 'number', value: result.materialCost })
-  push(ctx.fields.build_labor_cost, { type: 'number', value: result.laborCost })
-  push(ctx.fields.build_overhead_cost, { type: 'number', value: result.overheadCost })
-  push(ctx.fields.build_produced_value, { type: 'number', value: result.producedValue })
-  push(ctx.fields.build_variance_amount, { type: 'number', value: result.varianceAmount })
-  push(ctx.fields.build_completed_at, { type: 'date', value: completedAt.toISOString() })
-
-  if (entries.length === 0) return
-  publishFieldValueUpdates(getRealtimeService(), organizationId, entries).catch(() => {})
 }

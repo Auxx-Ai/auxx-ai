@@ -12,7 +12,7 @@
 // from the drawer, so the system chain alone would have guarded the door nobody uses. Both
 // guards shipped there first; these registrations are what make them real.
 //
-// Unlike `build_status`, keeping both chains is safe here: `return` has no action writers.
+// Keeping both chains is safe here: `return` has no action writers.
 // `return_status` is written only by `buildReturnValues` (a generic editor, which is exactly
 // the write the graph polices), and the two `return_line` attributes are written by
 // `createReturnLine` / `updateReturnLine`, which run the same ceiling check themselves and

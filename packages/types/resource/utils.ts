@@ -162,7 +162,6 @@ export const ENTITY_DEFINITION_TYPES = [
   'vendor_bill',
   'vendor_bill_line',
   'gl_account',
-  'build',
   'bank_deposit',
   'bank_account',
   'bank_transaction',

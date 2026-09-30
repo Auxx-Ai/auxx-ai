@@ -93,7 +93,7 @@ const SKIPPED_CODES = (Object.keys(WORK_ITEM_CODES) as WorkItemCode[]).filter(
   (code) => workItemStatus(code) === 'skipped'
 )
 
-/** The joins every list read needs: the money movement, the acceptance, the record, the stock movement, the party. */
+/** The joins every list read needs: the money movement, the acceptance, the record, the build, the stock movement, the party. */
 function fromItems() {
   return sql`"AccountingWorkItem" w
     LEFT JOIN "FinancialSourceAcceptance" acc ON w."sourceKind" = 'financial_source_acceptance'
@@ -101,8 +101,10 @@ function fromItems() {
     LEFT JOIN "MoneyTransaction" mt ON mt."organizationId" = w."organizationId"
       AND mt."id" = CASE WHEN w."sourceKind" = 'money_transaction' THEN w."sourceId"
         ELSE acc."moneyTransactionId" END
-    LEFT JOIN "EntityInstance" rec ON w."sourceKind" IN ('fulfillment','credit_memo','payout','build','order')
+    LEFT JOIN "EntityInstance" rec ON w."sourceKind" IN ('fulfillment','credit_memo','payout','order')
       AND rec."organizationId" = w."organizationId" AND rec."id" = w."sourceId"
+    LEFT JOIN "Build" b ON w."sourceKind" = 'build'
+      AND b."organizationId" = w."organizationId" AND b."id" = w."sourceId"
     LEFT JOIN "StockMovement" sm ON w."sourceKind" = 'stock_movement'
       AND sm."organizationId" = w."organizationId" AND sm."id" = w."sourceId"
     LEFT JOIN "EntityInstance" party ON party."organizationId" = w."organizationId"
@@ -141,7 +143,7 @@ function whereItems(organizationId: string, filters: WorkItemFilters, extra: SQL
   if (filters.to) conditions.push(sql`${day} <= ${filters.to}::date`)
   if (filters.search)
     conditions.push(
-      sql`strpos(lower(concat_ws(' ', w."reasonCode", w."role", w."externalRef", rec."displayName", party."displayName", mt."reference", sm."reason", sm."reference", w."detail"::text)), lower(${filters.search})) > 0`
+      sql`strpos(lower(concat_ws(' ', w."reasonCode", w."role", w."externalRef", rec."displayName", b."number", party."displayName", mt."reference", sm."reason", sm."reference", w."detail"::text)), lower(${filters.search})) > 0`
     )
   return sql.join(conditions, sql` AND `)
 }
@@ -303,17 +305,6 @@ export async function listWorkItemGroups(
   })
 }
 
-/** A build's completion date, one indexed lookup per build row (the `sourceKind` test filters every other kind). */
-function documentFields(): SQL {
-  return sql`LEFT JOIN LATERAL (
-      SELECT max(fv."valueDate") AS "documentDate"
-      FROM "FieldValue" fv JOIN "CustomField" cf ON cf."id" = fv."fieldId"
-      WHERE w."sourceKind" = 'build'
-        AND fv."entityId" = w."sourceId"
-        AND cf."systemAttribute" = 'build_completed_at'
-    ) doc ON TRUE`
-}
-
 const MOVEMENT_TYPE_LABEL: Record<string, string> = Object.fromEntries(
   StockMovementType.values.map((type) => [type.value, type.label])
 )
@@ -335,16 +326,15 @@ export async function listWorkItemsInGroup(
 ): Promise<Result<{ items: WorkItemListRow[]; nextOffset?: number }, Error>> {
   const offset = options.offset ?? 0
   const result = await db.execute(sql`
-    SELECT w.*, COALESCE(rec."displayName", party."displayName", acc."orderExternalId") AS "label",
+    SELECT w.*, COALESCE(rec."displayName", b."number", party."displayName", acc."orderExternalId") AS "label",
       rec."entityDefinitionId" AS "recordDefinitionId", mt."id" AS "moneyTransactionId",
       mt."purpose" AS "purpose", mt."amountMinor" AS "amountMinor", mt."currency" AS "currency",
       sm."partId" AS "movementPartId", sm."type" AS "movementType",
       sm."quantity" AS "movementQuantity", sm."reason" AS "movementReason",
       sm."reference" AS "movementReference", sm."occurredAt" AS "movementOccurredAt",
-      CASE WHEN w."sourceKind" = 'build' THEN COALESCE(doc."documentDate", rec."createdAt")
+      CASE WHEN w."sourceKind" = 'build' THEN COALESCE(b."completedAt", b."createdAt")
         WHEN w."sourceKind" = 'stock_movement' THEN sm."effectiveAt" END AS "documentDate"
     FROM ${fromItems()}
-    ${documentFields()}
     WHERE ${whereItems(organizationId, options, [groupWhere(group)])}
     ORDER BY w."updatedAt" DESC, w."id" ASC
     LIMIT ${options.limit + 1} OFFSET ${offset}

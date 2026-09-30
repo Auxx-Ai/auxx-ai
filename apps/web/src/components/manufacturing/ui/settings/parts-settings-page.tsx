@@ -18,6 +18,7 @@ import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
 import { ToolbarTitle } from '~/components/global/module-toolbar'
 import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import { SettingsSection } from '~/components/global/settings-page'
+import { BackfillBuildsButton } from '~/components/manufacturing/builds/backfill-builds-button'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
@@ -116,7 +117,8 @@ export function PartsGeneralSettingsPage() {
             <SettingsSection
               title='How builds are recorded'
               icon={Factory}
-              description='For parts you make rather than buy.'>
+              description='For parts you make rather than buy.'
+              action={showMrp ? <BackfillBuildsButton /> : undefined}>
               <RadioGroup value={buildMode} onValueChange={setBuildMode}>
                 <RadioGroupItemCard
                   value='sales'

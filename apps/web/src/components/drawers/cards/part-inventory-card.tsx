@@ -12,6 +12,7 @@ import { formatCurrency } from '@auxx/utils/currency'
 import { ArrowDownLeft, ArrowUpRight, History, Package } from 'lucide-react'
 import { useState } from 'react'
 import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
+import { openBuildSheet } from '~/components/manufacturing/builds/build-sheet-store'
 import { PartStockActions } from '~/components/manufacturing/parts/part-stock-actions'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSettings } from '~/hooks/use-settings'
@@ -51,8 +52,24 @@ const MOVEMENT_PREVIEW_LIMIT = 10
 // `part_kind` rides along for the Build gate in `PartStockActions` — one read, already made.
 const PART_ATTRIBUTES = ['part_quantity_on_hand', 'part_stock_status', 'part_kind'] as const
 
-/** One stock movement as a nested TreeRow: signed quantity, type badge, reason, cost + date. */
-function MovementRow({ movement, currencyCode }: { movement: MovementItem; currencyCode: string }) {
+/** One stock movement as a TreeRow: signed quantity, type badge, note, cost + date. */
+export function StockMovementTreeRow({
+  movement,
+  currencyCode,
+  depth = 1,
+  note,
+  onOpen,
+}: {
+  movement: Pick<
+    MovementItem,
+    'type' | 'quantity' | 'reason' | 'reference' | 'unitCostMinor' | 'effectiveAt'
+  >
+  currencyCode: string
+  depth?: number
+  /** Replaces the reason/reference text, e.g. with the part a build leg moved. */
+  note?: string | null
+  onOpen?: () => void
+}) {
   const { type, quantity, reason, reference, unitCostMinor: unitCost } = movement
   // COALESCE(occurredAt, createdAt): only a receipt carries an accounting date.
   const shownAt = movement.effectiveAt
@@ -62,8 +79,9 @@ function MovementRow({ movement, currencyCode }: { movement: MovementItem; curre
 
   return (
     <TreeRow
-      depth={1}
+      depth={depth}
       rowClassName='hover:bg-primary-100'
+      onToggleOpen={onOpen}
       icon={
         <Icon
           className={cn(
@@ -85,7 +103,7 @@ function MovementRow({ movement, currencyCode }: { movement: MovementItem; curre
               {TYPE_LABEL_MAP[type] ?? type}
             </Badge>
           )}
-          <span className='truncate text-xs'>{reason || reference || ''}</span>
+          <span className='truncate text-xs'>{note ?? (reason || reference || '')}</span>
         </span>
       }
       actions={
@@ -167,9 +185,16 @@ export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps
             loading={movements.isLoading}
             getKey={(movement) => movement.id}
             visibleLimit={MOVEMENT_PREVIEW_LIMIT}
-            renderRow={(movement) => (
-              <MovementRow movement={movement} currencyCode={currencyCode} />
-            )}
+            renderRow={(movement) => {
+              const { buildId } = movement
+              return (
+                <StockMovementTreeRow
+                  movement={movement}
+                  currencyCode={currencyCode}
+                  onOpen={buildId ? () => openBuildSheet(buildId) : undefined}
+                />
+              )
+            }}
           />
         )}
       </TreeRow>

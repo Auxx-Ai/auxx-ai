@@ -897,40 +897,7 @@ export const SYSTEM_ATTRIBUTES = [
   'gl_account_parent',
   'gl_account_children',
 
-  // ─── Build / standard cost (plans/products/build/01-build-plan.md §1) ──
-  // Entity migration 109. Every one of these reads NULL until the code that
-  // writes it lands — there is no backfill anywhere in that migration.
-  'build_number',
-  'build_part',
-  'build_status',
-  'build_quantity_planned',
-  'build_quantity_produced', // good units that entered finished goods
-  'build_quantity_scrapped', // started but lost (B7) — falls out in the variance
-  'build_started_at',
-  'build_completed_at', // THE accounting date
-  'build_material_cost',
-  'build_labor_cost',
-  'build_overhead_cost',
-  'build_produced_value', // quantityProduced x part_standard_cost
-  'build_variance_amount', // (mat+lab+ovh) - producedValue -> account 5090
-  'build_reversal_of', // set on the REVERSING build (B6)
-  'build_reversed_by', // inverse of build_reversal_of
-  'build_posted_at', // denormalized convenience ONLY — never gate on it
-  'build_notes',
-  'build_order', // which order caused this build (plans/products/12 AB7)
-  'build_source', // manual | order | batch — an auto-build must be distinguishable
-  // The DEMAND period a `batch` build claims, half-open (start inclusive, end
-  // exclusive), entity migration 124. NULL on manual and order-raised builds.
-  //
-  // 🛑 NOT when the build happened. A batch build carries no orders (plan 44
-  // §6.2 rejected the relation), so coverage is answered by netting ordered
-  // quantity against built quantity per (part, period) — and a build created in
-  // September covering January demand has to say January, which
-  // `build_completed_at` cannot, because that is the accounting date and says
-  // September.
-  'build_period_start',
-  'build_period_end',
-  'build_batch_run',
+  // ─── Standard cost (plans/products/build/01-build-plan.md §1) ──
   // The frozen standard, deliberately separate from the live `part_cost`. The
   // three components are split because the fulfillment COGS entry has to land
   // across 5000 / 5010 / 5020, which it can only do if the finished good's
@@ -948,14 +915,9 @@ export const SYSTEM_ATTRIBUTES = [
   // these are creatable and updatable so the importer can set them in bulk.
   'part_labor_cost_per_unit',
   'part_overhead_cost_per_unit',
-  'part_builds', // inverse of build_part
   'order_cancelled_at', // set, never cleared — a Shopify order can arrive cancelled
-  'order_builds', // inverse of build_order
-  // The drift pair (plans/products/13 Model A+). The order carries its CURRENT
-  // demand fingerprint; a build carries the one that was current when it was
-  // raised. Drift is the two differing — and neither field mutates a build.
+  // The order's current demand fingerprint (plans/products/13 Model A+).
   'order_build_revision',
-  'build_order_revision',
 
   // ─── Bank deposit (plans/accounting/tasks/done/06-deposit-grouping.md) ──
   // Entity migration 125. Five cheques banked together arrive at the bank as

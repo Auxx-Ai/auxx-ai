@@ -115,7 +115,7 @@ describe('writeStockMovements writes the mirror', () => {
     expect(await facts()).toEqual([])
   })
 
-  it('deleting a build’s movements through the seam removes their mirror rows', async () => {
+  it('deleting a part’s movements through the seam removes their mirror rows', async () => {
     const buildId = await inProgressBuild()
     const done = await completeBuild(db(), f.organizationId, f.userId, {
       buildId,
@@ -123,7 +123,9 @@ describe('writeStockMovements writes the mirror', () => {
     })
     if (done.isErr()) throw done.error
     const deleted = await db().transaction((tx) =>
-      deleteMovementsFor(tx, f.organizationId, { buildIds: [buildId] })
+      deleteMovementsFor(tx, f.organizationId, {
+        partIds: [f.producedPartId, ...f.componentPartIds],
+      })
     )
     if (deleted.isErr()) throw deleted.error
     expect(await facts()).toEqual([])

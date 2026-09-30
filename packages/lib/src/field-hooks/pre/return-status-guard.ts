@@ -18,7 +18,7 @@ const logger = createScopedLogger('field-hooks:return-status-guard')
  * The PHYSICAL lifecycle wall for `return_status` on the chain that actually runs for
  * interactive writes (plans/money/tasks/54-returns.md section 3.3, which asks for exactly
  * this: *"Use `lifecycle-status-guard.ts` (`field-hooks/pre/`) for the transition rules, the
- * same way `build` and `purchase_order` do."*).
+ * same way `purchase_order` does."*).
  *
  * 🛑 **The system-hook twin in `resources/hooks/return-hooks.ts` is coverage; this is the
  * enforcement point, and for `return` that gap is the primary door.** `runPreHooks` fires only
@@ -37,10 +37,9 @@ const logger = createScopedLogger('field-hooks:return-status-guard')
  * reads correctly in review, and passes any unit test that feeds it a bare string (section 2).
  * `unwrapStatusValue` is shared with the system side for exactly that reason.
  *
- * 🔑 **Unlike `build_status` this is a TRANSITION wall, not a value wall, and it can be one
- * only because it reads the stored value itself.** `event.existingValue` is `undefined` on the
- * single-field path, so a guard reading it would be inert in precisely the way section 2
- * describes - `build-status-guard.ts` records that as the reason it settled for a value wall.
+ * 🔑 **This is a TRANSITION wall, not a value wall, and it can be one only because it reads
+ * the stored value itself.** `event.existingValue` is `undefined` on the single-field path, so
+ * a guard reading it would be inert in precisely the way section 2 describes.
  * The read here goes through `FieldValueService`, which resolves the AMBIENT WRITE DB, so
  * inside a transaction it sees the row the write in flight has not committed yet rather than
  * a stale value on a second connection.

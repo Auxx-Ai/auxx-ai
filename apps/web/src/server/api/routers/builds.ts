@@ -2,10 +2,12 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { BuildSourceValues, BuildStatusValues } from '@auxx/database/enums'
 import { instantForBookDay } from '@auxx/lib/accounting/ledger'
 import { getCachedEntityDefId, getOrgCache } from '@auxx/lib/cache'
 import { BadRequestError, NotFoundError } from '@auxx/lib/errors'
 import {
+  type BuildRecord,
   buildNow,
   cancelBuild,
   completeBuild,
@@ -15,7 +17,6 @@ import {
   executeBackfill,
   explodeBuildComponents,
   fixMovementAccounts,
-  getBuild,
   hasStandingBackflushBuilds,
   listBuilds,
   loadAutoBuildSettings,
@@ -24,7 +25,9 @@ import {
   readBackfillPlanReads,
   readBackflushRunRow,
   readBatchRun,
+  readBuild,
   readBuildDrift,
+  readBuildReversal,
   readKindConflictFacts,
   readKindConflicts,
   readMovementAccountDrift,
@@ -35,6 +38,7 @@ import {
   summarizeBackflushPlan,
   toBackflushRun,
   toUndoBackflushRun,
+  updateBuildNotes,
 } from '@auxx/lib/inventory/builds'
 import type {
   BackfillExclusion,
@@ -54,14 +58,16 @@ import {
   setStandardCost,
   setStandardCosts,
 } from '@auxx/lib/inventory/costing'
+import { readMovementsByBuilds } from '@auxx/lib/inventory/movements'
 import { bulkSetPartKind } from '@auxx/lib/inventory/receiving'
 import { enqueueBackflushRun, enqueueUndoBackflushRun } from '@auxx/lib/jobs'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { getOrganizationSetting } from '@auxx/lib/settings'
 import { dayKeyInZone, previousDayKey, startOfDayInstant } from '@auxx/utils/calendar-day'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { calendarDaySchema } from '~/server/api/calendar-day-schema'
-import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
+import { capabilityProcedure, createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
 /**
  * A roll may be scoped to a handful of parts, or run across the org.
@@ -184,32 +190,19 @@ const completionShape = {
  * (plans/products/build/01-build-plan.md).
  *
  * **Every procedure here is the permission gate for the lib call underneath.**
- * `@auxx/lib/inventory/builds` contains no access checks by design — its module headers
- * say so explicitly — so if a gate is missing here it is missing everywhere.
- * The authority is per-definition, resolved from the org cache and asserted
- * against the request's `CapabilitySet`:
+ * `@auxx/lib/inventory/builds` contains no access checks by design, so if a gate is
+ * missing here it is missing everywhere. A build is a table row, not a record, so its
+ * gates are the MRP area's (plans/mrp/23 §4 Web); cost operations stay on the `part`:
  *
  * | procedure                              | gate                                      |
  * | -------------------------------------- | ----------------------------------------- |
- * | `previewRoll`, `roll`, `setStandardCost(s)`, `canRestateStandardCost` | edit on `part` |
- * | `standardCostWorklist`                 | view on `part`                            |
- * | `list`, `get`, `getBatchRun`           | view on `build`                           |
- * | `create`, `start`, `cancel`            | edit on `build`                           |
- * | `previewCompletion`, `complete`, `reverse`, `buildNow`, `startUndoBackflush`, `getUndoBackflushRun`, `hasBackflushBuilds`, `fixMovementAccounts` | edit on `build`                  |
- * | `movementAccountDrift`                 | view on `part`                            |
+ * | `previewRoll`, `roll`, `setStandardCost(s)`, `confirmStandardCosts`, `canRestateStandardCost`, `confirmKindConflicts` | edit on `part` |
+ * | `standardCostWorklist`, `kindConflicts`, `kindConflictFacts`, `movementAccountDrift` | view on `part` |
+ * | `list`, `get`, `getBatchRun`           | `mrp.view`                                |
+ * | every other procedure (create, start, cancel, complete, reverse, notes, backfill, backflush and its undo, `fixMovementAccounts`) | `mrp.manage` |
  *
- * Three notes on why those, and not something coarser:
- *
- * 1. **`assertEditEntity`, never the coarser `assertWriteEntity`.** It is the
- *    server mirror of the `canEditEntity(defId)` the cards run to decide whether
- *    to render a button, so the button the UI hides and the door the server
- *    closes are the same door.
- * 2. **Movement writes gate on the document acted on** (plans/mrp/20-stock-movement-table.md S4):
- *    a build's consume and produce rows are authorised by edit on the `build`.
- * 3. **`previewCompletion` is gated as the write, not as a read.** Same argument
- *    as `previewRoll`: the preview exists solely to be the first half of a
- *    write, it discloses the standard costs that write will freeze, and a reader
- *    who cannot complete has no use for it.
+ * Previews (`previewCompletion`, `previewBackfill`, `previewBackflush`) are gated as the
+ * write they are the first half of: they disclose the standard costs that write freezes.
  *
  * Lib returns neverthrow `Result`s carrying `AuxxError`s; those are rethrown
  * as-is so `auxxErrorMiddleware` maps them. Wrapping one in a `TRPCError` would
@@ -430,74 +423,111 @@ export const buildsRouter = createTRPCRouter({
   // ─── The build event (phase 2) ──────────────────────────────────────
 
   /**
-   * Builds, newest first, with every cost already resolved.
-   *
-   * The generic record list is what the `/app/builds` page renders; this exists
-   * for the surfaces that need a build's NUMBERS rather than its field values —
-   * a part's builds, an order's builds, the run card's sibling lookups — without
-   * one field-value read per row.
+   * Builds, newest first, paged by offset (`cursor`). The part, order and batch-run surfaces and
+   * the build sheet's run list read this; there is no builds page.
    */
-  list: capabilityProcedure
+  list: permissionProcedure(PermissionKey.mrpView)
     .input(
       z.object({
-        status: z.enum(['planned', 'in_progress', 'completed', 'canceled']).optional(),
+        status: z.enum(BuildStatusValues).optional(),
+        source: z.enum(BuildSourceValues).optional(),
         partId: z.string().min(1).optional(),
         orderId: z.string().min(1).optional(),
-        source: z.enum(['manual', 'order']).optional(),
+        batchRun: z.number().int().positive().optional(),
         limit: z.number().int().min(1).max(200).optional(),
-        offset: z.number().int().min(0).optional(),
+        cursor: z.number().int().min(0).nullish(),
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'build'))
+      const { cursor, ...filters } = input
+      const limit = filters.limit ?? 50
+      const offset = cursor ?? 0
+      const result = await listBuilds(ctx.db, ctx.session.organizationId, {
+        ...filters,
+        limit,
+        offset,
+      })
+      if (result.isErr()) throw result.error
+      const items = result.value
+      return { items, nextCursor: items.length === limit ? offset + limit : null }
+    }),
 
-      const result = await listBuilds(ctx.db, organizationId, input)
+  /**
+   * Everything the build sheet shows, in one read: the build with its drift verdict, the part and
+   * order names, the reversal link in both directions, and the consume/produce legs.
+   *
+   * `null` for a build that does not exist or belongs to another org, indistinguishably.
+   * `drifted` (plans/products/13 Q4): on a `planned` order build it means the last convergence
+   * could not finish; on a started, completed or manual build it is permanent by design.
+   */
+  get: permissionProcedure(PermissionKey.mrpView)
+    .input(z.object({ buildId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const build = await readBuild(ctx.db, organizationId, input.buildId)
+      if (!build) return null
+
+      const [drift, reversedBy, reversalOf, movements] = await Promise.all([
+        readBuildDrift(ctx.db, organizationId, [build]),
+        readBuildReversal(ctx.db, organizationId, build.buildId),
+        build.reversalOfBuildId
+          ? readBuild(ctx.db, organizationId, build.reversalOfBuildId)
+          : Promise.resolve(undefined),
+        readMovementsByBuilds(ctx.db, organizationId, [build.buildId]),
+      ])
+      const names = await readEntityNames(ctx.db, organizationId, [
+        build.partId,
+        ...(build.orderId ? [build.orderId] : []),
+        ...movements.map((movement) => movement.partId),
+      ])
+
+      return {
+        ...build,
+        drifted: drift.get(build.buildId)?.drifted ?? false,
+        partName: names[build.partId] ?? null,
+        orderName: build.orderId ? (names[build.orderId] ?? null) : null,
+        reversedBy: buildLink(reversedBy),
+        reversalOf: buildLink(reversalOf),
+        movements: movements
+          .map((movement) => ({
+            id: movement.id,
+            partId: movement.partId,
+            partName: names[movement.partId] ?? null,
+            type: movement.type,
+            quantity: movement.quantity,
+            reason: movement.reason,
+            reference: movement.reference,
+            unitCostMinor: movement.unitCostMinor,
+            extendedCostMinor: movement.extendedCostMinor,
+            costBasis: movement.costBasis,
+            effectiveAt: movement.effectiveAt,
+          }))
+          // Produce leg first, then the consumed components by name.
+          .sort(
+            (a, b) =>
+              Number(b.quantity > 0) - Number(a.quantity > 0) ||
+              (a.partName ?? '').localeCompare(b.partName ?? '')
+          ),
+      }
+    }),
+
+  /** The one field a person edits on a build. Any status. */
+  updateNotes: permissionProcedure(PermissionKey.mrpManage)
+    .input(z.object({ buildId: z.string().min(1), notes: z.string().max(2000).nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const notes = input.notes?.trim() ? input.notes : null
+      const result = await updateBuildNotes(ctx.db, ctx.session.organizationId, {
+        buildId: input.buildId,
+        notes,
+      })
       if (result.isErr()) throw result.error
       return result.value
     }),
 
   /**
-   * One build, fully priced, with its drift verdict.
-   *
-   * `null` for a build that does not exist, is archived, or belongs to another
-   * org — the same three cases, deliberately indistinguishable, so this cannot
-   * be used to probe for ids.
-   *
-   * `drifted` answers plans/products/13 Q4 — *"how is drift surfaced on a build
-   * that cannot be reconciled"*. It rides along rather than being its own
-   * procedure because `readBuildDrift` takes RECORDS, deliberately: *"every
-   * caller that wants drift is already listing builds, and re-reading them here
-   * would be the composed-read problem"*. A second procedure would re-read this
-   * very build to answer one boolean.
-   *
-   * ⚠️ Since Model B shipped, a `planned` order-raised build is converged
-   * automatically, so drift on one is transient — it means the last convergence
-   * could not finish. Persistent drift lives on the builds convergence may not
-   * touch: `in_progress`, `completed`, and `manual`. That is exactly the set Q4
-   * was asked about.
-   */
-  get: capabilityProcedure
-    .input(z.object({ buildId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
-      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'build'))
-
-      const result = await getBuild(ctx.db, organizationId, input.buildId)
-      if (result.isErr()) throw result.error
-      const build = result.value
-      if (!build) return null
-
-      const drift = await readBuildDrift(ctx.db, organizationId, [build])
-      return { ...build, drifted: drift.get(build.buildId)?.drifted ?? false }
-    }),
-
-  /**
    * Raise a run. Always lands `planned`, and writes NO stock movements (B2).
-   *
-   * Gated on edit on `build`: planning a run is not moving stock (B2).
    */
-  create: capabilityProcedure
+  create: permissionProcedure(PermissionKey.mrpManage)
     .input(
       z.object({
         partId: z.string().min(1),
@@ -508,7 +538,6 @@ export const buildsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'build'))
 
       // 🛑 `source` is NOT accepted from the browser. It is the discriminator
       // that says whether a person raised this run or the order trigger did
@@ -521,7 +550,7 @@ export const buildsRouter = createTRPCRouter({
     }),
 
   /** Move a `planned` run to `in_progress`. Writes no movements. */
-  start: capabilityProcedure
+  start: permissionProcedure(PermissionKey.mrpManage)
     .input(
       z.object({
         buildId: z.string().min(1),
@@ -531,7 +560,6 @@ export const buildsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'build'))
 
       const result = await startBuild(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
@@ -545,7 +573,7 @@ export const buildsRouter = createTRPCRouter({
    * wrong is corrected by `reverse`, never by cancelling — a completed build has
    * an append-only ledger behind it and cancelling would leave it standing.
    */
-  cancel: capabilityProcedure
+  cancel: permissionProcedure(PermissionKey.mrpManage)
     .input(
       z.object({
         buildId: z.string().min(1),
@@ -554,7 +582,6 @@ export const buildsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'build'))
 
       const result = await cancelBuild(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
@@ -578,11 +605,10 @@ export const buildsRouter = createTRPCRouter({
    *
    * A `.query()` because it writes nothing at all.
    */
-  previewCompletion: capabilityProcedure
+  previewCompletion: permissionProcedure(PermissionKey.mrpManage)
     .input(z.object({ partId: z.string().min(1), ...completionShape }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      await assertCanPostBuildLedger(ctx)
 
       // The same per-part read `completeBuild` makes, so the previewed variance is the posted one.
       const [plan, rates] = await Promise.all([
@@ -610,15 +636,13 @@ export const buildsRouter = createTRPCRouter({
    * Raise, start and complete a run in one call — the part drawer's `Build now`
    * (plans/money/tasks/23-build-from-the-part.md §3.3).
    *
-   * Gated exactly as `complete` is, because it ends in a completion.
-   *
    * 🛑 **It is not atomic and the result says so.** A refused completion comes
    * back with `status: 'left_in_progress'` and the build that was raised, at a
    * 200 — not as an error. The caller MUST render that arm as a failure that
    * names and links the run, because "nothing happened" is what makes somebody
    * press the button a second time and raise a duplicate.
    */
-  buildNow: capabilityProcedure
+  buildNow: permissionProcedure(PermissionKey.mrpManage)
     .input(
       z.object({
         partId: z.string().min(1),
@@ -631,7 +655,6 @@ export const buildsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      await assertCanPostBuildLedger(ctx)
 
       const result = await buildNow(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
@@ -653,7 +676,7 @@ export const buildsRouter = createTRPCRouter({
    * run absorbed, so the form is entitled to override the default — the same
    * call `adjustStock` makes about a unit cost nobody else can supply.
    */
-  complete: capabilityProcedure
+  complete: permissionProcedure(PermissionKey.mrpManage)
     .input(
       z.object({
         buildId: z.string().min(1),
@@ -669,7 +692,6 @@ export const buildsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      await assertCanPostBuildLedger(ctx)
 
       const { day, ...rest } = input
       const completedAt = day ? await instantForBookDay(organizationId, day) : undefined
@@ -686,12 +708,8 @@ export const buildsRouter = createTRPCRouter({
    * a second build whose movements carry the ORIGINAL's frozen costs. Re-pricing
    * a reversal at today's standard nets a build and its undo to a non-zero
    * amount of inventory value out of nothing.
-   *
-   * 🛑 **The reversing build is written on the quiet lane, so it emits no
-   * `record:created` frame** and no open list learns about it on its own. The
-   * caller invalidates — see `build-run-card.tsx`.
    */
-  reverse: capabilityProcedure
+  reverse: permissionProcedure(PermissionKey.mrpManage)
     .input(
       z.object({
         buildId: z.string().min(1),
@@ -703,7 +721,6 @@ export const buildsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      await assertCanPostBuildLedger(ctx)
 
       const result = await reverseBuild(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
@@ -730,18 +747,11 @@ export const buildsRouter = createTRPCRouter({
    * comes back with `plan: null` and the reason, and the write door
    * ({@link runBackfill}) throws on exactly the same conditions. The refusal is
    * real; it is just legible.
-   *
-   * Gated as a write, not as a read, on the same argument `previewRoll` and
-   * `previewCompletion` make: the preview exists solely to be the first half of
-   * a write, and a reader who cannot raise a build has no use for it. When
-   * `status` is `completed` it also discloses the standard costs the run would
-   * freeze, so it takes the full ledger gate.
    */
-  previewBackfill: capabilityProcedure
+  previewBackfill: permissionProcedure(PermissionKey.mrpManage)
     .input(z.object(backfillShape))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      await assertCanRunBackfill(ctx, input.status)
 
       // ⚠️ `enabledAt`, not `enabled`. The bound exists because the reconciler is
       // live ABOVE the cutoff (§7.0); a null stamp means no order has ever
@@ -794,15 +804,11 @@ export const buildsRouter = createTRPCRouter({
    * carrying the build it already raised, so the run records those and keeps
    * going. A run that aborted on the first refusal would tell somebody "failed"
    * about builds that exist, and they would press the button again.
-   *
-   * Same two gates as the preview, for the same reason — a `completed` backfill
-   * is a stock movement by any other name.
    */
-  runBackfill: capabilityProcedure
+  runBackfill: permissionProcedure(PermissionKey.mrpManage)
     .input(z.object(backfillShape))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      await assertCanRunBackfill(ctx, input.status)
 
       const [{ enabledAt: cutoff }, timeZone] = await Promise.all([
         loadAutoBuildSettings(organizationId),
@@ -835,14 +841,11 @@ export const buildsRouter = createTRPCRouter({
 
   /**
    * The builds a backflush over a range would write, per part and day — the D24 confirm.
-   * Ledger gate, as `previewCompletion`: the preview exists only to be the first half of a
-   * write that appends consume and produce rows.
    */
-  previewBackflush: capabilityProcedure
+  previewBackflush: permissionProcedure(PermissionKey.mrpManage)
     .input(z.object(backflushShape))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      await assertCanPostBuildLedger(ctx)
 
       // The UI sends no range; that preview is cached per org (plans/mrp/17 D1).
       if (!input.from && !input.to) return getOrgCache().get(organizationId, 'backflushPreview')
@@ -855,21 +858,19 @@ export const buildsRouter = createTRPCRouter({
    * Start a sliced backflush run on the worker (plans/mrp/11); 409 while one is running, 422 while
    * a kind conflict is left. The same walk the preview showed, re-planned as each slice runs.
    */
-  runBackflush: capabilityProcedure
+  runBackflush: permissionProcedure(PermissionKey.mrpManage)
     .input(z.object(backflushShape))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      await assertCanPostBuildLedger(ctx)
 
       return enqueueBackflushRun(organizationId, input, userId)
     }),
 
   /** One backflush run, or the org's latest; `null` when there is none. */
-  getBackflushRun: capabilityProcedure
+  getBackflushRun: permissionProcedure(PermissionKey.mrpManage)
     .input(z.object({ runId: z.string().optional() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      await assertCanPostBuildLedger(ctx)
 
       const row = await readBackflushRunRow(ctx.db, organizationId, input.runId)
       return row ? toBackflushRun(row) : null
@@ -878,22 +879,13 @@ export const buildsRouter = createTRPCRouter({
   // ─── The batch run (plans/money/tasks/45 §4, §11) ───────────────────
 
   /**
-   * One batch run's members, counted by status.
-   *
-   * ⚠️ **A run is not a record** (45 §3.1), so there is no def to gate on and no
-   * detail page to open. This read IS the run's detail view, and the build
-   * drawer's `build:batch-run` card is the surface that renders it: every build
-   * carrying `build_batch_run = N` is a sibling, and the counts are what makes
-   * the Undo button able to state its own blast radius before it is pressed.
-   *
-   * VIEW on `build` and nothing else. It counts builds, discloses no cost, and
-   * anybody who may open one member of the run may count the rest.
+   * One batch run's members, counted by status: what lets the build sheet's Undo button state its
+   * blast radius before it is pressed (45 §11). A run is not a record (45 §3.1).
    */
-  getBatchRun: capabilityProcedure
+  getBatchRun: permissionProcedure(PermissionKey.mrpView)
     .input(z.object({ runNumber: z.number().int().positive() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'build'))
 
       const result = await readBatchRun(ctx.db, organizationId, input.runNumber)
       if (result.isErr()) throw result.error
@@ -904,34 +896,29 @@ export const buildsRouter = createTRPCRouter({
    * Undo past builds on the worker (plans/mrp/17 §8): every backflush batch run, or `runNumber`
    * alone (the drawer card). Planned builds are cancelled, completed ones reversed, dated today;
    * nothing is deleted. 409 while a backflush or undo run is live for the org.
-   *
-   * The full ledger gate, because the reversals write movements (45 §4.1).
    */
-  startUndoBackflush: capabilityProcedure
+  startUndoBackflush: permissionProcedure(PermissionKey.mrpManage)
     .input(z.object({ runNumber: z.number().int().positive().optional() }).optional())
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      await assertCanPostBuildLedger(ctx)
 
       return enqueueUndoBackflushRun(organizationId, userId, input?.runNumber)
     }),
 
   /** One undo run, or the org's latest; `null` when there is none. */
-  getUndoBackflushRun: capabilityProcedure
+  getUndoBackflushRun: permissionProcedure(PermissionKey.mrpManage)
     .input(z.object({ runId: z.string().optional() }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      await assertCanPostBuildLedger(ctx)
 
       const row = await readUndoBackflushRunRow(ctx.db, organizationId, input.runId)
       return row ? toUndoBackflushRun(row) : null
     }),
 
   /** Whether any backflush build still stands, so "Undo past builds" has something to undo. */
-  hasBackflushBuilds: capabilityProcedure.query(async ({ ctx }) => {
-    await assertCanPostBuildLedger(ctx)
-    return hasStandingBackflushBuilds(ctx.db, ctx.session.organizationId)
-  }),
+  hasBackflushBuilds: permissionProcedure(PermissionKey.mrpManage).query(({ ctx }) =>
+    hasStandingBackflushBuilds(ctx.db, ctx.session.organizationId)
+  ),
 
   /** Parts whose movements carry an account their current kind no longer maps to (17 §5.2). */
   movementAccountDrift: capabilityProcedure.query(async ({ ctx }) => {
@@ -945,13 +932,11 @@ export const buildsRouter = createTRPCRouter({
 
   /**
    * Restamp unposted drifted movements and post one correcting entry per part for posted ones.
-   * The ledger gate, because it rewrites movements and may post.
    */
-  fixMovementAccounts: capabilityProcedure
+  fixMovementAccounts: permissionProcedure(PermissionKey.mrpManage)
     .input(z.object({ partIds: z.array(z.string().min(1)).max(5000).optional() }).optional())
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      await assertCanPostBuildLedger(ctx)
 
       const result = await fixMovementAccounts(ctx.db, organizationId, userId, {
         partIds: input?.partIds,
@@ -1114,27 +1099,9 @@ async function readEntityNames(
   return names
 }
 
-/** The gate on both halves of the backfill: EDIT on `build`, via {@link assertCanPostBuildLedger} when it completes. */
-async function assertCanRunBackfill(
-  ctx: {
-    session: { organizationId: string }
-    capabilities: { assertEditEntity: (defId: string) => void }
-  },
-  status: BackfillStatus
-): Promise<void> {
-  if (status === 'completed') {
-    await assertCanPostBuildLedger(ctx)
-    return
-  }
-  ctx.capabilities.assertEditEntity(await requireDefId(ctx.session.organizationId, 'build'))
-}
-
-/** The gate on every path that writes a build's ledger: EDIT on `build`, which authorises its movements too. */
-async function assertCanPostBuildLedger(ctx: {
-  session: { organizationId: string }
-  capabilities: { assertEditEntity: (defId: string) => void }
-}): Promise<void> {
-  ctx.capabilities.assertEditEntity(await requireDefId(ctx.session.organizationId, 'build'))
+/** A build as the other end of a reversal link. */
+function buildLink(build: BuildRecord | undefined): { buildId: string; number: string } | null {
+  return build ? { buildId: build.buildId, number: build.number } : null
 }
 
 /**

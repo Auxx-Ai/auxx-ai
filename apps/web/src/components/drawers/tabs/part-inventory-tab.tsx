@@ -23,6 +23,7 @@ import { formatCurrency } from '@auxx/utils/currency'
 import { Factory, Package, PackagePlus, Undo2 } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
+import { BuildBadge } from '~/components/manufacturing/builds/build-badge'
 import { ReceiveStockPopover } from '~/components/manufacturing/parts/receive-stock-popover'
 import { StockAdjustmentPopover } from '~/components/manufacturing/parts/stock-adjustment-popover'
 import { stockSetupHref } from '~/components/manufacturing/stock-setup/stock-setup-href'
@@ -311,7 +312,9 @@ function MovementRow({
       </TableCell>
       <TableCell className='text-right'>
         <ConfirmDialog />
-        {canReverseThis ? (
+        {movement.buildId ? (
+          <BuildBadge build={{ buildId: movement.buildId }} size='sm' />
+        ) : canReverseThis ? (
           <Button
             variant='ghost'
             size='xs'

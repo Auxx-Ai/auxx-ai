@@ -1,30 +1,25 @@
 // packages/lib/src/inventory/builds/types.ts
 
+import type { BuildSourceValue } from '@auxx/database/enums'
 import type { BuildStatusValue } from './client'
+
+export type { BuildSourceValue }
 
 // ─── The build event (phase 2) ─────────────────────────────────────────
 //
 // plans/products/build/01-build-plan.md section 3. Every money value below is
-// an INTEGER in whole minor units (cents), the platform `FieldType.CURRENCY`
-// convention.
+// in minor units (cents); see plans/mrp/23-build-table.md for the `Build` table.
 
-/**
- * One `build` row as the read path returns it.
- *
- * Deliberately flat and fully resolved: a caller rendering a list must never
- * have to issue a second read per row to learn what a build cost.
- */
+/** One `Build` row as the read path returns it: the table's columns, with `id` as `buildId`. */
 export interface BuildRecord {
-  /** `EntityInstance.id` of the `build`. */
   buildId: string
-  /** `<entityDefinitionId>:<instanceId>`, ready for a drawer or a picker. */
-  recordId: string
-  /** `B-0001`. `null` until a numbering hook exists — see the module README note. */
-  number: string | null
+  /** `B-0001`. */
+  number: string
   /** `EntityInstance.id` of the `part` this run produces. */
-  partId: string | null
-  /** `null` on a row whose status value is missing — see {@link resolveBuildStatus}. */
-  status: BuildStatusValue | null
+  partId: string
+  status: BuildStatusValue
+  source: BuildSourceValue
+  /** `null` on a reversing build, which plans nothing. */
   quantityPlanned: number | null
   /** Good units that entered stock. Negative on a reversing build. */
   quantityProduced: number | null
@@ -33,38 +28,29 @@ export interface BuildRecord {
   startedAt: Date | null
   /** THE accounting date. Every movement this build wrote carries it. */
   completedAt: Date | null
+  /** `null` until priced. */
   materialCost: number | null
   laborCost: number | null
   overheadCost: number | null
   producedValue: number | null
   varianceAmount: number | null
-  /**
-   * Denormalized convenience only (section 1.1) — the GL posting ledger is the
-   * authority once it exists, and nothing gates a write on this.
-   */
+  /** Denormalized convenience only; the GL posting is the authority. */
   postedAt: Date | null
   notes: string | null
   orderId: string | null
-  /** `manual` or `order`. `null` on a row written before the field existed. */
-  source: string | null
-  /** Set on a REVERSING build: the build it undoes (B6). */
+  /** Set on a REVERSING build: the build it undoes (B6). At most one per original (unique index). */
   reversalOfBuildId: string | null
-  /**
-   * The order's demand fingerprint when this build was raised
-   * (plans/products/13 Model A+). `null` on a hand-raised build and on every
-   * row written before the field existed — both mean *unknown*, never *drifted*.
-   */
+  /** The order's demand fingerprint when an order-raised build was raised; `null` means unknown. */
   orderRevision: string | null
-  /**
-   * The batch run that raised this build (plans/money/tasks/45 §3), or `null`
-   * on an order-raised, hand-raised or REVERSING build.
-   */
+  /** The demand period a `batch` build claims, half-open. */
+  periodStart: Date | null
+  periodEnd: Date | null
+  /** The batch or backflush run that raised this build (plans/money/tasks/45 §3), else `null`. */
   batchRun: number | null
   createdAt: Date
+  updatedAt: Date
+  createdById: string | null
 }
-
-/** `build_source` values `createBuild` accepts; mirrors `BuildSource` in `enum-values.ts`. */
-export type BuildSourceValue = 'manual' | 'order' | 'batch' | 'backflush'
 
 /** Raise a run. Always lands `planned`, and writes no movements (B2). */
 export interface CreateBuildInput {
@@ -105,33 +91,16 @@ export interface CreateBuildInput {
   orderRevision?: string
   /**
    * The DEMAND period a `batch` build claims. Half-open: `start` inclusive,
-   * `end` exclusive.
-   *
-   * 🛑 **It has to be settable HERE, at create time.** `build_period_start` and
-   * `build_period_end` are declared `updatable: false`, because moving a claimed
-   * period silently restates what the next netting run believes is already
-   * covered (plans/money/tasks/44 §6.2). So there is no legitimate second write,
-   * and a post-create update would be writing a field the schema says cannot be
-   * written.
-   *
-   * ⚠️ Not the same thing as when the build HAPPENED. A build raised in
-   * September covering January demand claims January and completes in January;
-   * `build_completed_at` is the accounting date and must fall inside this range.
-   *
-   * Ignored unless `source` is `batch`. An order-raised or hand-raised build
-   * claims no period: it answers to one order, or to nobody.
+   * `end` exclusive. Written at create or never: moving a claimed period restates
+   * what the next netting run believes is covered (plans/money/tasks/44 §6.2).
+   * Not when the build happened; `completedAt` is the accounting date.
+   * Ignored unless `source` is `batch`.
    */
   period?: { start: Date; end: Date }
   /**
-   * The batch run raising this build (plans/money/tasks/45 §3).
-   *
-   * ⚠️ **Allocated ONCE per run and passed down**, never per build: the number
-   * comes from `recordNumbering.create`, which increments a counter, so
-   * allocating inside the loop would burn the sequence and give every build its
-   * own run.
-   *
-   * 🛑 Written here or never, exactly like {@link CreateBuildInput.period}, and
-   * ignored unless `source` is `batch`.
+   * The batch run raising this build (plans/money/tasks/45 §3). Allocated ONCE per
+   * run from the `build_batch` sequence and passed down. Written at create or never,
+   * and ignored unless `source` is `batch` or `backflush`.
    */
   batchRun?: number
 }
@@ -145,7 +114,7 @@ export interface CreateBuildInput {
  */
 export interface UndoBatchRunEntry {
   buildId: string
-  partId: string | null
+  partId: string
   outcome: 'cancelled' | 'reversed' | 'skipped' | 'failed'
   /** Why it was skipped or how it failed. `null` on a build that was undone. */
   reason: string | null
@@ -301,7 +270,6 @@ export interface BuildComponentPlan {
 /** What a completion DID. Enough to render the result without a second read. */
 export interface CompleteBuildResult {
   buildId: string
-  recordId: string
   quantityProduced: number
   quantityScrapped: number
   /** Sum of the consumed lines' extended standard cost, positive. `null` on a pending build. */
@@ -333,7 +301,6 @@ export interface ReverseBuildInput {
 export interface ReverseBuildResult {
   /** The NEW build. */
   buildId: string
-  recordId: string
   /** The build it undoes. */
   reversalOfBuildId: string
   movementIds: string[]
@@ -348,6 +315,8 @@ export interface ListBuildsFilters {
   /** Only runs raised against this `order` instance. */
   orderId?: string
   source?: BuildSourceValue
+  /** Only builds raised by this batch or backflush run. */
+  batchRun?: number
   /** Defaults to 50. */
   limit?: number
   offset?: number

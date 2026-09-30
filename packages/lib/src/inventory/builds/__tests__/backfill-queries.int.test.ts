@@ -12,14 +12,8 @@
 // covers what a double CAN see (the query budget, the attribution pass) and
 // says so at the top.
 //
-// Rows are written as raw `EntityInstance` + `FieldValue` inserts rather than
-// through `UnifiedCrudHandler`. Two reasons: `build_status` is guarded against
-// any manual write of `in_progress`/`completed`/`canceled`
-// (`field-hooks/pre/build-status-guard.ts`), and a real order write would fire
-// the drift reconciler, which raises builds — the exact rows this file is
-// asserting the ABSENCE of.
-//
-// Run: npx vitest run --config vitest.integration.config.ts src/builds
+// Orders and lines are raw `EntityInstance` + `FieldValue` inserts, because a real order write
+// fires the drift reconciler, which raises builds; builds go straight into the `Build` table.
 
 import { type Database, schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
@@ -31,11 +25,12 @@ import { linkDisplayFields } from '../../../seed/entity-seeder/link-display-fiel
 import { linkRelationships } from '../../../seed/entity-seeder/link-relationships'
 import type { EntityDefMap } from '../../../seed/entity-seeder/types'
 import { readBackfillPlanReads } from '../backfill-queries'
+import { insertBuild, type NewBuild } from '../build-writes'
 
 const db = () => getTestDb() as unknown as Database
 
 /** The only defs the backfill read touches. Narrowed, because field seeding is the cost. */
-const BACKFILL_ENTITY_TYPES = ['order', 'line_item', 'part', 'subpart', 'build'] as const
+const BACKFILL_ENTITY_TYPES = ['order', 'line_item', 'part', 'subpart'] as const
 
 const JANUARY = {
   from: new Date('2026-01-01T00:00:00.000Z'),
@@ -52,7 +47,7 @@ interface Fixture {
 
 let fx: Fixture
 
-/** Seed an org whose five defs and their registry fields are the real ones. */
+/** Seed an org whose four defs and their registry fields are the real ones. */
 async function seedBackfillOrg(): Promise<Fixture> {
   const org = await createTestOrganization()
   const user = await createTestUser({ name: 'Backfill Operator' })
@@ -62,7 +57,7 @@ async function seedBackfillOrg(): Promise<Fixture> {
     .where(eq(schema.Organization.id, org.id))
 
   // Every definition — `getCachedEntityDefId` reads the whole org — but only the
-  // five defs this read touches get their registry fields materialised.
+  // four defs this read touches get their registry fields materialised.
   const entityDefMap = await createEntityDefinitions(db(), org.id)
   const narrowed: EntityDefMap = new Map()
   for (const entityType of BACKFILL_ENTITY_TYPES) {
@@ -175,16 +170,13 @@ async function seedOrderWithLine(
   return orderId
 }
 
-async function seedBuild(
-  partId: string,
-  values: Record<string, ValueColumns> = {}
-): Promise<string> {
-  return writeRecord('build', {
-    build_part: { relatedEntityId: partId },
-    build_status: { optionId: 'planned' },
-    build_quantity_planned: { valueNumber: 5 },
-    ...values,
+async function seedBuild(partId: string, build: Partial<NewBuild> = {}): Promise<string> {
+  const written = await insertBuild(db(), fx.organizationId, null, {
+    partId,
+    quantityPlanned: 5,
+    ...build,
   })
+  return written.buildId
 }
 
 async function read(range = JANUARY) {
@@ -280,10 +272,7 @@ describe('coverage', () => {
   })
 
   it('counts a planned order-raised build, at its order’s date', async () => {
-    await seedBuild(partId, {
-      build_order: { relatedEntityId: orderId },
-      build_quantity_planned: { valueNumber: 4 },
-    })
+    await seedBuild(partId, { orderId, source: 'order', quantityPlanned: 4 })
 
     const { coverage } = await read()
 
@@ -291,7 +280,7 @@ describe('coverage', () => {
   })
 
   it('counts an in_progress build', async () => {
-    await seedBuild(partId, { build_status: { optionId: 'in_progress' } })
+    await seedBuild(partId, { status: 'in_progress' })
 
     const { coverage } = await read()
 
@@ -305,7 +294,7 @@ describe('coverage', () => {
     // well, while also subtracting on hand, under-builds by exactly the produced
     // quantity. The fixture writes the resulting on-hand alongside, so the two
     // halves of the double count are both present.
-    await seedBuild(partId, { build_status: { optionId: 'completed' } })
+    await seedBuild(partId, { status: 'completed' })
     await db()
       .insert(schema.FieldValue)
       .values({
@@ -324,7 +313,7 @@ describe('coverage', () => {
   })
 
   it('🛑 does NOT count a canceled build', async () => {
-    await seedBuild(partId, { build_status: { optionId: 'canceled' } })
+    await seedBuild(partId, { status: 'canceled' })
 
     const { coverage } = await read()
 
@@ -335,10 +324,7 @@ describe('coverage', () => {
     // Diverges from `reconcile-policy.ts` on purpose (section 7.1a): the
     // aggregate asks whether enough production is planned, and a planned manual
     // build will produce units. Do not align the two models.
-    await seedBuild(partId, {
-      build_source: { optionId: 'manual' },
-      build_quantity_planned: { valueNumber: 6 },
-    })
+    await seedBuild(partId, { source: 'manual', quantityPlanned: 6 })
 
     const { coverage } = await read()
 
@@ -347,10 +333,10 @@ describe('coverage', () => {
 
   it('counts a batch build at its own period start', async () => {
     await seedBuild(partId, {
-      build_source: { optionId: 'batch' },
-      build_quantity_planned: { valueNumber: 8 },
-      build_period_start: { valueDate: JANUARY.from.toISOString() },
-      build_period_end: { valueDate: JANUARY.to.toISOString() },
+      source: 'batch',
+      quantityPlanned: 8,
+      periodStart: JANUARY.from,
+      periodEnd: JANUARY.to,
     })
 
     const { coverage } = await read()
@@ -360,7 +346,7 @@ describe('coverage', () => {
 
   it('drops a build raised against an order outside the range', async () => {
     const otherOrderId = await seedOrderWithLine(partId, { placedAt: OUT_OF_RANGE })
-    await seedBuild(partId, { build_order: { relatedEntityId: otherOrderId } })
+    await seedBuild(partId, { orderId: otherOrderId, source: 'order' })
 
     const { coverage } = await read()
 
@@ -370,18 +356,6 @@ describe('coverage', () => {
   it('ignores a build for a part nothing in the range ordered', async () => {
     const otherPartId = await seedBuiltPart()
     await seedBuild(otherPartId)
-
-    const { coverage } = await read()
-
-    expect(coverage).toEqual([])
-  })
-
-  it('ignores an archived build', async () => {
-    const buildId = await seedBuild(partId)
-    await db()
-      .update(schema.EntityInstance)
-      .set({ archivedAt: new Date() })
-      .where(eq(schema.EntityInstance.id, buildId))
 
     const { coverage } = await read()
 
@@ -429,7 +403,7 @@ describe('the query budget', () => {
     const partId = await seedBuiltPart()
     for (let index = 0; index < 12; index += 1) {
       const orderId = await seedOrderWithLine(partId, { placedAt: IN_RANGE })
-      await seedBuild(partId, { build_order: { relatedEntityId: orderId } })
+      await seedBuild(partId, { orderId, source: 'order' })
     }
 
     const counter = { selects: 0 }

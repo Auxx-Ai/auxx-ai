@@ -1,109 +1,35 @@
 // packages/lib/src/inventory/builds/batch-run-queries.ts
 
 /**
- * What a batch RUN looks like from outside.
- *
- * `plans/money/tasks/45-batch-only-builds.md` sections 4, 10.4 and 11.3.
- *
- * ⚠️ **A run is not a record** (45 section 3.1). It is a scalar,
- * `build_batch_run`, stamped on every build one run raised, and everything a
- * `batch_run` entity would have stored is recoverable from those builds: the
- * range off `build_period_start` / `build_period_end`, the statuses off
- * `build_status`, the timing off `EntityInstance.createdAt`. This file is the
- * recovery, and section 10.4 is the note that nobody had costed it: the Undo
- * action takes a run number as INPUT, so without these reads there is no
- * surface that can name one.
- *
- * Two reads:
- *
- * - {@link readBatchRun}, the counts for ONE run. The drawer card and the undo
- *   preview render it, and 45 section 11.3 is explicit that this is the read
- *   the feature cannot ship without.
- * - {@link listBatchRuns}, every run this org has, newest first.
- *
- * plus {@link readBatchRunBuilds}, the per-build rows both of those fold, which
- * `undo-batch-run.ts` also loads because it acts on exactly the same set.
- *
- * ## 🛑 `willReverse` counts what is NOT already reversed
- *
- * `willCancel` and `willReverse` are two different numbers and the second is
- * the one that WRITES TO THE LEDGER (45 section 11.4), so the confirmation has
- * to lead with both. A `completed` build that some live build already points its
- * `build_reversal_of` at needs nothing from an undo: `reverseBuild` would refuse
- * it, and counting it would promise a ledger write that never happens. So the
- * incoming reversal edge is LEFT JOINed and asserted absent, the same shape
- * `hasBuildReversal` uses for one build and the same shape
- * `backfill-queries.ts` uses to keep reversals out of coverage.
- *
- * ## Why the fold is in TypeScript
- *
- * One query per call, and the counting happens over the rows. A run is bounded
- * by the buckets one backfill produced (45 section 10.2: a whole-range monthly
- * run is on the order of a thousand), and the rows are narrow. Conditional
- * aggregates in SQL would buy nothing here and would put the `willReverse` rule
- * somewhere no unit test can read it.
- *
- * Reads only, and no permission checks: the router asserts
- * (`docs/lib-module-guide.md` section 6). The write is `undo-batch-run.ts`.
+ * What a batch run looks like from outside. A run is not a record: it is the `batchRun` number
+ * stamped on every build one run raised, folded here (plans/money/tasks/45-batch-only-builds.md §3.1,
+ * §10.4). Reads only; the write is `undo-batch-run.ts`.
  */
 
 import { type Database, schema } from '@auxx/database'
-import { toDate } from '@auxx/utils/calendar-day'
-import { and, eq, isNotNull, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, exists, isNotNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { optionalFieldId, systemValueJoin } from '../../resources/system-records'
-import { loadBuildContext } from './build-queries'
-import { type BuildStatusValue, resolveBuildStatus } from './client'
+import type { BuildStatusValue } from './client'
 import { guard } from './guard'
 import type { BatchRunSummary } from './types'
 
-/**
- * One build inside a run, at the fields an undo or a count needs.
- *
- * Deliberately narrower than a `BuildRecord`: nothing here reads a cost or a
- * quantity, and hydrating the full row for a thousand builds would be a page of
- * `FieldValue` per build for six columns nobody looks at.
- */
+/** One build inside a run, at the columns an undo or a count needs. */
 export interface BatchRunBuild {
   buildId: string
-  /** The run that raised it. Never `null` here: it is what selected the row. */
   runNumber: number
-  /** `null` on a row whose status value is missing, which is never defaulted. */
-  status: BuildStatusValue | null
-  partId: string | null
-  /**
-   * A LIVE build already points its `build_reversal_of` at this one, so it has
-   * been undone and `reverseBuild` would refuse it (`reverse-build.ts` step 2).
-   * An ARCHIVED reversal does not count, for the reason `hasBuildReversal`
-   * gives: it contributes to no roll-up, so treating it as a standing reversal
-   * would leave the mistake uncorrectable.
-   */
+  status: BuildStatusValue
+  partId: string
+  /** Another build already reverses this one, so `reverseBuild` would refuse it. */
   alreadyReversed: boolean
-  /**
-   * This build IS a reversal.
-   *
-   * 🛑 Always `false` in practice, and read anyway. `reversalBuildValues` must
-   * not copy `build_batch_run` onto a reversal (45 section 4.1), which is what
-   * `__tests__/reverse-build-batch-run.test.ts` pins: if it ever did, run N
-   * would contain its own undo and this flag is what stops a second undo
-   * reversing the reversals.
-   */
+  /** This build IS a reversal. Never true in practice: a reversal carries no `batchRun`. */
   isReversal: boolean
   periodStart: Date | null
   periodEnd: Date | null
   createdAt: Date
 }
 
-/**
- * The counts for ONE run.
- *
- * ⚠️ **A run number that matches no build is an EMPTY summary, never a
- * `NotFoundError`** (45 section 10.8). A run whose buckets all failed allocated
- * a number that no build carries, and so does an org that is short of the
- * migration provisioning `build_batch_run`. Both are honest zeroes, and both
- * would be a 404 that a person reads as "your data is missing".
- */
+/** The counts for one run. A number no build carries is an empty summary, never a `NotFoundError`. */
 export async function readBatchRun(
   db: Database,
   organizationId: string,
@@ -111,200 +37,137 @@ export async function readBatchRun(
 ): Promise<Result<BatchRunSummary, Error>> {
   return guard(
     async () => {
-      const builds = await queryBatchRunBuilds(db, organizationId, runNumber)
-      return summarize(runNumber, builds)
+      const [summary] = await queryBatchRunSummaries(db, organizationId, runNumber)
+      return summary ?? emptySummary(runNumber)
     },
     'Failed to read a batch run',
     { organizationId, runNumber }
   )
 }
 
-/**
- * Every run this organization has, newest first.
- *
- * Newest is the HIGHEST run number rather than the latest `createdAt`: the
- * number comes from an atomic counter, so it orders the runs by when they were
- * allocated even when two ran close enough together to share a second.
- */
+/** Every run this organization has, highest (latest allocated) run number first. */
 export async function listBatchRuns(
   db: Database,
   organizationId: string
 ): Promise<Result<BatchRunSummary[], Error>> {
   return guard(
-    async () => {
-      const builds = await queryBatchRunBuilds(db, organizationId, null)
-
-      const byRun = new Map<number, BatchRunBuild[]>()
-      for (const build of builds) {
-        const bucket = byRun.get(build.runNumber)
-        if (bucket) bucket.push(build)
-        else byRun.set(build.runNumber, [build])
-      }
-
-      return [...byRun.entries()]
-        .sort(([left], [right]) => right - left)
-        .map(([runNumber, runBuilds]) => summarize(runNumber, runBuilds))
-    },
+    async () => queryBatchRunSummaries(db, organizationId, null),
     'Failed to list batch runs',
     { organizationId }
   )
 }
 
-/**
- * The builds one run raised, as the undo acts on them.
- *
- * Ordered oldest first, so an interrupted undo has undone a prefix of the run
- * rather than an arbitrary subset of it.
- */
+/** The builds one run raised, oldest first, so an interrupted undo has undone a prefix. */
 export async function readBatchRunBuilds(
   db: Database,
   organizationId: string,
   runNumber: number
 ): Promise<Result<BatchRunBuild[], Error>> {
   return guard(
-    async () => queryBatchRunBuilds(db, organizationId, runNumber),
+    async () => {
+      const b = schema.Build
+      const rows = await db
+        .select({
+          buildId: b.id,
+          runNumber: b.batchRun,
+          status: b.status,
+          partId: b.partId,
+          reversalOfBuildId: b.reversalOfBuildId,
+          alreadyReversed: reversedExists(db, organizationId),
+          periodStart: b.periodStart,
+          periodEnd: b.periodEnd,
+          createdAt: b.createdAt,
+        })
+        .from(b)
+        .where(and(eq(b.organizationId, organizationId), eq(b.batchRun, runNumber)))
+        .orderBy(asc(b.createdAt), asc(b.id))
+      return rows.map((row) => ({
+        buildId: row.buildId,
+        runNumber: row.runNumber ?? runNumber,
+        status: row.status,
+        partId: row.partId,
+        alreadyReversed: Boolean(row.alreadyReversed),
+        isReversal: row.reversalOfBuildId != null,
+        periodStart: row.periodStart,
+        periodEnd: row.periodEnd,
+        createdAt: row.createdAt,
+      }))
+    },
     'Failed to read the builds of a batch run',
     { organizationId, runNumber }
   )
 }
 
-/**
- * ONE query: every build carrying a run number, or carrying THIS one.
- *
- * An org with no `build` definition, or one short of the migration that
- * provisions `build_batch_run`, reads as no builds rather than as an error. It
- * has never run a batch, so "no runs" is the true answer and a refusal would
- * only stop a drawer from rendering.
- */
-async function queryBatchRunBuilds(
+/** `EXISTS` a build whose `reversalOfBuildId` names the outer `Build` row. */
+function reversedExists(db: Database, organizationId: string) {
+  const reversal = alias(schema.Build, 'batch_run_reversal')
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(reversal)
+      .where(
+        and(
+          eq(reversal.organizationId, organizationId),
+          eq(reversal.reversalOfBuildId, schema.Build.id)
+        )
+      )
+  ).mapWith(Boolean)
+}
+
+/** One `GROUP BY batchRun` over the table; `runNumber` null reads every run. */
+async function queryBatchRunSummaries(
   db: Database,
   organizationId: string,
   runNumber: number | null
-): Promise<BatchRunBuild[]> {
-  const ctx = await loadBuildContext(organizationId)
-  const runField = ctx?.fields.build_batch_run
-  if (!ctx || !runField) return []
-
-  const runValue = alias(schema.FieldValue, 'batch_run_v')
-  const statusValue = alias(schema.FieldValue, 'batch_run_status_v')
-  const partValue = alias(schema.FieldValue, 'batch_run_part_v')
-  const reversalOfValue = alias(schema.FieldValue, 'batch_run_reversal_of_v')
-  const periodStartValue = alias(schema.FieldValue, 'batch_run_period_start_v')
-  const periodEndValue = alias(schema.FieldValue, 'batch_run_period_end_v')
-  // The INCOMING edge: some other build naming this one as what it reverses.
-  const reversedByValue = alias(schema.FieldValue, 'batch_run_reversed_by_v')
-  const reversedByInstance = alias(schema.EntityInstance, 'batch_run_reversed_by_ei')
-
-  const reversalFieldId = optionalFieldId(ctx.fields.build_reversal_of)
+): Promise<BatchRunSummary[]> {
+  const b = schema.Build
+  const count = (where: ReturnType<typeof sql>) =>
+    sql<number>`count(*) filter (where ${where})`.mapWith(Number)
+  // `willReverse` is the count that writes to the ledger, so it excludes builds already reversed.
+  const reversible = sql`${b.status} = 'completed' and ${b.reversalOfBuildId} is null and not ${reversedExists(db, organizationId)}`
 
   const rows = await db
     .select({
-      buildId: schema.EntityInstance.id,
-      createdAt: schema.EntityInstance.createdAt,
-      runNumber: runValue.valueNumber,
-      status: statusValue.optionId,
-      partId: partValue.relatedEntityId,
-      reversalOfBuildId: reversalOfValue.relatedEntityId,
-      reversedByBuildId: reversedByInstance.id,
-      periodStart: periodStartValue.valueDate,
-      periodEnd: periodEndValue.valueDate,
+      runNumber: b.batchRun,
+      total: sql<number>`count(*)`.mapWith(Number),
+      planned: count(sql`${b.status} = 'planned'`),
+      inProgress: count(sql`${b.status} = 'in_progress'`),
+      completed: count(sql`${b.status} = 'completed'`),
+      canceled: count(sql`${b.status} = 'canceled'`),
+      willReverse: count(reversible),
+      periodStart: sql<Date | null>`min(${b.periodStart})`.mapWith(b.periodStart),
+      periodEnd: sql<Date | null>`max(${b.periodEnd})`.mapWith(b.periodEnd),
+      ranAt: sql<Date | null>`min(${b.createdAt})`.mapWith(b.createdAt),
     })
-    .from(schema.EntityInstance)
-    .innerJoin(
-      runValue,
-      and(
-        systemValueJoin(runValue, runField.id),
-        isNotNull(runValue.valueNumber),
-        // A run number of `null` selects every run; a number selects one. Both
-        // are the same query, so the two reads cannot drift apart.
-        ...(runNumber == null ? [] : [eq(runValue.valueNumber, runNumber)])
-      )
-    )
-    .leftJoin(statusValue, systemValueJoin(statusValue, optionalFieldId(ctx.fields.build_status)))
-    .leftJoin(partValue, systemValueJoin(partValue, optionalFieldId(ctx.fields.build_part)))
-    .leftJoin(reversalOfValue, systemValueJoin(reversalOfValue, reversalFieldId))
-    .leftJoin(
-      periodStartValue,
-      systemValueJoin(periodStartValue, optionalFieldId(ctx.fields.build_period_start))
-    )
-    .leftJoin(
-      periodEndValue,
-      systemValueJoin(periodEndValue, optionalFieldId(ctx.fields.build_period_end))
-    )
-    // 🛑 The reversal edge read BACKWARDS, which is what `willReverse` turns on.
-    // A LEFT JOIN plus `IS NULL`, so a build nothing has reversed is kept
-    // alongside one whose reversal is archived; an inner join would keep exactly
-    // the builds an undo has nothing to do with.
-    .leftJoin(
-      reversedByValue,
-      and(
-        eq(reversedByValue.organizationId, organizationId),
-        eq(reversedByValue.fieldId, reversalFieldId),
-        eq(reversedByValue.relatedEntityId, schema.EntityInstance.id)
-      )
-    )
-    .leftJoin(
-      reversedByInstance,
-      and(
-        eq(reversedByInstance.id, reversedByValue.entityId),
-        eq(reversedByInstance.organizationId, organizationId),
-        isNull(reversedByInstance.archivedAt)
-      )
-    )
+    .from(b)
     .where(
       and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-        isNull(schema.EntityInstance.archivedAt)
+        eq(b.organizationId, organizationId),
+        runNumber == null ? isNotNull(b.batchRun) : eq(b.batchRun, runNumber)
       )
     )
+    .groupBy(b.batchRun)
+    .orderBy(desc(b.batchRun))
 
-  // Keyed by build id, because the backwards join fans out: a build with two
-  // reversals (which nothing should ever write) would otherwise be counted
-  // twice, and `total` is a number a person reconciles against a list.
-  const builds = new Map<string, BatchRunBuild>()
-  for (const row of rows) {
-    if (!row.buildId) continue
-    const run = row.runNumber == null ? Number.NaN : Number(row.runNumber)
-    if (!Number.isFinite(run)) continue
-
-    const existing = builds.get(row.buildId)
-    if (existing) {
-      // Only ever widens: one reversal row is enough to say the build is undone.
-      if (row.reversedByBuildId) existing.alreadyReversed = true
-      continue
-    }
-
-    builds.set(row.buildId, {
-      buildId: row.buildId,
-      runNumber: run,
-      status: resolveBuildStatus(row.status),
-      partId: row.partId ?? null,
-      alreadyReversed: Boolean(row.reversedByBuildId),
-      isReversal: Boolean(row.reversalOfBuildId),
-      periodStart: toDate(row.periodStart),
-      periodEnd: toDate(row.periodEnd),
-      createdAt: row.createdAt,
-    })
-  }
-
-  return [...builds.values()].sort(
-    (left, right) => left.createdAt.getTime() - right.createdAt.getTime()
-  )
+  return rows.map((row) => ({
+    runNumber: row.runNumber ?? runNumber ?? 0,
+    total: row.total,
+    planned: row.planned,
+    inProgress: row.inProgress,
+    completed: row.completed,
+    canceled: row.canceled,
+    willCancel: row.planned + row.inProgress,
+    willReverse: row.willReverse,
+    periodStart: row.periodStart,
+    periodEnd: row.periodEnd,
+    ranAt: row.ranAt,
+  }))
 }
 
-/**
- * Fold one run's builds into the shape the card renders.
- *
- * 🛑 `willReverse` is `completed` MINUS the already-reversed, never
- * `summary.completed`. The two are the same number only on a run nobody has
- * touched, and the moment they differ the larger one is a promise of ledger
- * writes that will not happen.
- */
-function summarize(runNumber: number, builds: BatchRunBuild[]): BatchRunSummary {
-  const summary: BatchRunSummary = {
+function emptySummary(runNumber: number): BatchRunSummary {
+  return {
     runNumber,
-    total: builds.length,
+    total: 0,
     planned: 0,
     inProgress: 0,
     completed: 0,
@@ -315,34 +178,4 @@ function summarize(runNumber: number, builds: BatchRunBuild[]): BatchRunSummary 
     periodEnd: null,
     ranAt: null,
   }
-
-  for (const build of builds) {
-    if (build.status === 'planned') summary.planned += 1
-    else if (build.status === 'in_progress') summary.inProgress += 1
-    else if (build.status === 'completed') summary.completed += 1
-    else if (build.status === 'canceled') summary.canceled += 1
-
-    if (build.status === 'planned' || build.status === 'in_progress') summary.willCancel += 1
-    if (build.status === 'completed' && !build.alreadyReversed && !build.isReversal) {
-      summary.willReverse += 1
-    }
-
-    summary.periodStart = earlier(summary.periodStart, build.periodStart)
-    summary.periodEnd = later(summary.periodEnd, build.periodEnd)
-    summary.ranAt = earlier(summary.ranAt, build.createdAt)
-  }
-
-  return summary
-}
-
-function earlier(current: Date | null, candidate: Date | null): Date | null {
-  if (!candidate) return current
-  if (!current) return candidate
-  return candidate.getTime() < current.getTime() ? candidate : current
-}
-
-function later(current: Date | null, candidate: Date | null): Date | null {
-  if (!candidate) return current
-  if (!current) return candidate
-  return candidate.getTime() > current.getTime() ? candidate : current
 }

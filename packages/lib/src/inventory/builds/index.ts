@@ -111,18 +111,35 @@ export {
   cancelBuild,
   createBuild,
   startBuild,
+  updateBuildNotes,
 } from './build-mutations'
 // One call that raises, starts and completes. NOT atomic — a refused completion
 // comes back as `left_in_progress` carrying the run it left behind (§3.3).
 export { type BuildNowInput, type BuildNowOutcome, buildNow } from './build-now'
 export {
+  assertBuildStatus,
   type BuildComponentPlanInput,
-  type BuildContext,
   explodeBuildComponents,
   getBuild,
+  hasBuildReversal,
   listBuilds,
   listUnpostedBuilds,
+  lockBuild,
+  readBuild,
+  readBuildMovements,
+  readBuildReversal,
+  readBuildsByIds,
 } from './build-queries'
+export { type ChangedBuild, publishBuildsChanged } from './build-realtime'
+export { type BuildRow, toBuildRecord } from './build-row'
+export {
+  allocateBuildNumbers,
+  type BuildPatch,
+  insertBuild,
+  insertBuilds,
+  type NewBuild,
+  updateBuild,
+} from './build-writes'
 export {
   absorbedRunCost,
   BUILD_STATUS_LABELS,
@@ -137,7 +154,6 @@ export {
   canReverseBuild,
   canStartBuild,
   componentConsumption,
-  resolveBuildStatus,
   standardCostDrift,
   summarizeBuildCompletion,
   unitsStarted,
@@ -253,4 +269,3 @@ export type {
 // or `in_progress` and REVERSES what is `completed`, never deletes, and never
 // throws: per-build isolation, the same discipline `executeBackfill` keeps.
 export { undoBatchRun } from './undo-batch-run'
-export { BUILD_WRITE_LANE_REASON, buildWriteSession } from './write-lane'

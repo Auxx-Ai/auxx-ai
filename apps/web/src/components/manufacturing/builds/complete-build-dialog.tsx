@@ -95,13 +95,13 @@ const PREVIEW_DEBOUNCE_MS = 250
 interface CompleteBuildDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** `EntityInstance.id` of the build being completed. */
+  /** `Build.id` of the build being completed. */
   buildId: string
   /** `EntityInstance.id` of the part it produces. Drives the component explosion. */
   partId: string
   /** Prefills "Produced" — most runs make what they planned to make. */
   quantityPlanned: number | null
-  /** `B-0001`, or null on a build raised before the numbering hook. */
+  /** `B-0001`. */
   number: string | null
   onCompleted?: () => void
 }
@@ -249,7 +249,6 @@ export function CompleteBuildDialog({
       : absorbedRunCost(null, rates.overheadCostPerUnit, startedNow)
 
   const utils = api.useUtils()
-  const buildDefId = useResourceProperty('build', 'id')
 
   const completeBuild = api.builds.complete.useMutation({
     onError: (error) =>
@@ -269,15 +268,10 @@ export function CompleteBuildDialog({
         ...(calendarDayKey(completedAt) ? { day: calendarDayKey(completedAt)! } : {}),
         notes: notes || undefined,
       })
-      // The acting tab is excluded from its own realtime events, so it invalidates
-      // the build reads, the generic record list and the parts' movement lists.
       await Promise.all([
         utils.builds.get.invalidate({ buildId }),
         utils.builds.list.invalidate(),
         utils.purchasing.listMovements.invalidate(),
-        buildDefId
-          ? utils.record.listFiltered.invalidate({ entityDefinitionId: buildDefId })
-          : Promise.resolve(),
       ])
       onCompleted?.()
       onOpenChange(false)

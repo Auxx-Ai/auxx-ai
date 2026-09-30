@@ -222,7 +222,7 @@ Each field carries:
 
 ```
 contact · company · ticket · article · thread · order · invoice · line_item ·
-part · product · build · purchase_order · vendor_bill ·
+part · product · purchase_order · vendor_bill ·
 gl_account · credit_memo · credit_memo_line · credit_memo_application ·
 tax_line · shipment · parcel · fulfillment · fulfillment_line
 ```
@@ -498,7 +498,7 @@ instead of allocating from `RecordSequence`. With nothing supplied the hook allo
 `INV-` / `PO-` exactly as before, so hand-created records keep their sequence numbers. The
 platform side is `CONNECTOR_WRITABLE_NUMBERS_ALLOWLIST` in `app-catalog.ts`, honoured by
 `assertContributingTargetWritable` the same way as the totals allow-list. Quote, work-order,
-build, ticket and `vendor_bill_internal_number` numbers stay hook-only.
+ticket and `vendor_bill_internal_number` numbers stay hook-only.
 
 ### The stream's `query` and the `execute` contract
 

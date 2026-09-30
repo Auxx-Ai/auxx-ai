@@ -330,29 +330,6 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: false, // Internal entity, managed from the journal entry
   },
   {
-    // Ships INERT with entity migration 109 (plans/products/build/README.md
-    // B10): the def and all 24 of its fields exist in every org, and NOTHING
-    // writes them until `packages/lib/src/inventory/builds/` lands in phase 2. An entity
-    // with zero rows can be reshaped for free; the first row ends that.
-    //
-    // ✅ Flipped to `isVisible: true` with phase 2 — the list, the detail page
-    // and the completion form landed, so the nav entry now leads somewhere.
-    //
-    // 🛑 This line reaches FRESH orgs only. `ensureEntityDefinitions` is a plain
-    // insert that skips an org already holding the def, so `isVisible` is read
-    // once at creation and never again; every org that ran 109 keeps the `false`
-    // it was seeded with. Entity migration **110-build-visible** is the other
-    // half, and the two must agree or the def means one thing on an old org and
-    // another on a new one.
-    entityType: 'build',
-    apiSlug: 'builds',
-    singular: 'Build',
-    plural: 'Builds',
-    icon: 'hammer',
-    color: 'teal',
-    isVisible: true,
-  },
-  {
     // The bank run: N received payments banked as ONE line the statement shows
     // (plans/accounting/tasks/done/06-deposit-grouping.md). Entity migration 125.
     //
@@ -890,10 +867,6 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   journal_entry_line: {
     primaryDisplayField: 'memo',
     secondaryDisplayField: 'amount',
-  },
-  build: {
-    primaryDisplayField: 'number',
-    secondaryDisplayField: 'part',
   },
   // The number is issued by a hook on create and never edited, so it is always
   // present; `depositDate` is required, which is what makes it a safe secondary

@@ -1,147 +1,55 @@
 // packages/lib/src/inventory/builds/__tests__/reverse-build-batch-run.test.ts
 //
-// 🛑 THE invariant of `plans/money/tasks/45-batch-only-builds.md` section 4.1:
-// **a reversing build must NOT inherit `build_batch_run`.**
-//
-// `reverse-build.ts`'s `reversalBuildValues` copies `build_source` onto the
-// reversal, so a reversal of a batch build is itself `source: 'batch'`. That is
-// correct and deliberate, and it is also exactly the shape that invites somebody
-// copying the sibling field sitting beside it. If the run number were copied,
-// run N would contain its own undo, and a second `undoBatchRun(N)` would try to
-// reverse the reversals: `reverseBuild` refuses a reversal-of-a-reversal, so the
-// visible symptom would not be a wrong number but a run that can never be
-// cleanly undone twice.
-//
-// 45 section 10.5 is why this file exists rather than a schema flag:
-// `build_batch_run` is declared `updatable: false`, and the write path never
-// reads `capabilities.updatable` (`field-hooks/register-hooks.ts`). So this test
-// is the ONLY protection the rule has, not a belt beside a brace.
-//
-// ⚠️ `reverse-build.ts` is NOT edited by this test. The current code is already
-// correct; this pins it.
-//
-// Harness copied from `build-event.test.ts`: the org cache, the CRUD handler,
-// the movement seam and realtime are doubles, and a db stand-in routes
-// the reads by table identity, by whether the query joined or projected, and by
-// the literals its `WHERE` bound. `src/test/setup.ts` mocks `@auxx/database`
-// wholesale, so no assertion here can name a COLUMN — but with the columns gone
-// drizzle binds literals rather than `Param`s, which is what the routing reads.
+// A reversing build must NOT inherit the batch run (plans/money/tasks/45 §4.1): run N would
+// contain its own undo, and a second `undoBatchRun(N)` would try to reverse the reversals. Nor the
+// demand period: netting would read the reversal as coverage for the month it undoes. The source
+// IS copied, which is what makes the omission deliberate.
 
-import { schema } from '@auxx/database'
+import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { NewBuild } from '../build-writes'
+import type { BuildRecord } from '../types'
+import { buildRecord } from './support/build-record'
 
 const ORG = 'org_1'
 const USER = 'user_1'
 const BUILD = 'bld_1'
-const PART_LIFT = 'part_lift'
-const CREATED_AT = new Date('2026-08-01T00:00:00.000Z')
 const BATCH_RUN = 7
 
-/** One stored `FieldValue`, in the widest projection any read here selects. */
-interface ValueRow {
-  entityId: string
-  fieldId: string
-  valueText: string | null
-  valueNumber: number | null
-  valueDate: string | null
-  optionId: string | null
-  relatedEntityId: string | null
-  /** `rowsToTypedValues` needs it to compose a `RecordId`; any non-null def id will do. */
-  relatedEntityDefinitionId: string | null
-}
-
-/** The stored shape of each attribute, which the reader types its cells by. */
-const FIELD_TYPES: Record<string, string> = {
-  build_part: 'RELATIONSHIP',
-  build_order: 'RELATIONSHIP',
-  build_reversal_of: 'RELATIONSHIP',
-  build_status: 'SINGLE_SELECT',
-  build_source: 'SINGLE_SELECT',
-  build_started_at: 'DATE',
-  build_completed_at: 'DATE',
-  build_posted_at: 'DATE',
-  build_period_start: 'DATE',
-  build_period_end: 'DATE',
-  build_quantity_planned: 'NUMBER',
-  build_quantity_produced: 'NUMBER',
-  build_quantity_scrapped: 'NUMBER',
-  build_material_cost: 'NUMBER',
-  build_labor_cost: 'NUMBER',
-  build_overhead_cost: 'NUMBER',
-  build_produced_value: 'NUMBER',
-  build_variance_amount: 'NUMBER',
-  build_batch_run: 'NUMBER',
-  part_kind: 'SINGLE_SELECT',
-}
-
 const h = vi.hoisted(() => ({
-  instanceRows: [] as { id: string; createdAt: Date; displayName: string | null }[],
-  valueRows: [] as ValueRow[],
-  reversalRows: [] as { id: string }[],
-  materialised: new Set<string>(),
-  defs: new Map<string, string>(),
-  created: [] as { defId: string; id: string; values: Record<string, unknown> }[],
-  nextId: 0,
+  original: null as unknown as BuildRecord,
+  inserted: [] as NewBuild[],
 }))
 
-vi.mock('../../../cache', () => ({
-  getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => h.defs.get(entityType)),
-  requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => {
-    const id = h.defs.get(entityType)
-    if (!id) throw new Error(`EntityDefinition not found for entityType: ${entityType}`)
-    return id
-  }),
-  getOrgCache: () => ({
-    from: () => ({
-      bySystemAttributes: async (attrs: readonly string[]) =>
-        Object.fromEntries(
-          attrs.map((attr) => [
-            attr,
-            h.materialised.has(attr)
-              ? { id: `fld_${attr}`, type: FIELD_TYPES[attr] ?? 'TEXT' }
-              : null,
-          ])
-        ),
-    }),
-  }),
-}))
-
-vi.mock('../../movements/write-movements', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../movements/write-movements')>()
-  const { ok } = await import('neverthrow')
-  return {
-    ...actual,
-    writeStockMovements: vi.fn(async (_ctx: unknown, inputs: Array<{ partInstanceId: string }>) =>
-      ok({
-        records: inputs.map((input, i) => ({ id: `mv_new_${i}`, ...input })),
-        touched: { partIds: [], purchaseOrderLineIds: [], fulfillmentLineIds: [], buildIds: [] },
-      })
-    ),
-    settleStockMovements: vi.fn(async () => {}),
-  }
-})
-
-/** The two movements the completion wrote, with their frozen costs. */
-vi.mock('../../movements/reads', () => ({
-  readMovementsByBuilds: vi.fn(async () => [
+vi.mock('../build-queries', () => ({
+  assertBuildStatus: (
+    build: BuildRecord,
+    allowed: (status: BuildRecord['status']) => boolean,
+    message: string
+  ) => {
+    if (!allowed(build.status)) throw new Error(message)
+  },
+  lockBuild: vi.fn(async () => h.original),
+  hasBuildReversal: vi.fn(async () => false),
+  readBuildMovements: vi.fn(async () => [
     {
-      id: 'mv_1',
+      movementId: 'mv_1',
       partId: 'part_asm',
       type: 'build_consume',
       quantity: -20,
-      unitCostMinor: 3661,
-      extendedCostMinor: -73220,
+      unitCost: 3661,
+      extendedCost: -73220,
       glRole: null,
-      qtyPerUnit: null,
+      qtyPerUnit: 2,
       costBasis: 'standard',
     },
     {
-      id: 'mv_2',
+      movementId: 'mv_2',
       partId: 'part_lift',
       type: 'build_produce',
       quantity: 10,
-      unitCostMinor: 8022,
-      extendedCostMinor: 80220,
+      unitCost: 8022,
+      extendedCost: 80220,
       glRole: null,
       qtyPerUnit: null,
       costBasis: 'standard',
@@ -149,246 +57,77 @@ vi.mock('../../movements/reads', () => ({
   ]),
 }))
 
-vi.mock('../../../realtime', () => ({
-  getRealtimeService: () => ({}),
-  publishFieldValueUpdates: vi.fn(async () => {}),
-  publishRecordsChanged: vi.fn(async () => {}),
+vi.mock('../build-writes', async () => {
+  const { buildRecord } = await import('./support/build-record')
+  return {
+    insertBuild: vi.fn(async (_db: unknown, _org: string, _user: string, build: NewBuild) => {
+      h.inserted.push(build)
+      return buildRecord({ ...(build as Partial<BuildRecord>), buildId: 'bld_new_1' })
+    }),
+  }
+})
+
+vi.mock('../build-realtime', () => ({ publishBuildsChanged: vi.fn(async () => {}) }))
+
+vi.mock('../../movements', () => ({
+  writeStockMovements: vi.fn(async (_ctx: unknown, inputs: unknown[]) =>
+    ok({
+      records: inputs.map((_input, i) => ({ id: `mv_new_${i}` })),
+      touched: { partIds: [], purchaseOrderLineIds: [], fulfillmentLineIds: [], buildIds: [] },
+    })
+  ),
+  settleStockMovements: vi.fn(async () => {}),
 }))
 
-vi.mock('../../../resources/crud/unified-handler', () => ({
-  UnifiedCrudHandler: class {
-    async create(defId: string, values: Record<string, unknown>) {
-      h.nextId += 1
-      const id = `bld_new_${h.nextId}`
-      h.created.push({ defId, id, values })
-      return { instance: { id }, recordId: `${defId}:${id}`, values }
-    }
-    async update(recordId: string, values: Record<string, unknown>) {
-      return { id: recordId, values }
-    }
-  },
+vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
+  reverseInventoryMovementPosting: async () => null,
+  linkMovementsToPosting: async () => undefined,
 }))
 
 import { reverseBuild } from '../reverse-build'
 
-// ─── The db double ──────────────────────────────────────────────────────
-
-interface RowsChain extends PromiseLike<unknown[]> {
-  limit(): RowsChain
-  offset(): RowsChain
-  orderBy(): RowsChain
-  for(): RowsChain
-}
-
-function rowsPromise(rows: unknown[]): RowsChain {
-  return Object.assign(Promise.resolve(rows), {
-    limit: () => rowsPromise(rows),
-    offset: () => rowsPromise(rows),
-    orderBy: () => rowsPromise(rows),
-    for: () => rowsPromise(rows),
-  })
-}
-
-/**
- * Every literal a `where` binds, at any depth — see the header for why a bare
- * string is one.
- */
-// biome-ignore lint/suspicious/noExplicitAny: walking drizzle's SQL chunk tree
-function boundValues(node: any, out: string[] = []): string[] {
-  if (!node) return out
-  if (typeof node === 'string') {
-    out.push(node)
-    return out
-  }
-  if (Array.isArray(node)) {
-    for (const child of node) boundValues(child, out)
-    return out
-  }
-  if (node.queryChunks) return boundValues(node.queryChunks, out)
-  if (Array.isArray(node.value)) for (const v of node.value) boundValues(v, out)
-  return out
-}
-
-function makeChain(columns: unknown) {
-  const state = { table: null as unknown, joined: false, joinBound: [] as string[] }
-  const keyed = !!columns && typeof columns === 'object' && 'key' in columns
-  const rows = (condition: unknown) => {
-    const bound = [...boundValues(condition), ...state.joinBound]
-    // `findSystemRecordIdsByValue` is the only read projecting a `key` beside
-    // the instance id - the reader's child-by-parent lookup.
-    if (keyed) {
-      if (bound.includes('fld_build_reversal_of')) {
-        return h.reversalRows.map((row) => ({ entityId: row.id, key: 'k' }))
-      }
-      return []
-    }
-    if (state.table === schema.EntityInstance) return h.instanceRows
-    if (state.joined) return h.reversalRows
-    if (columns && bound.includes('fld_build_reversal_of')) {
-      return h.reversalRows.map((row) => ({ entityId: row.id }))
-    }
-    return h.valueRows
-  }
-  const chain: Record<string, unknown> = {
-    from: (table: unknown) => {
-      state.table = table
-      return chain
-    },
-    innerJoin: (_table: unknown, on: unknown) => {
-      state.joined = true
-      state.joinBound.push(...boundValues(on))
-      return chain
-    },
-    leftJoin: () => chain,
-    $dynamic: () => chain,
-    where: (condition: unknown) => rowsPromise(rows(condition)),
-  }
-  return chain
-}
-
-const db = {
-  select: (columns?: unknown) => makeChain(columns),
-  transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
-} as never
-
-// ─── Fixtures ───────────────────────────────────────────────────────────
-
-/**
- * Every build attribute the org has materialised.
- *
- * 🛑 The three `updatable: false` batch fields are HERE deliberately: a fixture
- * that left them unmaterialised would make this test pass for the wrong reason,
- * because `reversalBuildValues` can only copy a field the read produced.
- */
-const BUILD_ATTRS = [
-  'build_number',
-  'build_part',
-  'build_status',
-  'build_quantity_planned',
-  'build_quantity_produced',
-  'build_quantity_scrapped',
-  'build_started_at',
-  'build_completed_at',
-  'build_material_cost',
-  'build_labor_cost',
-  'build_overhead_cost',
-  'build_produced_value',
-  'build_variance_amount',
-  'build_posted_at',
-  'build_notes',
-  'build_order',
-  'build_source',
-  'build_reversal_of',
-  'build_order_revision',
-  'build_period_start',
-  'build_period_end',
-  'build_batch_run',
-]
-
-function value(entityId: string, attr: string, over: Partial<ValueRow>): ValueRow {
-  return {
-    entityId,
-    fieldId: `fld_${attr}`,
-    valueText: null,
-    valueNumber: null,
-    valueDate: null,
-    optionId: null,
-    relatedEntityId: null,
-    relatedEntityDefinitionId: over.relatedEntityId ? 'def_related' : null,
-    ...over,
-  }
-}
-
-/** A completed build that batch run 7 raised, covering January. */
-function batchBuildRows(): ValueRow[] {
-  return [
-    value(BUILD, 'build_status', { optionId: 'completed' }),
-    value(BUILD, 'build_part', { relatedEntityId: PART_LIFT }),
-    value(BUILD, 'build_quantity_planned', { valueNumber: 10 }),
-    value(BUILD, 'build_quantity_produced', { valueNumber: 10 }),
-    value(BUILD, 'build_material_cost', { valueNumber: 87864 }),
-    value(BUILD, 'build_produced_value', { valueNumber: 80220 }),
-    value(BUILD, 'build_completed_at', { valueDate: '2026-01-31T23:59:59.999Z' }),
-    value(BUILD, 'build_source', { optionId: 'batch' }),
-    value(BUILD, 'build_period_start', { valueDate: '2026-01-01T00:00:00.000Z' }),
-    value(BUILD, 'build_period_end', { valueDate: '2026-02-01T00:00:00.000Z' }),
-    value(BUILD, 'build_batch_run', { valueNumber: BATCH_RUN }),
-  ]
-}
+const db = { transaction: async (fn: (tx: unknown) => unknown) => fn('tx') } as never
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.materialised = new Set(BUILD_ATTRS)
-  h.defs = new Map([
-    ['build', 'def_build'],
-    ['part', 'def_part'],
-  ])
-  // The build row FIRST: the double ignores `WHERE`, and every detail read takes
-  // `[instance]`, so position is what identifies it.
-  h.instanceRows = [
-    { id: BUILD, createdAt: CREATED_AT, displayName: null },
-    { id: PART_LIFT, createdAt: CREATED_AT, displayName: 'Auxx Lift 400lbs 4x8' },
-  ]
-  h.reversalRows = []
-  h.valueRows = batchBuildRows()
-  h.created = []
-  h.nextId = 0
+  h.original = buildRecord({
+    buildId: BUILD,
+    status: 'completed',
+    source: 'batch',
+    batchRun: BATCH_RUN,
+    periodStart: new Date('2026-01-01T00:00:00.000Z'),
+    periodEnd: new Date('2026-02-01T00:00:00.000Z'),
+    quantityProduced: 10,
+    materialCost: 87864,
+    producedValue: 80220,
+    completedAt: new Date('2026-01-31T23:59:59.999Z'),
+  })
+  h.inserted = []
 })
 
-/** The one `build` the CRUD double was asked to create: the reversal. */
-async function reverseAndReadTheNewBuild(): Promise<Record<string, unknown>> {
+async function reverseAndReadTheNewBuild(): Promise<NewBuild> {
   const result = await reverseBuild(db, ORG, USER, { buildId: BUILD })
   expect(result.isOk()).toBe(true)
-  const builds = h.created.filter((row) => row.defId === 'def_build')
-  expect(builds).toHaveLength(1)
-  return builds[0]!.values
+  expect(h.inserted).toHaveLength(1)
+  return h.inserted[0]!
 }
 
-describe('reverseBuild and build_batch_run', () => {
+describe('reverseBuild and the batch run', () => {
   it('does NOT copy the run number onto the reversal', async () => {
     const reversal = await reverseAndReadTheNewBuild()
-
-    // The whole point. A reversal carrying run 7 would put run 7's own undo
-    // inside run 7.
-    expect(reversal).not.toHaveProperty('build_batch_run')
-    expect(Object.keys(reversal).filter((key) => key.includes('batch'))).toEqual([])
+    expect(reversal.batchRun ?? null).toBeNull()
   })
 
-  it('DOES copy the source, which is what makes the omission deliberate', async () => {
-    // `reverse-build.ts:309`. This assertion is here so the test above cannot
-    // pass vacuously: if the fixture's batch fields never reached
-    // `reversalBuildValues` at all, this would fail too.
+  it('DOES copy the source and names the original', async () => {
     const reversal = await reverseAndReadTheNewBuild()
-    expect(reversal.build_source).toBe('batch')
-    expect(reversal.build_reversal_of).toBe('def_build:bld_1')
+    expect(reversal.source).toBe('batch')
+    expect(reversal.reversalOfBuildId).toBe(BUILD)
+    expect(reversal.status).toBe('completed')
   })
 
   it('does not copy the demand period either', async () => {
-    // 45 section 10.7: the missing period copy looks like an oversight and
-    // somebody will "fix" it. It is what keeps the netting read from seeing a
-    // reversal as coverage for the month it undoes.
     const reversal = await reverseAndReadTheNewBuild()
-    expect(reversal).not.toHaveProperty('build_period_start')
-    expect(reversal).not.toHaveProperty('build_period_end')
-  })
-
-  it('leaves the reversal invisible to a second undo of the same run', async () => {
-    // The property stated the way the feature depends on it: the reversal
-    // carries no run number, so `readBatchRunBuilds(7)` cannot select it and a
-    // second `undoBatchRun(7)` has nothing new to reverse.
-    const reversal = await reverseAndReadTheNewBuild()
-    expect(reversal.build_batch_run).toBeUndefined()
-    expect(reversal.build_status).toBe('completed')
+    expect(reversal.periodStart ?? null).toBeNull()
+    expect(reversal.periodEnd ?? null).toBeNull()
   })
 })
-
-// The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
-// this file is about the movements. `vi.mock` is hoisted, so placement is free.
-vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
-  postInventoryMovementInTx: async () => null,
-  exportInventoryMovement: async () => null,
-  inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
-  reverseInventoryMovementPosting: async () => null,
-  reversePostingForMovement: async () => null,
-  linkMovementsToPosting: async () => undefined,
-}))

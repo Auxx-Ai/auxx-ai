@@ -1,102 +1,66 @@
-// apps/web/src/components/manufacturing/builds/build-batch-run-card.tsx
+// apps/web/src/components/manufacturing/builds/batch-run-section.tsx
 'use client'
 
-// `build:batch-run`: the run a build belongs to, and the ONE verb whose blast
-// radius is the whole run (plans/money/tasks/45 §11).
-//
-// 🛑 **Its own card, never folded into `build:run`** (§11.1). Every verb on the
-// lifecycle card (Start / Cancel / Complete / Reverse) acts on the one build in
-// front of you. Undo acts on every build the run raised, which is routinely
-// hundreds. Two scopes, two cards: a run section folded into the lifecycle card
-// would put a four-figure blast radius inside the box a person reads to answer
-// "what is this build doing".
-//
-// 🛑 **Renders nothing when the build carries no run.** An order-raised or
-// hand-raised build belongs to no batch, and `build_batch_run` is null on
-// reversing builds too (§4.1: a reversal must not inherit the run number, or
-// run N would contain its own undo). Returning null hides the whole Section:
-// `base-entity-drawer.tsx` wraps every card in
-// `[&:has([data-slot=section-content]:empty)]:hidden`.
-//
-// A run is not a record (§3.1), so there is no run detail page. This card IS the
-// run's detail view, reached through any of its members.
-
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
-import { ListFilter, Undo2 } from 'lucide-react'
+import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
+import { Hammer, ListFilter, Undo2 } from 'lucide-react'
 import { EmptyRow, RowSkeleton } from '~/components/drawers/cards/related-record-row'
-import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { PurchasingSummaryStrip } from '~/components/purchasing/purchasing-summary-strip'
-import { useResourceProperty } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
+import { BUILD_STATUS_LABEL, BUILD_STATUS_VARIANT, formatBuildQuantity } from './build-format'
+import { openBatchRunSheet, openBuildSheet } from './build-sheet-store'
 import {
   isUndoBackflushRunLive,
   UndoBackflushRunProgress,
   useUndoBackflushRun,
 } from './undo-backflush-panel'
-import { useOpenBatchRun } from './use-open-batch-run'
 
-export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
+const RUN_PAGE_SIZE = 50
+
+/**
+ * One batch run's counts and its Undo (plans/money/tasks/45 §11). Undo acts on every build the
+ * run raised, so its copy never says a bare "Undo" next to a build's own Reverse.
+ */
+export function BatchRunSummary({
+  runNumber,
+  showBuildsLink,
+}: {
+  runNumber: number
+  /** Offer "Show all builds" (from a build); off on the run's own frame. */
+  showBuildsLink?: boolean
+}) {
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
+  const canUndoRun = useAccess().can(PermissionKey.mrpManage)
 
-  const buildDefId = useResourceProperty('build', 'id')
-  const openBatchRun = useOpenBatchRun()
+  const run = api.builds.getBatchRun.useQuery({ runNumber }, { retry: false })
 
-  // The client mirror of what `builds.startUndoBackflush` asserts (§11.5): edit on `build`.
-  const { canEditEntity } = useAccess()
-  const canUndoRun = !!buildDefId && canEditEntity(buildDefId)
-
-  const build = api.builds.get.useQuery(
-    { buildId: entityInstanceId },
-    { enabled: !!entityInstanceId, retry: false }
-  )
-  const runNumber = build.data?.batchRun ?? null
-
-  const run = api.builds.getBatchRun.useQuery(
-    { runNumber: runNumber ?? 1 },
-    { enabled: runNumber != null, retry: false }
-  )
-
-  /**
-   * Undo touches every member of the run, so it invalidates the same three reads
-   * `build-run-card.tsx` does rather than just this build's.
-   *
-   * 🛑 The reversing builds are written on the quiet lane and emit no
-   * `record:created` frame, and the cancellations exclude the acting tab from
-   * their own realtime events. Either way the tab that pressed the button is the
-   * one that has to invalidate.
-   */
   const refresh = async () => {
     await Promise.all([
       utils.builds.get.invalidate(),
       utils.builds.list.invalidate(),
       utils.builds.getBatchRun.invalidate(),
       utils.purchasing.listMovements.invalidate(),
-      buildDefId
-        ? utils.record.listFiltered.invalidate({ entityDefinitionId: buildDefId })
-        : Promise.resolve(),
     ])
   }
 
   // The undo runs on the worker (plans/mrp/17 §8): a run of thousands is past any request.
   const undo = useUndoBackflushRun({
-    enabled: canUndoRun && runNumber != null,
-    adopt: (live) =>
-      live.scope === 'run' && runNumber != null && live.runNumbers.includes(runNumber),
+    enabled: canUndoRun,
+    adopt: (live) => live.scope === 'run' && live.runNumbers.includes(runNumber),
     onFinished: () => void refresh(),
   })
   const startUndo = api.builds.startUndoBackflush.useMutation({
     onError: (error) => toastError({ title: 'Failed to undo the run', description: error.message }),
   })
 
-  // 🛑 §11.3's first rule, and the reason this returns before any skeleton: the
-  // common build carries no run at all, and a card that flashed a placeholder on
-  // every order-raised build would be the empty section this rule forbids.
-  if (runNumber == null) return null
   if (run.isPending) return <RowSkeleton />
   if (!run.data) return <EmptyRow label='This run could not be read' />
 
@@ -106,8 +70,7 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
   const handleUndo = async () => {
     const confirmed = await confirm({
       title: `Undo run ${runNumber}?`,
-      // 🛑 §11.4: BOTH counts lead, because they differ and only the second one
-      // writes to the ledger. Then §4.2's rule, in §4.2's own words.
+      // §11.4: both counts lead, because only the second one writes to the ledger.
       description:
         `${plural(summary.willCancel, 'build')} will be cancelled, and ` +
         `${plural(summary.willReverse, 'completed build')} will be reversed. ` +
@@ -150,8 +113,6 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
             tone: summary.willCancel ? 'default' : 'muted',
           },
           {
-            // The one figure that writes to the ledger, so it does not read as
-            // flat as the two beside it.
             label: 'Would reverse',
             value: String(summary.willReverse),
             tone: summary.willReverse ? 'warning' : 'muted',
@@ -173,15 +134,16 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
       )}
 
       <div className='flex flex-col gap-1'>
-        <Button
-          variant='outline'
-          size='xs'
-          className='w-full justify-start'
-          disabled={!openBatchRun}
-          onClick={() => openBatchRun?.(runNumber)}>
-          <ListFilter />
-          Show all {summary.total} builds in run {runNumber}
-        </Button>
+        {showBuildsLink && (
+          <Button
+            variant='outline'
+            size='xs'
+            className='w-full justify-start'
+            onClick={() => openBatchRunSheet(runNumber)}>
+            <ListFilter />
+            Show all {summary.total} builds in run {runNumber}
+          </Button>
+        )}
 
         {undo.run && <UndoBackflushRunProgress run={undo.run} />}
 
@@ -192,9 +154,6 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
               Every build in this run has already been cancelled or reversed.
             </p>
           ) : (
-            // 🛑 §11.4: never a bare "Undo". `build:run`'s Reverse button sits
-            // inches away in the same drawer and undoes THIS build only. Nothing
-            // about their shape says which is which, so the copy has to.
             <Button
               variant='outline'
               size='xs'
@@ -211,7 +170,61 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
   )
 }
 
-/** A status count, dropped entirely when it is zero: a zero is not news. */
+/** The builds a batch run raised, newest first; a row opens the build in the same sheet. */
+export function BatchRunBuilds({ runNumber }: { runNumber: number }) {
+  const builds = api.builds.list.useInfiniteQuery(
+    { batchRun: runNumber, limit: RUN_PAGE_SIZE },
+    { getNextPageParam: (page) => page.nextCursor }
+  )
+  const items = builds.data?.pages.flatMap((page) => page.items) ?? []
+
+  if (!builds.isLoading && items.length === 0) {
+    return <EmptySection orientation='horizontal' title='No builds in this run' />
+  }
+
+  return (
+    <div className='space-y-1'>
+      <TreeRowList
+        items={items}
+        loading={builds.isLoading}
+        skeletonCount={3}
+        getKey={(build) => build.buildId}
+        renderRow={(build) => (
+          <TreeRow
+            icon={<Hammer className='size-4' />}
+            rowClassName='hover:bg-primary-100'
+            onToggleOpen={() => openBuildSheet(build.buildId)}
+            title={<span className='font-mono text-sm'>{build.number}</span>}
+            secondary={
+              <Badge variant={BUILD_STATUS_VARIANT[build.status]} size='xs'>
+                {BUILD_STATUS_LABEL[build.status]}
+              </Badge>
+            }
+            actions={
+              <span className='pe-1 font-mono text-xs tabular-nums'>
+                {formatBuildQuantity(build.quantityProduced ?? build.quantityPlanned)}
+              </span>
+            }
+          />
+        )}
+      />
+      {builds.hasNextPage && (
+        <div className='flex justify-center'>
+          <Button
+            variant='ghost'
+            size='xs'
+            loading={builds.isFetchingNextPage}
+            loadingText='Loading...'
+            onClick={() => builds.fetchNextPage()}>
+            Load more
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** A status count, dropped entirely when it is zero. */
 function StatusCount({
   label,
   count,
@@ -229,12 +242,10 @@ function StatusCount({
   )
 }
 
-/** `1 build` / `412 builds`, so no count in this card reads as a template slot. */
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
-/** A run's period bounds and its timestamp, as a day. The time of day is noise here. */
 function formatDay(value: Date | string | null): string {
   if (!value) return 'unknown'
   return new Date(value).toLocaleDateString()

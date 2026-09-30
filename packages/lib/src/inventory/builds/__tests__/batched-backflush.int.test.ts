@@ -6,7 +6,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { getTestDb } from '@auxx/test-utils'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import pg from 'pg'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getOrgCache } from '../../../cache'
@@ -182,31 +182,13 @@ async function snapshot(s: Scenario): Promise<unknown> {
     .where(eq(schema.CustomField.organizationId, org))
   for (const field of fields) labels.set(field.id, `F:${field.attr}`)
 
-  const builds = await db()
-    .select()
-    .from(schema.EntityInstance)
-    .where(eq(schema.EntityInstance.entityDefinitionId, s.f.buildDefId))
-    .orderBy(asc(schema.EntityInstance.displayName))
-  const startedField = await fieldId(org, 'build_started_at')
-  const partField = await fieldId(org, 'build_part')
-  const completedField = await fieldId(org, 'build_completed_at')
+  const builds = await db().select().from(schema.Build).where(eq(schema.Build.organizationId, org))
   const movementIds: string[] = []
   // Named by part and day: two orgs walk independent parts in their own id order.
   for (const build of builds) {
-    const own = await db()
-      .select()
-      .from(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.entityId, build.id),
-          inArray(schema.FieldValue.fieldId, [partField, completedField])
-        )
-      )
-    const partId = own.find((v) => v.fieldId === partField)?.relatedEntityId ?? ''
-    const day = own.find((v) => v.fieldId === completedField)?.valueDate ?? ''
-    const label = `BUILD:${labels.get(partId)}@${String(day)}`
+    const label = `BUILD:${labels.get(build.partId)}@${build.completedAt?.toISOString()}`
     labels.set(build.id, label)
-    if (build.displayName) labels.set(build.displayName, `NUM:${label}`)
+    labels.set(build.number, `NUM:${label}`)
     const legs = await db()
       .select({ id: schema.StockMovement.id, partId: schema.StockMovement.partId })
       .from(schema.StockMovement)
@@ -216,34 +198,11 @@ async function snapshot(s: Scenario): Promise<unknown> {
       movementIds.push(leg.id)
     }
   }
-  const recordIds = builds.map((b) => b.id)
+  const buildIds = builds.map((b) => b.id)
   const movements = await db()
     .select()
     .from(schema.StockMovement)
     .where(inArray(schema.StockMovement.id, movementIds))
-  const instances = await db()
-    .select()
-    .from(schema.EntityInstance)
-    .where(inArray(schema.EntityInstance.id, recordIds))
-  const values = await db()
-    .select()
-    .from(schema.FieldValue)
-    .where(inArray(schema.FieldValue.entityId, recordIds))
-  // Mirror rows on parts, in list order: which of this run's records each part lists.
-  const mirrors = await db()
-    .select()
-    .from(schema.FieldValue)
-    .where(
-      and(
-        inArray(schema.FieldValue.entityId, Object.values(s.parts)),
-        inArray(schema.FieldValue.relatedEntityId, recordIds)
-      )
-    )
-    .orderBy(
-      asc(schema.FieldValue.entityId),
-      asc(schema.FieldValue.fieldId),
-      asc(schema.FieldValue.sortKey)
-    )
   const facts = await db()
     .select()
     .from(schema.InventoryMovementFact)
@@ -263,18 +222,11 @@ async function snapshot(s: Scenario): Promise<unknown> {
     .from(schema.AccountingWorkItem)
     .where(eq(schema.AccountingWorkItem.organizationId, org))
   const posts = h.posts.filter((post) =>
-    [...recordIds, ...movementIds].includes((post.subject as { sourceId: string }).sourceId)
+    [...buildIds, ...movementIds].includes((post.subject as { sourceId: string }).sourceId)
   )
 
   const data = {
-    instances: instances.map(
-      ({ createdAt: _c, updatedAt: _u, lastActivityAt: _l, ...rest }) => rest
-    ),
-    values: values
-      .filter((v) => v.fieldId !== startedField)
-      .map(({ id: _i, createdAt: _c, updatedAt: _u, ...rest }) => rest),
-    // Part lists already hold earlier rows' keys, so compare order, not literal keys.
-    mirrors: mirrors.map(({ id: _i, createdAt: _c, updatedAt: _u, sortKey: _s, ...rest }) => rest),
+    builds: builds.map(({ createdAt: _c, updatedAt: _u, startedAt: _s, ...rest }) => rest),
     facts: facts.map(({ createdAt: _c, ...rest }) => rest),
     qoh,
     workItems: workItems.map(
@@ -290,47 +242,10 @@ async function snapshot(s: Scenario): Promise<unknown> {
   const relabelled = JSON.parse(text) as Record<string, Array<Record<string, unknown>>>
   const canonical = (rows: Array<Record<string, unknown>>) =>
     rows.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
-  // Mirror order across two orgs depends on their part ids; `expectMirrorsInWalkOrder` checks it.
-  for (const key of [
-    'instances',
-    'values',
-    'mirrors',
-    'facts',
-    'qoh',
-    'workItems',
-    'movements',
-    'posts',
-  ]) {
+  for (const key of ['builds', 'facts', 'qoh', 'workItems', 'movements', 'posts']) {
     canonical(relabelled[key]!)
   }
   return relabelled
-}
-
-/** Every part's lists name this run's builds in the order the run wrote them. */
-async function expectMirrorsInWalkOrder(s: Scenario, written: Array<{ buildId: string }>) {
-  const position = new Map<string, number>()
-  for (const [index, { buildId }] of written.entries()) position.set(buildId, index)
-  const rows = await db()
-    .select()
-    .from(schema.FieldValue)
-    .where(
-      and(
-        inArray(schema.FieldValue.entityId, Object.values(s.parts)),
-        inArray(schema.FieldValue.relatedEntityId, [...position.keys()])
-      )
-    )
-    .orderBy(
-      asc(schema.FieldValue.entityId),
-      asc(schema.FieldValue.fieldId),
-      asc(schema.FieldValue.sortKey)
-    )
-  const lists = new Map<string, number[]>()
-  for (const row of rows) {
-    const key = `${row.entityId}|${row.fieldId}`
-    lists.set(key, [...(lists.get(key) ?? []), position.get(row.relatedEntityId!)!])
-  }
-  expect(lists.size).toBeGreaterThan(0)
-  for (const list of lists.values()) expect(list).toEqual([...list].sort((a, b) => a - b))
 }
 
 /** SQL statements any pg client ran while `fn` executed, the in-process org cache kept warm. */
@@ -356,7 +271,7 @@ async function countStatements(fn: () => Promise<unknown>): Promise<number> {
 }
 
 describe('a batched backflush slice stores what one completion per build stores', () => {
-  it('builds, movements, mirrors, facts, QoH, parking and postings; contiguous numbers in walk order', async () => {
+  it('builds, movements, facts, QoH, parking and postings; contiguous numbers in walk order', async () => {
     const perBuild = await seedScenario({ refusal: false })
     h.perBuild = true
     const one = await backflush(perBuild)
@@ -375,16 +290,13 @@ describe('a batched backflush slice stores what one completion per build stores'
       new Set([batched.parts.lift, batched.parts.motor, batched.parts.cart])
     )
     expect(await snapshot(batched)).toEqual(await snapshot(perBuild))
-    await expectMirrorsInWalkOrder(batched, many.written)
-    await expectMirrorsInWalkOrder(perBuild, one.written)
 
     // `B-0001`… in the order the walk planned them.
-    const buildDef = batched.f.buildDefId
     const numbers = await db()
-      .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
-      .from(schema.EntityInstance)
-      .where(eq(schema.EntityInstance.entityDefinitionId, buildDef))
-    const byId = new Map(numbers.map((row) => [row.id, row.displayName]))
+      .select({ id: schema.Build.id, number: schema.Build.number })
+      .from(schema.Build)
+      .where(eq(schema.Build.organizationId, batched.f.organizationId))
+    const byId = new Map(numbers.map((row) => [row.id, row.number]))
     expect(many.written.map((b) => byId.get(b.buildId))).toEqual(
       many.written.map((_, i) => `B-${String(i + 1).padStart(4, '0')}`)
     )
@@ -408,7 +320,6 @@ describe('a batched backflush slice stores what one completion per build stores'
     expect(many.written).toHaveLength(one.written.length)
     // The refused batch burnt its range; numbers are compared by the build they name.
     expect(await snapshot(batched)).toEqual(await snapshot(perBuild))
-    await expectMirrorsInWalkOrder(batched, many.written)
   }, 180_000)
 })
 

@@ -100,7 +100,7 @@ export interface PartOpenPoLine {
 /** A planned or in-progress build producing the part. */
 export interface PartOpenBuild {
   buildId: string
-  number: string | null
+  number: string
   status: 'planned' | 'in_progress'
   quantityOpen: number
   dueDay: DayKey | null
@@ -242,7 +242,7 @@ async function readPartSupply(
     readOpenBuilds(db, organizationId, new Set([partId])),
     readBookTimeZoneOrUtc(organizationId),
   ])
-  const [orderNames, supplierNames, buildNames] = await Promise.all([
+  const [orderNames, supplierNames] = await Promise.all([
     readRecordNames(
       db,
       organizationId,
@@ -254,12 +254,6 @@ async function readPartSupply(
       organizationId,
       'company',
       lines.flatMap((l) => (l.supplierId ? [l.supplierId] : []))
-    ),
-    readRecordNames(
-      db,
-      organizationId,
-      'build',
-      builds.map((b) => b.id)
     ),
   ])
   const today = todayInZone(zone)
@@ -279,7 +273,7 @@ async function readPartSupply(
       .sort((a, b) => (a.expectedAt ?? '9999').localeCompare(b.expectedAt ?? '9999')),
     openBuilds: builds.map((b) => ({
       buildId: b.id,
-      number: buildNames.get(b.id) ?? null,
+      number: b.number,
       status: b.status,
       quantityOpen: b.quantityOpen,
       dueDay: b.dueDay,

@@ -5,12 +5,12 @@
 
 import { type Database, schema } from '@auxx/database'
 import { getTestDb } from '@auxx/test-utils'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import pg from 'pg'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getOrgCache } from '../../../cache'
 import { createBuild, startBuild } from '../build-mutations'
 import { completeBuild, recordCompletedBuild } from '../complete-build'
+import { recordCompletedBuilds } from '../record-completed-builds'
 import type { CompleteBuildResult } from '../types'
 import { type BuildFixture, seedBuildOrg } from './support/build-fixture'
 
@@ -69,15 +69,6 @@ async function startedBuild(quantity: number): Promise<string> {
   })
   if (started.isErr()) throw started.error
   return created.value.buildId
-}
-
-async function fieldIds(attributes: string[]): Promise<Record<string, string>> {
-  const fields = await getOrgCache()
-    .from(f.organizationId, 'customFields')
-    .bySystemAttributes(attributes as never)
-  return Object.fromEntries(
-    attributes.map((attr) => [attr, (fields as Record<string, { id: string } | null>)[attr]?.id])
-  ) as Record<string, string>
 }
 
 /** Movement rows, facts and the GL entry of one build's ledger, ids and times stripped. */
@@ -153,32 +144,12 @@ describe('recordCompletedBuild — raise, start and complete in one transaction'
     notes: 'Backflush for 2026-03-31',
   }
 
-  /** The build record's instance columns and values, ids, times and its own number stripped. */
+  /** The build row, its identity, number and times stripped; `startBuild` stamps the wall clock. */
   async function buildSnapshot(buildId: string): Promise<string> {
-    const ids = await fieldIds(['build_started_at'])
-    const [instance] = await db()
-      .select({
-        displayName: schema.EntityInstance.displayName,
-        secondaryDisplayValue: schema.EntityInstance.secondaryDisplayValue,
-        searchText: schema.EntityInstance.searchText,
-        createdById: schema.EntityInstance.createdById,
-      })
-      .from(schema.EntityInstance)
-      .where(eq(schema.EntityInstance.id, buildId))
-    const values = await db()
-      .select()
-      .from(schema.FieldValue)
-      .where(eq(schema.FieldValue.entityId, buildId))
-      .orderBy(asc(schema.FieldValue.fieldId), asc(schema.FieldValue.sortKey))
-    const text = JSON.stringify({
-      instance,
-      values: values
-        // `startBuild` stamps the wall clock.
-        .filter((v) => v.fieldId !== ids.build_started_at)
-        .map(({ id: _id, createdAt: _c, updatedAt: _u, entityId: _e, ...rest }) => rest),
-      startedAt: values.some((v) => v.fieldId === ids.build_started_at),
-    })
-    return instance?.displayName ? text.replaceAll(instance.displayName, 'BNUM') : text
+    const [row] = await db().select().from(schema.Build).where(eq(schema.Build.id, buildId))
+    if (!row) throw new Error(`no build ${buildId}`)
+    const { id: _id, number: _n, createdAt: _c, updatedAt: _u, startedAt, ...rest } = row
+    return JSON.stringify({ ...rest, started: startedAt != null })
   }
 
   it('stores the build and its ledger as create + start + complete do', async () => {
@@ -216,6 +187,43 @@ describe('recordCompletedBuild — raise, start and complete in one transaction'
     expect(await ledgerSnapshot(onePass.value)).toEqual(await ledgerSnapshot(legacy.value))
   })
 
+  it('recordCompletedBuilds stores each build as recordCompletedBuild does, numbered in one range', async () => {
+    f = await seedBuildOrg({ components: 3 })
+    const single = await recordCompletedBuild(db(), f.organizationId, f.userId, {
+      ...input,
+      partId: f.producedPartId,
+      quantity: 5,
+    })
+    if (single.isErr()) throw single.error
+
+    const batch = await recordCompletedBuilds(
+      db(),
+      f.organizationId,
+      f.userId,
+      [5, 5, 5].map((quantity) => ({ ...input, partId: f.producedPartId, quantity }))
+    )
+    if (batch.isErr()) throw batch.error
+
+    expect(batch.value).toHaveLength(3)
+    for (const result of batch.value) {
+      expect(await buildSnapshot(result.buildId)).toEqual(await buildSnapshot(single.value.buildId))
+      expect(await ledgerSnapshot(result)).toEqual(await ledgerSnapshot(single.value))
+    }
+    const rows = await db()
+      .select({ id: schema.Build.id, number: schema.Build.number })
+      .from(schema.Build)
+      .where(
+        inArray(
+          schema.Build.id,
+          batch.value.map((result) => result.buildId)
+        )
+      )
+    const numbers = batch.value.map((result) =>
+      Number(rows.find((row) => row.id === result.buildId)?.number.split('-')[1])
+    )
+    expect(numbers).toEqual([numbers[0], numbers[0]! + 1, numbers[0]! + 2])
+  })
+
   it('reads no field definitions from the database once the org cache is warm', async () => {
     f = await seedBuildOrg({ components: 3 })
     const run = async () => {
@@ -250,14 +258,9 @@ describe('recordCompletedBuild — raise, start and complete in one transaction'
     expect(refused.isErr()).toBe(true)
 
     const builds = await db()
-      .select({ id: schema.EntityInstance.id })
-      .from(schema.EntityInstance)
-      .where(
-        and(
-          eq(schema.EntityInstance.organizationId, f.organizationId),
-          eq(schema.EntityInstance.entityDefinitionId, f.buildDefId)
-        )
-      )
+      .select({ id: schema.Build.id })
+      .from(schema.Build)
+      .where(eq(schema.Build.organizationId, f.organizationId))
     const movements = await db()
       .select({ id: schema.StockMovement.id })
       .from(schema.StockMovement)

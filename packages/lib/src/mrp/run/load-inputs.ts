@@ -1,6 +1,6 @@
 // packages/lib/src/mrp/run/load-inputs.ts
 
-import type { Database } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import {
   addDaysToDayKey,
   addMonthsToDayKey,
@@ -10,6 +10,7 @@ import {
   previousDayKey,
   startOfMonthDay,
 } from '@auxx/utils/calendar-day'
+import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
 import { chunkArray } from '../../import/utils/chunk-array'
@@ -27,7 +28,6 @@ import {
   OrderFulfillmentStatus,
   PurchaseOrderStatus,
 } from '../../resources/registry/enum-values'
-import { BUILD_FIELDS } from '../../resources/registry/resources/build-fields'
 import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-fields'
 import { ORDER_FIELDS } from '../../resources/registry/resources/order-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
@@ -72,12 +72,6 @@ const PART_PICK = pickSystemAttributes(PART_FIELDS, [
 ] as const)
 // PURCHASE_ORDER_FIELDS is not declared with `defineResourceFields`, so it cannot be picked yet.
 const PO_STATUS_PICK = ['purchase_order_status'] as const
-const BUILD_PICK = pickSystemAttributes(BUILD_FIELDS, [
-  'build_part',
-  'build_status',
-  'build_quantity_planned',
-  'build_quantity_produced',
-] as const)
 const ORDER_PICK = pickSystemAttributes(ORDER_FIELDS, [
   'order_fulfillment_status',
   'order_cancelled_at',
@@ -348,8 +342,8 @@ async function readPlannedPurchaseOrders(
   return out
 }
 
-/** An open build with the status the part page shows; the run ignores `status`. */
-export type OpenBuildRow = OpenBuildInput & { status: 'planned' | 'in_progress' }
+/** An open build with the number and status the part page shows; the run ignores both. */
+export type OpenBuildRow = OpenBuildInput & { number: string; status: 'planned' | 'in_progress' }
 
 /** `planned` and `in_progress` builds: on order for their produced part. */
 export async function readOpenBuilds(
@@ -357,25 +351,37 @@ export async function readOpenBuilds(
   organizationId: string,
   planned: ReadonlySet<string>
 ): Promise<OpenBuildRow[]> {
-  const ctx = await systemFields(db, organizationId, 'build', BUILD_PICK, {
-    required: ['build_part', 'build_status', 'build_quantity_planned'],
-  })
-  if (!ctx) return []
-  const byStatus = await findSystemRecordIdsByValue(db, organizationId, ctx, {
-    attribute: 'build_status',
-    option: [BuildStatus.PLANNED, BuildStatus.IN_PROGRESS],
-  })
-  const ids = [...byStatus.values()].flat()
-  if (ids.length === 0) return []
-  const rows = await readSystemRecords(db, organizationId, ctx, { ids })
+  const b = schema.Build
+  const rows = await db
+    .select({
+      id: b.id,
+      number: b.number,
+      partId: b.partId,
+      status: b.status,
+      quantityPlanned: b.quantityPlanned,
+      quantityProduced: b.quantityProduced,
+    })
+    .from(b)
+    .where(
+      and(
+        eq(b.organizationId, organizationId),
+        inArray(b.status, [BuildStatus.PLANNED, BuildStatus.IN_PROGRESS])
+      )
+    )
   return rows.flatMap((row) => {
-    const partId = row.related('build_part')
-    const open =
-      (row.number('build_quantity_planned') ?? 0) - (row.number('build_quantity_produced') ?? 0)
-    if (!partId || !planned.has(partId) || open <= 0) return []
-    const status =
-      row.option('build_status') === BuildStatus.IN_PROGRESS ? 'in_progress' : 'planned'
-    return [{ id: row.id, partId, status, quantityOpen: open, dueDay: null }]
+    const open = (row.quantityPlanned ?? 0) - (row.quantityProduced ?? 0)
+    if (!planned.has(row.partId) || open <= 0) return []
+    const status = row.status === BuildStatus.IN_PROGRESS ? 'in_progress' : 'planned'
+    return [
+      {
+        id: row.id,
+        number: row.number,
+        partId: row.partId,
+        status,
+        quantityOpen: open,
+        dueDay: null,
+      },
+    ]
   })
 }
 

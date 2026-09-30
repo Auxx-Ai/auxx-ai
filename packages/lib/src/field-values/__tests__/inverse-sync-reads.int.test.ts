@@ -40,23 +40,23 @@ beforeEach(async () => {
   f = await seedBuildOrg({ components: 2 })
   const fields = await getOrgCache()
     .from(f.organizationId, 'customFields')
-    .bySystemAttributes(['part_builds', 'build_part'] as const)
+    .bySystemAttributes(['part_subparts', 'subpart_parent_part'] as const)
   info = {
-    inverseFieldId: fields.part_builds!.id,
+    inverseFieldId: fields.part_subparts!.id,
     inverseRelationshipType: 'has_many',
-    sourceEntityDefinitionId: f.buildDefId,
+    sourceEntityDefinitionId: f.subpartDefId,
     targetEntityDefinitionId: f.partDefId,
-    sourceFieldId: fields.build_part!.id,
+    sourceFieldId: fields.subpart_parent_part!.id,
   }
 })
 
-/** Bare build instances; the mirror rows below are all this test reads. */
-async function builds(n: number): Promise<string[]> {
+/** Bare subpart instances; the mirror rows below are all this test reads. */
+async function subparts(n: number): Promise<string[]> {
   const rows = await db()
     .insert(schema.EntityInstance)
     .values(
       Array.from({ length: n }, () => ({
-        entityDefinitionId: f.buildDefId,
+        entityDefinitionId: f.subpartDefId,
         organizationId: f.organizationId,
         updatedAt: new Date(),
       }))
@@ -67,7 +67,7 @@ async function builds(n: number): Promise<string[]> {
 
 /** Give `partId` one mirror row per key, in the given (not necessarily sorted) order. */
 async function holdLinks(partId: string, keys: string[]): Promise<string[]> {
-  const ids = await builds(keys.length)
+  const ids = await subparts(keys.length)
   await db()
     .insert(schema.FieldValue)
     .values(
@@ -77,7 +77,7 @@ async function holdLinks(partId: string, keys: string[]): Promise<string[]> {
         entityDefinitionId: f.partDefId,
         fieldId: info.inverseFieldId,
         relatedEntityId: id,
-        relatedEntityDefinitionId: f.buildDefId,
+        relatedEntityDefinitionId: f.subpartDefId,
         sortKey: keys[index]!,
       }))
     )
@@ -131,7 +131,7 @@ async function readRows(fn: () => Promise<unknown>): Promise<number[]> {
   return counts
 }
 
-/** Link `sources` to `partId` as a covered quiet writer (the build lane: no announcement read). */
+/** Link `sources` to `partId` as a covered quiet writer (no announcement read). */
 function link(partId: string, sources: string[], createdIds?: ReadonlySet<string>) {
   return runWithWriteSession(quietSession('inverse-sync-reads test', { coveredBy: 'test' }), () =>
     syncInverseRelationshipsBulk(
@@ -171,14 +171,14 @@ describe('has_many inverse add', () => {
     await holdLinks(small, keysFor(5))
     await holdLinks(large, keysFor(500))
 
-    const [a, b] = await builds(2)
+    const [a, b] = await subparts(2)
     const smallReads = await readRows(() => link(small, [a!]))
     const largeReads = await readRows(() => link(large, [b!]))
     expect(largeReads).toEqual(smallReads)
     // One last-sortKey row; the pair check finds nothing.
     expect(largeReads.reduce((sum, n) => sum + n, 0)).toBe(1)
 
-    const [c] = await builds(1)
+    const [c] = await subparts(1)
     const freshReads = await readRows(() => link(large, [c!], new Set([c!])))
     expect(freshReads).toEqual([1])
     expect(await mirror(large)).toHaveLength(502)
@@ -187,7 +187,7 @@ describe('has_many inverse add', () => {
   it('announces a long list from a capped read', async () => {
     const [part] = f.componentPartIds as [string]
     await holdLinks(part, keysFor(500))
-    const [a] = await builds(1)
+    const [a] = await subparts(1)
     const reads = await readRows(() =>
       syncInverseRelationshipsBulk(
         { db: db(), organizationId: f.organizationId },
@@ -203,7 +203,7 @@ describe('has_many inverse add', () => {
   it('still skips pairs already stored', async () => {
     const [part] = f.componentPartIds as [string]
     const held = await holdLinks(part, keysFor(3))
-    const [fresh] = await builds(1)
+    const [fresh] = await subparts(1)
     await link(part, [held[1]!, fresh!])
 
     const rows = await mirror(part)
@@ -214,7 +214,7 @@ describe('has_many inverse add', () => {
     const [part, other] = f.componentPartIds as [string, string]
     // Stored out of key order: the max is the second row, not the last.
     await holdLinks(part, ['a1', 'a7', 'a3'])
-    const added = await builds(3)
+    const added = await subparts(3)
     await link(part, added)
     await link(other, added.slice(0, 1))
 

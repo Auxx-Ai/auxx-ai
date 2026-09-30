@@ -23,6 +23,7 @@
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { resolvePartKind } from '@auxx/lib/inventory/costing/client'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { menuItemStyles } from '@auxx/ui/components/menu-styles'
@@ -79,14 +80,10 @@ export function PartStockActions({
   /** The run `Plan and open...` raised, waiting for the completion dialog. */
   const [completing, setCompleting] = useState<PlannedBuild | null>(null)
 
-  const buildDefId = useResourceProperty('build', 'id')
   const subpartDefId = useResourceProperty('subpart', 'id')
 
-  // The client mirror of what `routers/builds.ts` asserts: `Plan` and `Build now`
-  // both need edit on `build`, which authorises the build's movements too.
-  const { canEditEntity } = useAccess()
-  const canPlanBuild = !!buildDefId && canEditEntity(buildDefId)
-  const canPostLedger = canPlanBuild
+  // The client mirror of what `routers/builds.ts` asserts on `create` and `buildNow`.
+  const canPlanBuild = useAccess().can(PermissionKey.mrpManage)
 
   // Whether the part has a bill of materials at all. Same filter shape as
   // `part-costing-card.tsx`'s `hasSubparts` check, deliberately — same read,
@@ -234,7 +231,7 @@ export function PartStockActions({
                   {pane === 'build' && canBuild && (
                     <BuildPartForm
                       partId={partId}
-                      canPostLedger={canPostLedger}
+                      canPostLedger={canPlanBuild}
                       onSuccess={onSuccess}
                       onDone={close}
                       onPlanAndOpen={setCompleting}
