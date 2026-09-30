@@ -49,6 +49,7 @@ import { migration199PartKindConflictConfirmed } from './migrations/199-part-kin
 import { migration200PartKindConfirmed } from './migrations/200-part-kind-confirmed'
 import { migration201StockMovementTable } from './migrations/201-stock-movement-table'
 import { migration202ResetBuilds } from './migrations/202-reset-builds'
+import { migration203StockMovementConsumptionClass } from './migrations/203-stock-movement-consumption-class'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -233,6 +234,8 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   migration201StockMovementTable,
   // Deletes every build, its movements and postings, and the build entity (plans/mrp/23 §5).
   migration202ResetBuilds,
+  // Stamps StockMovement.consumptionClass on rows written before the column (plans/mrp/21 §1).
+  migration203StockMovementConsumptionClass,
 ]
 
 /**

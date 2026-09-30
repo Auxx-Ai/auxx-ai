@@ -1,17 +1,9 @@
 // packages/database/src/db/schema/inventory-movement-fact.ts
 // A derived, rebuildable mirror of `StockMovement` for charts and usage; never read by QoH, costing or the GL. See plans/mrp/02-data-structures.md §3.
 
-import { type AnyPgColumn, index, numeric, pgEnum, pgTable, text, timestamp } from './_shared'
+import { type AnyPgColumn, index, numeric, pgTable, text, timestamp } from './_shared'
 import { Organization } from './organization'
-
-/** How a movement counts for planning (plans/mrp/01-consumption-from-the-ledger.md §2). */
-export const inventoryConsumptionClass = pgEnum('InventoryConsumptionClass', [
-  'consumption', // sale, ship, build_consume
-  'scrap', // consumption, reported separately
-  'supply', // receive, build_produce, initial, salvage return_in, return_out
-  'adjustment', // adjust, and children of an exploded adjustment
-  'none', // revalue (quantity 0)
-])
+import { inventoryConsumptionClass } from './stock-movement'
 
 export const InventoryMovementFact = pgTable(
   'InventoryMovementFact',

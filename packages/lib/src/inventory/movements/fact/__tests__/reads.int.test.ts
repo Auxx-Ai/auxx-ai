@@ -5,7 +5,7 @@
 import type { Database } from '@auxx/database'
 import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { ConsumptionClass } from '../classify'
+import type { ConsumptionClass } from '../../classify'
 import {
   readDailySeries,
   readReceiptsForPoLines,

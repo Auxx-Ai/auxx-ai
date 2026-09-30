@@ -1,9 +1,9 @@
 // packages/lib/src/inventory/movements/fact/live.ts
 
 import type { Database, Transaction } from '@auxx/database'
+import { type ConsumptionClass, classifyMovement } from '../classify'
 import { readMovementsByIds } from '../reads'
 import type { StockMovementInput } from '../types'
-import { type ConsumptionClass, classifyMovement } from './classify'
 import { readMovementFactClasses } from './reads'
 import { classifyFacts } from './rebuild'
 import type { MovementFactInput } from './writes'

@@ -5,8 +5,8 @@ import { and, asc, count, eq, inArray, type SQL, sql, sum } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { chunkArray } from '../../../import/utils/chunk-array'
 import { StockMovementType } from '../../../resources/registry/enum-values'
+import type { ConsumptionClass } from '../classify'
 import { guard } from '../guard'
-import type { ConsumptionClass } from './classify'
 
 const F = schema.InventoryMovementFact
 const ID_CHUNK = 500

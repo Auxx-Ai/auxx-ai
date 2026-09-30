@@ -1,8 +1,8 @@
-// packages/lib/src/inventory/movements/fact/__tests__/classify.test.ts
+// packages/lib/src/inventory/movements/__tests__/classify.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { classifyMovement } from '../classify'
-import { classifyFacts } from '../rebuild'
+import { classifyMovement, classifyMovementRows } from '../classify'
+import { classifyFacts } from '../fact/rebuild'
 
 // plans/mrp/01-consumption-from-the-ledger.md §2, one assertion per row.
 describe('classifyMovement', () => {
@@ -77,5 +77,23 @@ describe('classifyFacts', () => {
   it('a reversal whose original is not in the ledger is an adjustment, not salvage', () => {
     const [fact] = classifyFacts([row('rev', 'return_in', 'gone')])
     expect(fact?.consumptionClass).toBe('adjustment')
+  })
+})
+
+describe('classifyMovementRows', () => {
+  it('takes a stamped class as is, and a reversal of it inherits it', () => {
+    const classes = classifyMovementRows([
+      { id: 'a', type: 'receive', consumptionClass: 'scrap' },
+      { id: 'b', type: 'return_out', reversesMovementId: 'a' },
+    ])
+    expect(Object.fromEntries(classes)).toEqual({ a: 'scrap', b: 'scrap' })
+  })
+
+  it('a reversal of a BOM child is an adjustment', () => {
+    const classes = classifyMovementRows([
+      { id: 'child', type: 'sale', parentMovementId: 'parent' },
+      { id: 'undo', type: 'return_in', reversesMovementId: 'child' },
+    ])
+    expect(classes.get('undo')).toBe('adjustment')
   })
 })

@@ -133,6 +133,10 @@ vi.mock('../inventory/movements/fact/live', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../inventory/movements/fact/live')>()),
   readOriginalClasses: vi.fn(async () => new Map()),
 }))
+vi.mock('../inventory/movements/reads', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../inventory/movements/reads')>()),
+  readConsumptionClasses: vi.fn(async () => new Map()),
+}))
 
 // Global test setup
 beforeAll(() => {

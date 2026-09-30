@@ -1,7 +1,7 @@
 // packages/lib/src/inventory/movements/fact/index.ts
 
-export type { ConsumptionClass, MovementClassLinks } from './classify'
-export { classifyMovement } from './classify'
+export type { ConsumptionClass, MovementClassLinks } from '../classify'
+export { classifyMovement } from '../classify'
 export type { MovementFactDrift } from './drift-check'
 export { compareFactsToLedger } from './drift-check'
 export { movementFactFromInput, readOriginalClasses } from './live'

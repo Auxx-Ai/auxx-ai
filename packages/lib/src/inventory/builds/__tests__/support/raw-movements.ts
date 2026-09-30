@@ -32,6 +32,7 @@ export async function insertRawMovements(
           organizationId,
           partId: m.partId,
           type: 'adjust' as const,
+          consumptionClass: 'adjustment' as const,
           quantity: m.quantity,
           occurredAt: m.occurredAt ?? null,
           createdAt: m.createdAt ?? now,

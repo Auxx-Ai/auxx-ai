@@ -3,7 +3,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { eq, inArray } from 'drizzle-orm'
 import { chunkArray } from '../../../import/utils/chunk-array'
-import type { ConsumptionClass } from './classify'
+import type { ConsumptionClass } from '../classify'
 
 const INSERT_CHUNK = 500
 

@@ -203,7 +203,12 @@ export * from './sidebar-node'
 export * from './snippet'
 export * from './snippet-folder'
 export type { CreateStockMovementInput, StockMovementEntity } from './stock-movement'
-export { StockMovement, stockMovementCostBasis, stockMovementType } from './stock-movement'
+export {
+  inventoryConsumptionClass,
+  StockMovement,
+  stockMovementCostBasis,
+  stockMovementType,
+} from './stock-movement'
 export * from './storage-location'
 // Subpart table dropped — subparts now use EntityInstance + FieldValue
 export * from './suggestion-dismissal'

@@ -1,5 +1,7 @@
 // packages/lib/src/inventory/movements/index.ts
 
+export type { ConsumptionClass, MovementClassLinks, MovementClassRow } from './classify'
+export { classifyMovement, classifyMovementRows } from './classify'
 export {
   computeExtendedCost,
   DEFAULT_RECEIPT_INVENTORY_ROLE,
@@ -9,7 +11,6 @@ export {
 export type { DeleteMovementsForInput, DeleteMovementsForResult } from './delete-movements'
 export { deleteMovementsFor } from './delete-movements'
 export type {
-  ConsumptionClass,
   DailySeriesRow,
   FactDayRange,
   MovementFactDrift,
@@ -19,7 +20,6 @@ export type {
   WhereUsedShareRow,
 } from './fact'
 export {
-  classifyMovement,
   compareFactsToLedger,
   deleteMovementFacts,
   insertMovementFacts,
@@ -44,6 +44,7 @@ export type {
   StockMovementRow,
 } from './reads'
 export {
+  readConsumptionClasses,
   readMovementById,
   readMovementsByBuilds,
   readMovementsByFulfillmentLines,

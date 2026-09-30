@@ -2885,6 +2885,13 @@
       "when": 1790748170064,
       "tag": "0411_build_table",
       "breakpoints": true
+    },
+    {
+      "idx": 412,
+      "version": "7",
+      "when": 1790789247247,
+      "tag": "0412_stock_movement_consumption_class",
+      "breakpoints": true
     }
   ]
 }
