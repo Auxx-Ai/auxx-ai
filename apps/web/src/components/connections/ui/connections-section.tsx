@@ -19,7 +19,12 @@ import { ConnectionCard, type ConnectionRow } from './connection-card'
 import { ConnectionDetailDialog } from './connection-detail-dialog'
 import type { DetailMethod } from './connection-detail-method'
 import { ConnectionStackCard } from './connection-stack-card'
-import { appTarget, optionalScopesHeld, platformTarget } from './connection-targets'
+import {
+  appTarget,
+  optionalScopesHeld,
+  platformTarget,
+  reconnectArgsFor,
+} from './connection-targets'
 import { CredentialTemplateDialog } from './credential-template-dialog'
 import { type ConnectionGroup, groupConnections } from './group-connections'
 import { McpReconnectController } from './mcp-reconnect-controller'
@@ -127,23 +132,6 @@ export function ConnectionsSection() {
   // `scopeAdd` carries the edit dialog's picks straight through to the authorize URL; when it is
   // omitted (the card's own Reconnect) the flow seeds it from the existing grant itself (§4.4).
   const handleReconnect = (row: ConnectionRow, scopeAdd?: string[]) => {
-    if (row.kind === 'app') {
-      const inst = appInstallations.find((i) => i.app.id === row.appId)
-      if (!inst) {
-        toastError({
-          title: 'App not installed',
-          description: 'Reconnect this account from the app’s settings instead.',
-        })
-        return
-      }
-      flow.start({
-        target: appTarget(inst),
-        scope: row.scope,
-        connectionId: row.id,
-        ...(scopeAdd && { scopeAdd }),
-      })
-      return
-    }
     // MCP rows reconnect through the MCP-native flow (its own OAuth route + connect mutation),
     // keyed by the owning server's slug — never the platform provider path.
     if (row.kind === 'mcp') {
@@ -158,20 +146,12 @@ export function ConnectionsSection() {
       setReconnectMcp((prev) => ({ slug, attempt: (prev?.attempt ?? 0) + 1 }))
       return
     }
-    const provider = providerByKey.get(row.type)
-    if (!provider) {
-      toastError({
-        title: 'Provider unavailable',
-        description: 'This connection’s provider is no longer registered.',
-      })
+    const resolved = reconnectArgsFor(row, appInstallations, providerByKey)
+    if (!resolved.ok) {
+      toastError({ title: resolved.title, description: resolved.description })
       return
     }
-    flow.start({
-      target: platformTarget(provider),
-      scope: row.scope,
-      connectionId: row.id,
-      ...(scopeAdd && { scopeAdd }),
-    })
+    flow.start({ ...resolved.args, ...(scopeAdd && { scopeAdd }) })
   }
 
   // Plain connection secrets with no platform definition edit a single API key inline in the edit

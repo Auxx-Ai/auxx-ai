@@ -143,6 +143,25 @@ describe('reconnect optional permissions', () => {
     expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
+  it('resolves the pinned method from `methods` when the scope view is stripped (picker reconnect)', async () => {
+    const full = args.target.connectionDefinitions.organization!
+    render(
+      <Harness
+        input={{
+          ...args,
+          target: {
+            ...args.target,
+            connectionDefinitions: { organization: { connectionType: 'oauth2-code' } },
+            methods: [full],
+          },
+        }}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Start reconnect' }))
+    await screen.findByRole('checkbox', { name: 'read_shopify_payments_payouts' })
+    expect(mocks.refresh).not.toHaveBeenCalled()
+  })
+
   it('keeps silent refresh for reconnects without optional scopes', async () => {
     mocks.refresh.mockResolvedValue({ success: true })
     render(

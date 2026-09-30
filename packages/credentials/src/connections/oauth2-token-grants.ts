@@ -156,14 +156,8 @@ export async function refreshCredentialTokens(
     const errorMessage = error instanceof Error ? error.message : String(error)
     logger.error('Token refresh failed', { credentialId, error: errorMessage })
 
-    // A revoked/invalid refresh token is permanent — no retry can recover it. `invalid_grant`
-    // is the RFC 6749 §5.2 code every provider returns for a dead refresh token (revoked,
-    // expired, or issued to a different client); the message check covers non-endpoint
-    // failures that name the refresh token. Permanent jumps the breaker straight to the open
-    // threshold AND flags the credential `requiresReauth` so the UI surfaces Reconnect.
-    const isPermanentFailure =
-      (error instanceof OAuth2TokenRequestError && error.oauthError === 'invalid_grant') ||
-      (errorMessage.includes('refresh token') && errorMessage.includes('invalid'))
+    // Permanent jumps the breaker straight to the open threshold AND flags `requiresReauth`.
+    const isPermanentFailure = isPermanentRefreshFailure(error)
     await recordRefreshFailure(credentialId, organizationId, {
       permanent: isPermanentFailure,
       // Raw provider text → lastRefreshError (kept for every failure, transient included).
@@ -291,6 +285,20 @@ export class OAuth2TokenRequestError extends Error {
     super(message)
     this.name = 'OAuth2TokenRequestError'
   }
+}
+
+/**
+ * Whether a refresh failure means the refresh token itself was rejected, so only a re-auth can
+ * recover. Any 4xx from the token endpoint counts (408/429 excepted): providers do not all answer
+ * with RFC 6749 `invalid_grant` — Shopify returns 401 HTML, UPS a 400 with its own error shape.
+ */
+export function isPermanentRefreshFailure(error: unknown): boolean {
+  if (error instanceof OAuth2TokenRequestError) {
+    const { status } = error
+    return status >= 400 && status < 500 && status !== 408 && status !== 429
+  }
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('refresh token') && message.includes('invalid')
 }
 
 /** Extract the RFC 6749 `error` code from a token-endpoint error body, tolerating non-JSON. */

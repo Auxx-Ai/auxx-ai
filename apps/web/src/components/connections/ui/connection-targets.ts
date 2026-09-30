@@ -9,6 +9,9 @@ import type { RouterOutputs } from '~/trpc/react'
 /** A platform provider as projected by `connections.listProviders`. */
 export type ProviderRow = RouterOutputs['connections']['listProviders'][number]
 
+/** A row from `connections.list` (app + platform connections). */
+type ListedConnection = RouterOutputs['connections']['list'][number]
+
 type Scope = 'user' | 'organization'
 
 /** A platform provider's credential is org-wide when `global`, else per-user. */
@@ -74,6 +77,48 @@ export function appTarget(inst: AppInstallation): ConnectFlowArgs['target'] {
       oauth2Scopes: m.oauth2Scopes,
       oauth2OptionalScopes: m.oauth2OptionalScopes,
     })),
+  }
+}
+
+/**
+ * Connect-flow args to reconnect an existing app or platform connection, or the reason it can't
+ * be. Pins the row's own method: without `definitionId` the flow falls back to the stripped
+ * `connectionDefinitions` view, which lacks the optional scopes and skips the reconnect dialog.
+ */
+export function reconnectArgsFor(
+  row: ListedConnection,
+  appInstallations: AppInstallation[],
+  providerByKey: Map<string, ProviderRow>
+): { ok: true; args: ConnectFlowArgs } | { ok: false; title: string; description: string } {
+  if (row.kind === 'app') {
+    const inst = appInstallations.find((i) => i.app.id === row.appId)
+    if (!inst) {
+      return {
+        ok: false,
+        title: 'App not installed',
+        description: 'Reconnect this account from the app’s settings instead.',
+      }
+    }
+    // Older rows carry no `connectionDefinitionId`; fall back to the scope's sole method.
+    const scoped = (inst.methods ?? []).filter((m) => m.global === (row.scope === 'organization'))
+    const definitionId =
+      row.connectionDefinitionId ?? (scoped.length === 1 ? scoped[0]?.id : undefined)
+    return {
+      ok: true,
+      args: { target: appTarget(inst), scope: row.scope, connectionId: row.id, definitionId },
+    }
+  }
+  const provider = providerByKey.get(row.type)
+  if (!provider) {
+    return {
+      ok: false,
+      title: 'Provider unavailable',
+      description: 'This connection’s provider is no longer registered.',
+    }
+  }
+  return {
+    ok: true,
+    args: { target: platformTarget(provider), scope: row.scope, connectionId: row.id },
   }
 }
 

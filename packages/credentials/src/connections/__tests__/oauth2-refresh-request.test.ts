@@ -104,7 +104,11 @@ vi.mock('../interpolate-connection', () => ({
   ) => ({ ...(metadata?.connectionVariables ?? {}), ...(secrets?.fields ?? {}) }),
 }))
 
-import { refreshCredentialTokens } from '../oauth2-token-grants'
+import {
+  isPermanentRefreshFailure,
+  OAuth2TokenRequestError,
+  refreshCredentialTokens,
+} from '../oauth2-token-grants'
 
 const fetchCalls: { url: string; body: URLSearchParams }[] = []
 
@@ -243,5 +247,53 @@ describe('refreshCredentialTokens failure classification', () => {
     expect(result.success).toBe(false)
     expect(result.circuitOpened).toBe(false)
     expect(storeCalls.refreshFailure[0]?.permanent).toBe(false)
+  })
+
+  it("treats Shopify's 401 HTML refresh rejection as permanent", async () => {
+    vi.stubGlobal('fetch', async () => ({
+      ok: false,
+      status: 401,
+      text: async () =>
+        '<html><body>Oauth error invalid_request: This request requires an active refresh_token</body></html>',
+    }))
+
+    const result = await refreshCredentialTokens('cred-1', 'org-1')
+
+    expect(result.circuitOpened).toBe(true)
+    expect(storeCalls.refreshFailure[0]?.permanent).toBe(true)
+  })
+
+  it('keeps network errors retryable', async () => {
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('fetch failed')
+    })
+
+    const result = await refreshCredentialTokens('cred-1', 'org-1')
+
+    expect(result.circuitOpened).toBe(false)
+    expect(storeCalls.refreshFailure[0]?.permanent).toBe(false)
+  })
+})
+
+describe('isPermanentRefreshFailure', () => {
+  const tokenError = (status: number, oauthError: string | null = null) =>
+    new OAuth2TokenRequestError(`Token refresh failed: ${status}`, status, oauthError)
+
+  it.each([
+    [400, 'invalid_grant'],
+    [400, null],
+    [401, null],
+    [401, 'invalid_client'],
+    [403, null],
+  ])('treats a %i (%s) token-endpoint rejection as permanent', (status, code) => {
+    expect(isPermanentRefreshFailure(tokenError(status, code))).toBe(true)
+  })
+
+  it.each([408, 429, 500, 502, 503])('treats a %i as transient', (status) => {
+    expect(isPermanentRefreshFailure(tokenError(status))).toBe(false)
+  })
+
+  it('treats network errors as transient', () => {
+    expect(isPermanentRefreshFailure(new TypeError('fetch failed'))).toBe(false)
   })
 })
