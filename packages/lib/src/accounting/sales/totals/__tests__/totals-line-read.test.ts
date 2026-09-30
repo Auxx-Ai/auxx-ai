@@ -1,20 +1,15 @@
 // packages/lib/src/accounting/sales/totals/__tests__/totals-line-read.test.ts
 //
-// The line read and the no-op guard, both added by
-// `plans/events/08-derived-parent-reconciler-plan.md` phase 1.
-//
-// What these pin is COST, which no other test in this module can see: the engine used to
-// issue one `getFieldValues` per line, inside a `for await`, against an id list capped at
-// 1000 — and the hook that calls it fires once per changed FIELD, so a 20-line bulk paste
-// ran 40 recomputes each re-reading every line that existed so far. A regression here is
-// silent: every totals assertion in the suite passes just as well at 20 queries as at one.
+// The line read and the no-op guard (`plans/events/08-derived-parent-reconciler-plan.md`
+// phase 1). The read itself is the lines module's `readLinesForTotals` now
+// (plans/entity/domain-tables/01 §1.2); its set-based cost is `readSystemRecords`'.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   getFieldValues: vi.fn(),
-  listFiltered: vi.fn(),
+  readLinesForTotals: vi.fn(),
   setValuesForEntity: vi.fn(),
   syncInvoicePaymentState: vi.fn(),
   fieldValueRows: vi.fn(),
@@ -30,9 +25,9 @@ vi.mock('../../../../cache', () => ({
 vi.mock('../../../../resources/crud', () => ({
   UnifiedCrudHandler: class {
     getFieldValues = h.getFieldValues
-    listFiltered = h.listFiltered
   },
 }))
+vi.mock('../../../documents/lines/reads', () => ({ readLinesForTotals: h.readLinesForTotals }))
 vi.mock('../../../../field-values/field-value-service', () => ({
   FieldValueService: class {
     setValuesForEntity = h.setValuesForEntity
@@ -57,6 +52,7 @@ vi.mock('@auxx/database', async () => {
 })
 
 import { recomputeTotals } from '../totals-hooks'
+import { totalsRow } from './support/totals-rows'
 
 const FIELDS: Record<string, { id: string; type: string }> = {
   quote_discount_type: { id: 'f-q-dtype', type: 'SINGLE_SELECT' },
@@ -77,12 +73,6 @@ const FIELDS: Record<string, { id: string; type: string }> = {
   line_item_optional_selected: { id: 'f-li-optsel', type: 'BOOLEAN' },
 }
 
-function row(entityId: string, fieldId: string, value: number | boolean) {
-  return typeof value === 'boolean'
-    ? { entityId, fieldId, valueBoolean: value }
-    : { entityId, fieldId, valueNumber: value }
-}
-
 function written(fieldId: string): number | undefined {
   const call = h.setValuesForEntity.mock.calls.at(-1)?.[0] as
     | { values: Array<{ fieldId: string; value: number }> }
@@ -99,62 +89,58 @@ beforeEach(() => {
   )
   h.setValuesForEntity.mockResolvedValue(undefined)
   h.syncInvoicePaymentState.mockResolvedValue(undefined)
-  h.listFiltered.mockResolvedValue({ ids: [] })
+  h.readLinesForTotals.mockResolvedValue([])
   h.getFieldValues.mockResolvedValue(new Map())
   h.fieldValueRows.mockResolvedValue([])
   h.managedFieldsRows.mockResolvedValue([])
 })
 
-describe('the line read is set-based', () => {
-  it('issues ONE query for many lines, not one per line', async () => {
-    const ids = Array.from({ length: 25 }, (_, i) => `li-${i}`)
-    h.listFiltered.mockResolvedValue({ ids })
-    h.fieldValueRows.mockResolvedValue(ids.map((id) => row(id, 'f-li-total', 100)))
+describe('the line read', () => {
+  it('reads the document once through the lines module, with no cap', async () => {
+    const lines = Array.from({ length: 1200 }, (_, i) => totalsRow(`li-${i}`, { lineTotal: 100 }))
+    h.readLinesForTotals.mockResolvedValue(lines)
 
     await recomputeTotals({ ...quote, documentType: 'quote' })
 
-    expect(h.fieldValueRows).toHaveBeenCalledTimes(1)
-    expect(written('quote_subtotal')).toBe(2500)
+    expect(h.readLinesForTotals).toHaveBeenCalledTimes(1)
+    expect(h.readLinesForTotals.mock.calls[0]![2]).toEqual({
+      documentType: 'quote',
+      documentId: 'q-1',
+    })
+    expect(written('quote_subtotal')).toBe(120_000)
   })
 
-  it('chunks a document past 200 lines rather than sending one unbounded IN-list', async () => {
-    const ids = Array.from({ length: 201 }, (_, i) => `li-${i}`)
-    h.listFiltered.mockResolvedValue({ ids })
-    h.fieldValueRows.mockResolvedValue([])
-
+  it('never reads lines when the org has no line total field, and totals zero', async () => {
+    h.bySystemAttributes.mockImplementation(async (attrs: string[]) =>
+      Object.fromEntries(
+        attrs.filter((a) => FIELDS[a] && a !== 'line_item_line_total').map((a) => [a, FIELDS[a]])
+      )
+    )
     await recomputeTotals({ ...quote, documentType: 'quote' })
-
-    expect(h.fieldValueRows).toHaveBeenCalledTimes(2)
-  })
-
-  it('never queries at all when the document has no lines', async () => {
-    await recomputeTotals({ ...quote, documentType: 'quote' })
-    expect(h.fieldValueRows).not.toHaveBeenCalled()
+    expect(h.readLinesForTotals).not.toHaveBeenCalled()
     expect(written('quote_subtotal')).toBe(0)
   })
 })
 
 describe('per-line value semantics are unchanged', () => {
-  it('counts a line with NO stored values as a zero contribution, not as absent', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['li-1', 'li-2'] })
-    // Only li-1 has a row. li-2 must still produce a line, exactly as the old
-    // per-line loop did — it pushed an entry per id regardless of what came back.
-    h.fieldValueRows.mockResolvedValue([row('li-1', 'f-li-total', 5000)])
+  it('counts a line with NO stored total as a zero contribution, not as absent', async () => {
+    h.readLinesForTotals.mockResolvedValue([
+      totalsRow('li-1', { lineTotal: 5000 }),
+      totalsRow('li-2'),
+    ])
 
     await recomputeTotals({ ...quote, documentType: 'quote' })
 
     expect(written('quote_subtotal')).toBe(5000)
   })
 
-  it('treats an absent `taxable` as taxable and a stored `false` as not', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['li-1', 'li-2'] })
+  it('taxes a taxable line and not one stored `false`', async () => {
     h.getFieldValues.mockResolvedValue(
       new Map<string, unknown>([['f-q-rate', { type: 'number', value: 10 }]])
     )
-    h.fieldValueRows.mockResolvedValue([
-      row('li-1', 'f-li-total', 10000), // no taxable row -> taxable
-      row('li-2', 'f-li-total', 10000),
-      row('li-2', 'f-li-taxable', false), // stored false -> not taxable
+    h.readLinesForTotals.mockResolvedValue([
+      totalsRow('li-1', { lineTotal: 10000 }),
+      totalsRow('li-2', { lineTotal: 10000, taxable: false }),
     ])
 
     await recomputeTotals({ ...quote, documentType: 'quote' })
@@ -164,12 +150,9 @@ describe('per-line value semantics are unchanged', () => {
   })
 
   it('drops an unselected optional line from the total', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['li-1', 'li-2'] })
-    h.fieldValueRows.mockResolvedValue([
-      row('li-1', 'f-li-total', 10000),
-      row('li-2', 'f-li-total', 9900),
-      row('li-2', 'f-li-optional', true),
-      row('li-2', 'f-li-optsel', false),
+    h.readLinesForTotals.mockResolvedValue([
+      totalsRow('li-1', { lineTotal: 10000 }),
+      totalsRow('li-2', { lineTotal: 9900, optional: true, optionalSelected: false }),
     ])
 
     await recomputeTotals({ ...quote, documentType: 'quote' })
@@ -180,8 +163,7 @@ describe('per-line value semantics are unchanged', () => {
 
 describe('the no-op guard', () => {
   it('skips the write when every mirror already holds the computed value', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['li-1'] })
-    h.fieldValueRows.mockResolvedValue([row('li-1', 'f-li-total', 10000)])
+    h.readLinesForTotals.mockResolvedValue([totalsRow('li-1', { lineTotal: 10000 })])
     h.getFieldValues.mockResolvedValue(
       new Map<string, unknown>([
         ['f-q-subtotal', { type: 'number', value: 10000 }],
@@ -196,8 +178,7 @@ describe('the no-op guard', () => {
   })
 
   it('writes when ANY mirror differs, even by a cent', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['li-1'] })
-    h.fieldValueRows.mockResolvedValue([row('li-1', 'f-li-total', 10000)])
+    h.readLinesForTotals.mockResolvedValue([totalsRow('li-1', { lineTotal: 10000 })])
     h.getFieldValues.mockResolvedValue(
       new Map<string, unknown>([
         ['f-q-subtotal', { type: 'number', value: 10000 }],
@@ -212,8 +193,7 @@ describe('the no-op guard', () => {
   })
 
   it('writes when a mirror is UNSET — null is not a match', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['li-1'] })
-    h.fieldValueRows.mockResolvedValue([row('li-1', 'f-li-total', 10000)])
+    h.readLinesForTotals.mockResolvedValue([totalsRow('li-1', { lineTotal: 10000 })])
     h.getFieldValues.mockResolvedValue(new Map())
 
     await recomputeTotals({ ...quote, documentType: 'quote' })
@@ -222,8 +202,7 @@ describe('the no-op guard', () => {
   })
 
   it('still runs afterWrite on a no-op — a payment moves `balance` with totals unchanged', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['li-1'] })
-    h.fieldValueRows.mockResolvedValue([row('li-1', 'f-li-total', 10000)])
+    h.readLinesForTotals.mockResolvedValue([totalsRow('li-1', { lineTotal: 10000 })])
     h.getFieldValues.mockResolvedValue(
       new Map<string, unknown>([
         ['f-i-subtotal', { type: 'number', value: 10000 }],

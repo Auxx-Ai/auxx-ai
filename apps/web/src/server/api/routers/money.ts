@@ -46,7 +46,6 @@ import {
   createVisitInvoice,
   declineQuote,
   deleteInvoice,
-  deleteInvoiceLine,
   ensureQuoteDocumentPdf,
   fulfillOrder,
   getContactBillingOverview,
@@ -60,8 +59,6 @@ import {
   previewWriteOffInvoice,
   readOrderForFulfillment,
   readWriteOffState,
-  recomputeTotals,
-  reorderLines,
   runInvoiceBatch,
   saveBillingInstallments,
   setInvoiceSchedule,
@@ -205,61 +202,6 @@ export const moneyRouter = createTRPCRouter({
       })
       await invalidateMeteredRecordCount(ctx.session.organizationId)
       return result
-    }),
-
-  reorderLines: moneyProcedure
-    .input(
-      z.object({
-        documentRecordId: recordIdSchema.optional(),
-        orderedLineRecordIds: z.array(recordIdSchema),
-        /** Defaults to `line_item`; the sort attribute is derived from it. */
-        lineEntityType: z.string().min(1).optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      return reorderLines({
-        organizationId: ctx.session.organizationId,
-        userId: ctx.session.user.id,
-        documentRecordId: input.documentRecordId,
-        lineEntityType: input.lineEntityType,
-        orderedLineInstanceIds: input.orderedLineRecordIds.map(
-          (recordId) => parseRecordId(recordId).entityInstanceId
-        ),
-      })
-    }),
-
-  recomputeTotals: moneyProcedure
-    .input(
-      z
-        .object({
-          /** @deprecated legacy shape — pass `recordId` instead (quote or invoice). */
-          quoteRecordId: recordIdSchema.optional(),
-          /** Quote, invoice or order RecordId (money MI1 build spec §I.2, widened to
-           * `order` by plans/products/08-order-build.md §5.6) — `documentType` is derived
-           * from the def component, no separate flag needed. */
-          recordId: recordIdSchema.optional(),
-        })
-        .refine((val) => Boolean(val.quoteRecordId) !== Boolean(val.recordId), {
-          message: 'Provide exactly one of quoteRecordId or recordId',
-        })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const targetRecordId = (input.recordId ?? input.quoteRecordId)!
-      const { entityDefinitionId, entityInstanceId } = parseRecordId(targetRecordId)
-      // Membership test, not a two-way ternary: the old
-      // `=== 'invoice' ? 'invoice' : 'quote'` shape would have silently
-      // recomputed an ORDER as a quote, writing quote_* totals onto it
-      // (plans/products/08-order-build.md §5.6, the billingPrefix trap).
-      const documentType =
-        entityDefinitionId === 'invoice' || entityDefinitionId === 'order'
-          ? entityDefinitionId
-          : 'quote'
-      return recomputeTotals({
-        organizationId: ctx.session.organizationId,
-        userId: ctx.session.user.id,
-        documentType,
-        documentInstanceId: entityInstanceId,
-      })
     }),
 
   // ─── Invoicing (money MI1 build spec §I.2) ──────────────────────────────
@@ -453,17 +395,6 @@ export const moneyRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         invoiceInstanceId: entityInstanceId,
-      })
-    }),
-
-  deleteInvoiceLine: moneyProcedure
-    .input(z.object({ lineRecordId: recordIdSchema }))
-    .mutation(async ({ ctx, input }) => {
-      const { entityInstanceId } = parseRecordId(input.lineRecordId)
-      return deleteInvoiceLine({
-        organizationId: ctx.session.organizationId,
-        userId: ctx.session.user.id,
-        lineInstanceId: entityInstanceId,
       })
     }),
 

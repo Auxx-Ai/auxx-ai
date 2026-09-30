@@ -19,9 +19,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   getFieldValues: vi.fn(),
-  listFiltered: vi.fn(),
+  readLinesForTotals: vi.fn(),
   setValuesForEntity: vi.fn(),
-  /** `select()` with no projection - the LINE VALUE read in `totals-hooks`. */
+  /** Any other raw select; the line read itself is `readLinesForTotals`. */
   fieldValueRows: vi.fn(),
   /** `select({...})` from `DataConnectorItem` - `isFieldConnectorManaged`'s own read. */
   managedFieldsRows: vi.fn(),
@@ -33,9 +33,9 @@ vi.mock('../../../../cache', () => ({
 vi.mock('../../../../resources/crud', () => ({
   UnifiedCrudHandler: class {
     getFieldValues = h.getFieldValues
-    listFiltered = h.listFiltered
   },
 }))
+vi.mock('../../../documents/lines/reads', () => ({ readLinesForTotals: h.readLinesForTotals }))
 vi.mock('../../../../field-values/field-value-service', () => ({
   FieldValueService: class {
     setValuesForEntity = h.setValuesForEntity
@@ -57,6 +57,7 @@ vi.mock('@auxx/database', async () => {
 })
 
 import { LINE_TRIGGER_ATTRS, recomputeTotals } from '../totals-hooks'
+import { totalsRow } from './support/totals-rows'
 
 const FIELDS: Record<string, { id: string; type: string }> = {
   order_discount_type: { id: 'f-o-dtype', type: 'SINGLE_SELECT' },
@@ -78,10 +79,6 @@ const FIELDS: Record<string, { id: string; type: string }> = {
   line_item_unit_price: { id: 'f-li-price', type: 'CURRENCY' },
 }
 
-function row(entityId: string, fieldId: string, value: number) {
-  return { entityId, fieldId, valueNumber: value }
-}
-
 /**
  * Two lines with GROSS totals of 100.00 and 50.00 (the line hook's `qty x unitPrice`
  * write), and whatever NET is stored on them - null for a line never recomputed
@@ -89,14 +86,8 @@ function row(entityId: string, fieldId: string, value: number) {
  */
 function twoLines(net: { first: number | null; second: number | null }) {
   return [
-    row('li-1', 'f-li-qty', 2),
-    row('li-1', 'f-li-price', 5_000),
-    row('li-1', 'f-li-total', 10_000),
-    ...(net.first === null ? [] : [row('li-1', 'f-li-net', net.first)]),
-    row('li-2', 'f-li-qty', 1),
-    row('li-2', 'f-li-price', 5_000),
-    row('li-2', 'f-li-total', 5_000),
-    ...(net.second === null ? [] : [row('li-2', 'f-li-net', net.second)]),
+    totalsRow('li-1', { lineTotal: 10_000, storedNetTotal: net.first }),
+    totalsRow('li-2', { lineTotal: 5_000, storedNetTotal: net.second }),
   ]
 }
 
@@ -132,7 +123,7 @@ beforeEach(() => {
     Object.fromEntries(attrs.filter((a) => FIELDS[a]).map((a) => [a, FIELDS[a]]))
   )
   h.setValuesForEntity.mockResolvedValue(undefined)
-  h.listFiltered.mockResolvedValue({ ids: ['li-1', 'li-2'] })
+  h.readLinesForTotals.mockResolvedValue([])
   h.getFieldValues.mockResolvedValue(new Map())
   h.fieldValueRows.mockResolvedValue([])
   h.managedFieldsRows.mockResolvedValue([])
@@ -140,7 +131,7 @@ beforeEach(() => {
 
 describe('a native order with a header discount', () => {
   it('10% off 100 and 50 writes NETS of 90 and 45, subtotal 135 and total 135', async () => {
-    h.fieldValueRows.mockResolvedValue(twoLines({ first: null, second: null }))
+    h.readLinesForTotals.mockResolvedValue(twoLines({ first: null, second: null }))
     h.getFieldValues.mockResolvedValue(header(percent(10)))
 
     await recomputeTotals(order)
@@ -164,7 +155,7 @@ describe('a native order with a header discount', () => {
   })
 
   it("never writes line_item_line_total from the document recompute: the gross column is the line hook's", async () => {
-    h.fieldValueRows.mockResolvedValue(twoLines({ first: null, second: null }))
+    h.readLinesForTotals.mockResolvedValue(twoLines({ first: null, second: null }))
     h.getFieldValues.mockResolvedValue(header(percent(10)))
 
     await recomputeTotals(order)
@@ -175,7 +166,7 @@ describe('a native order with a header discount', () => {
   })
 
   it('7.00 off writes 95.33 and 47.67 (largest remainder, odd cent to the first line) and subtotal 143', async () => {
-    h.fieldValueRows.mockResolvedValue(twoLines({ first: null, second: null }))
+    h.readLinesForTotals.mockResolvedValue(twoLines({ first: null, second: null }))
     h.getFieldValues.mockResolvedValue(header(amount(700)))
 
     await recomputeTotals(order)
@@ -186,7 +177,7 @@ describe('a native order with a header discount', () => {
   })
 
   it('taxes the NET lines and adds shipping on top: total = subtotal + tax + shipping', async () => {
-    h.fieldValueRows.mockResolvedValue(twoLines({ first: null, second: null }))
+    h.readLinesForTotals.mockResolvedValue(twoLines({ first: null, second: null }))
     h.getFieldValues.mockResolvedValue(
       header({
         ...percent(10),
@@ -205,7 +196,7 @@ describe('a native order with a header discount', () => {
   it('rewrites only the line whose stored net is not its allocated net', async () => {
     // li-2 already holds last recompute's net; li-1 was never recomputed since
     // the column existed (a price edit rewrote its gross, its net is stale).
-    h.fieldValueRows.mockResolvedValue(twoLines({ first: 10_000, second: 4_500 }))
+    h.readLinesForTotals.mockResolvedValue(twoLines({ first: 10_000, second: 4_500 }))
     h.getFieldValues.mockResolvedValue(header(percent(10)))
 
     await recomputeTotals(order)
@@ -217,7 +208,7 @@ describe('a native order with a header discount', () => {
   })
 
   it('sets the net back to the gross when the discount is removed', async () => {
-    h.fieldValueRows.mockResolvedValue(twoLines({ first: 9_000, second: 4_500 }))
+    h.readLinesForTotals.mockResolvedValue(twoLines({ first: 9_000, second: 4_500 }))
     h.getFieldValues.mockResolvedValue(new Map())
 
     await recomputeTotals(order)
@@ -228,7 +219,7 @@ describe('a native order with a header discount', () => {
   })
 
   it('writes nothing at all when every line and every mirror already holds its value', async () => {
-    h.fieldValueRows.mockResolvedValue(twoLines({ first: 9_000, second: 4_500 }))
+    h.readLinesForTotals.mockResolvedValue(twoLines({ first: 9_000, second: 4_500 }))
     h.getFieldValues.mockResolvedValue(
       header({
         ...percent(10),
@@ -246,11 +237,9 @@ describe('a native order with a header discount', () => {
   })
 
   it('leaves an unpriced line alone: a null gross has no net to write', async () => {
-    h.fieldValueRows.mockResolvedValue([
-      row('li-1', 'f-li-qty', 2),
-      row('li-1', 'f-li-price', 5_000),
-      row('li-1', 'f-li-total', 10_000),
-      row('li-2', 'f-li-qty', 1),
+    h.readLinesForTotals.mockResolvedValue([
+      totalsRow('li-1', { lineTotal: 10_000 }),
+      totalsRow('li-2'),
     ])
     h.getFieldValues.mockResolvedValue(header(percent(10)))
 
@@ -270,7 +259,7 @@ describe('a native order with a header discount', () => {
         attrs.filter((a) => FIELDS[a] && a !== 'line_item_net_total').map((a) => [a, FIELDS[a]])
       )
     )
-    h.fieldValueRows.mockResolvedValue(twoLines({ first: null, second: null }))
+    h.readLinesForTotals.mockResolvedValue(twoLines({ first: null, second: null }))
     h.getFieldValues.mockResolvedValue(header(percent(10)))
 
     await recomputeTotals(order)
@@ -285,7 +274,7 @@ describe('the connector-managed order is untouched', () => {
   it('writes neither the lines nor the header when order_total is connector-managed', async () => {
     // The connector wrote gross totals and its own nets from the payload. Nothing
     // here may "correct" either, and no header mirror may move.
-    h.fieldValueRows.mockResolvedValue(twoLines({ first: 9_000, second: 4_500 }))
+    h.readLinesForTotals.mockResolvedValue(twoLines({ first: 9_000, second: 4_500 }))
     h.getFieldValues.mockResolvedValue(header(percent(10)))
     h.managedFieldsRows.mockResolvedValue([{ managedFields: ['def_o:f-o-total'] }])
 
@@ -299,7 +288,7 @@ describe('the connector-managed order is untouched', () => {
 
 describe('the discount stays on the header for every other document', () => {
   it('a quote with a header discount writes no line nets and keeps the header formula', async () => {
-    h.fieldValueRows.mockResolvedValue(twoLines({ first: null, second: null }))
+    h.readLinesForTotals.mockResolvedValue(twoLines({ first: null, second: null }))
     h.getFieldValues.mockResolvedValue(
       header({
         'f-q-dtype': { type: 'option', optionId: 'percent' },
@@ -315,7 +304,7 @@ describe('the discount stays on the header for every other document', () => {
   })
 
   it('a quote does not even ask for line_item_net_total: the column is order-only', async () => {
-    h.fieldValueRows.mockResolvedValue(twoLines({ first: null, second: null }))
+    h.readLinesForTotals.mockResolvedValue(twoLines({ first: null, second: null }))
     h.getFieldValues.mockResolvedValue(new Map())
 
     await recomputeTotals({ ...order, documentType: 'quote', documentInstanceId: 'q-1' })

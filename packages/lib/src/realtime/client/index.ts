@@ -11,6 +11,7 @@ export type {
   FieldValuesUpdatedEvent,
   FieldValueUpdateEntry,
   InboxSyncCompletedEvent,
+  LinesUpdatedEvent,
   MailBatchEvent,
   MailSyncEvent,
   MessageCreatedEvent,

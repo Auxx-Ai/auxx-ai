@@ -9,8 +9,6 @@ import {
   DOCUMENT_EDIT_FAMILIES,
   DOCUMENT_EDIT_REFUSED_IN,
   DOCUMENT_OPEN_STATUSES,
-  type DocumentEditFamily,
-  documentEditRow,
   openDocumentEdit,
   readDocumentEditState,
   readDocumentLockState,
@@ -18,43 +16,16 @@ import {
 } from '@auxx/lib/accounting/documents/edit-in-place'
 import { getCachedEntityDefId } from '@auxx/lib/cache'
 import { NotFoundError } from '@auxx/lib/errors'
-import {
-  type CapabilitySet,
-  FeaturePermissionService,
-  PERMISSION_REGISTRY_MAP,
-  PermissionKey,
-} from '@auxx/lib/permissions'
+import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
+import { assertMayEditDocument } from '~/server/lib/document-authority'
 
 const target = z.object({
   family: z.enum(DOCUMENT_EDIT_FAMILIES),
   /** The header's `EntityInstance` id. */
   recordId: z.string().min(1),
 })
-
-/**
- * A family that posts needs `ledgerPost`, like Post and Void: Save reverses
- * and re-posts its entry. A family with no entry needs only edit on its own def.
- */
-async function assertMayEdit(
-  ctx: {
-    session: { organizationId: string }
-    capabilities: Pick<CapabilitySet, 'assert' | 'assertEditEntity'>
-  },
-  family: DocumentEditFamily
-): Promise<void> {
-  const { organizationId } = ctx.session
-  if (documentEditRow(family).ledger) {
-    const featureKey = PERMISSION_REGISTRY_MAP.get(PermissionKey.ledgerPost)?.featureKey
-    if (featureKey) await new FeaturePermissionService().requireAccess(organizationId, featureKey)
-    ctx.capabilities.assert(PermissionKey.ledgerPost)
-    return
-  }
-  const defId = await getCachedEntityDefId(organizationId, family)
-  if (!defId) throw new NotFoundError(`This organization has no ${family} records yet.`)
-  ctx.capabilities.assertEditEntity(defId)
-}
 
 export const documentEditRouter = createTRPCRouter({
   /** Is this document unlocked, and what does the ledger hold for it? */
@@ -105,7 +76,7 @@ export const documentEditRouter = createTRPCRouter({
    * The ledger is untouched until Save.
    */
   open: capabilityProcedure.input(target).mutation(async ({ ctx, input }) => {
-    await assertMayEdit(ctx, input.family)
+    await assertMayEditDocument(ctx, input.family, input.recordId)
     return openDocumentEdit(ctx.db, {
       organizationId: ctx.session.organizationId,
       userId: ctx.session.userId,
@@ -120,7 +91,7 @@ export const documentEditRouter = createTRPCRouter({
    * alone.
    */
   save: capabilityProcedure.input(target).mutation(async ({ ctx, input }) => {
-    await assertMayEdit(ctx, input.family)
+    await assertMayEditDocument(ctx, input.family, input.recordId)
     return saveDocumentEdit(ctx.db, {
       organizationId: ctx.session.organizationId,
       userId: ctx.session.userId,
@@ -131,7 +102,7 @@ export const documentEditRouter = createTRPCRouter({
 
   /** Restore the snapshot and drop it. Deletes lines the edit added (66 §5). */
   cancel: capabilityProcedure.input(target).mutation(async ({ ctx, input }) => {
-    await assertMayEdit(ctx, input.family)
+    await assertMayEditDocument(ctx, input.family, input.recordId)
     return cancelDocumentEdit(ctx.db, {
       organizationId: ctx.session.organizationId,
       userId: ctx.session.userId,

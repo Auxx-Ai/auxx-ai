@@ -16,16 +16,16 @@ import type {
 } from '../../../field-hooks/types'
 import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
-import { readFieldScalars } from '../../../field-values/read-field-scalars'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { unwrapRelationId } from '../../../resources/events/captured-values'
 import { systemFieldMap } from '../../../resources/system-records'
+import { readLinesForTotals } from '../../documents/lines/reads'
+import type { LineForTotalsRow } from '../../documents/lines/types'
 import { syncInvoicePaymentState } from '../../money/invoice-payments/payment-state'
 import type {
   DiscountType,
   DocumentBillingInputs,
   DocumentTotals,
-  LineForTotals,
   RecomputeTotalsInput,
 } from '../types'
 import {
@@ -257,8 +257,8 @@ const VENDOR_CREDIT_LINE_TOTALS_SPEC: LineTotalsSpec = {
 /**
  * How a document's own header money fields fold into its total.
  *
- * ⚠️ These are LOOKUPS, not ternaries, for the reason spelled out at `LINE_SCHEMAS` in
- * `line-builder/line-values.ts`: `billingPrefix` was once
+ * ⚠️ These are LOOKUPS, not ternaries, for the reason spelled out at `LINE_KINDS` in
+ * `accounting/documents/lines/client.ts`: `billingPrefix` was once
  * `documentType === 'invoice' ? 'invoice' : 'quote'`, which silently mapped every other
  * document to the QUOTE prefix — a document reading and writing another document's
  * `quote_tax_rate`. A new document type must never join a boolean-shaped expression.
@@ -319,15 +319,6 @@ interface DocumentTotalsSpec {
   line: LineTotalsSpec
   /** How the header's own money fields fold into the total. */
   billing: DocumentBillingSpec
-  /** The line's owning relation, as a resource field id. */
-  lineRelFieldId: string
-  /** Extra conditions ANDed onto the line query. */
-  extraLineConditions: Array<{
-    id: string
-    fieldId: string
-    operator: 'is' | 'empty'
-    value: string | null
-  }>
   /**
    * Passed straight through to `setValuesForEntity`. `true` forces a publish (the
    * builder's totals footer updates via realtime); **`undefined` is not the same as
@@ -376,25 +367,14 @@ const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = 
     attrPrefix: 'quote',
     line: LINE_ITEM_TOTALS_SPEC,
     billing: rateBilling('quote'),
-    lineRelFieldId: 'line_item:quote',
-    extraLineConditions: [],
     publishEvents: true,
   },
   invoice: {
     attrPrefix: 'invoice',
     line: LINE_ITEM_TOTALS_SPEC,
     billing: rateBilling('invoice'),
-    lineRelFieldId: 'line_item:invoice',
-    // The §B.3 invariant: an invoice's own lines never carry a work order, so a WO
-    // source line stamped with `line_item_invoice` must not contribute twice.
-    extraLineConditions: [
-      {
-        id: 'invoice-lines-workorder',
-        fieldId: 'line_item:workOrder',
-        operator: 'empty',
-        value: null,
-      },
-    ],
+    // The §B.3 invariant (a work-order source line stamped with the invoice contributes
+    // once) is the lines module's invoice membership rule.
     // Deliberately left undefined — see the field doc above.
     // A total change can move `balance` and flip `paid` ↔ `partially_paid` even
     // though no payment was recorded (§E.4).
@@ -410,10 +390,7 @@ const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = 
     attrPrefix: 'order',
     line: LINE_ITEM_TOTALS_SPEC,
     billing: rateBilling('order'),
-    lineRelFieldId: 'line_item:order',
-    // No work-order exclusion (that invariant is about an invoice's own lines) and no
-    // payment ledger (08 §5.4).
-    extraLineConditions: [],
+    // No payment ledger (08 §5.4).
     publishEvents: true,
     // A native order's header discount lands on its lines as `line_item_net_total`, so
     // `order_subtotal` is Σ net and `order_total = subtotal + tax + shipping` - the shape
@@ -442,8 +419,6 @@ const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = 
       statedAdditionAttrs: ['purchase_order_shipping_total', 'purchase_order_tax_total'],
       writesTaxTotal: false,
     },
-    lineRelFieldId: 'purchase_order_line:purchaseOrder',
-    extraLineConditions: [],
     publishEvents: true,
   },
   credit_memo: {
@@ -460,8 +435,6 @@ const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = 
       statedAdditionAttrs: [],
       writesTaxTotal: true,
     },
-    lineRelFieldId: 'credit_memo_line:creditMemo',
-    extraLineConditions: [],
     publishEvents: true,
     frozenStatus: { attr: 'credit_memo_status', editableValues: new Set(['draft']) },
   },
@@ -481,8 +454,6 @@ const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = 
       statedAdditionAttrs: ['vendor_credit_tax_total'],
       writesTaxTotal: false,
     },
-    lineRelFieldId: 'vendor_credit_line:vendorCredit',
-    extraLineConditions: [],
     publishEvents: true,
     frozenStatus: { attr: 'vendor_credit_status', editableValues: new Set(['draft']) },
   },
@@ -491,9 +462,8 @@ const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = 
 /**
  * Recompute a totalled document's `subtotal`/`taxTotal`/`total` from its current lines +
  * billing fields and write the mirrors via `FieldValueService`. The single source of truth
- * for "what are this document's totals right now" — called by both the field-change hooks
- * below and the `money.recomputeTotals` router mutation (delete path + drift escape,
- * §F.2/§G.2).
+ * for "what are this document's totals right now" — called by the field-change hooks below
+ * and by the lines module's `deleteLines` (§F.2/§G.2).
  *
  * Generalized across quote/invoice/order (08 §5.4): the quote and invoice branches were
  * ~110-line near-duplicates differing in three places, which {@link DOCUMENT_TOTALS_SPECS}
@@ -640,29 +610,9 @@ async function recomputeDocumentTotals(params: {
     0
   )
 
-  const { ids: lineInstanceIds } = await handler.listFiltered({
-    entityDefinitionId: spec.line.lineEntityType,
-    filters: [
-      {
-        id: `${documentType}-lines`,
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: `${documentType}-lines-parent`,
-            fieldId: spec.lineRelFieldId,
-            operator: 'is',
-            value: documentRecordId,
-          },
-          ...spec.extraLineConditions,
-        ],
-      },
-    ],
-    limit: 1000,
-  })
-
   const lineTotalField = cf[spec.line.lineTotalAttr]
-  const lines: LineForTotalsWithTax[] = lineTotalField
-    ? await readLinesForTotals(db, organizationId, spec, cf, lineInstanceIds)
+  const lines: LineForTotalsRow[] = lineTotalField
+    ? await readLinesForTotals(db, organizationId, { documentType, documentId: documentInstanceId })
     : []
 
   /**
@@ -733,8 +683,8 @@ async function recomputeDocumentTotals(params: {
    *
    * 🛑 `afterWrite` still runs. `syncInvoicePaymentState` reads more than these three
    * numbers — a payment recorded elsewhere moves `balance` and can flip
-   * `paid` <-> `partially_paid` with the totals unchanged — and `money.recomputeTotals`
-   * is documented as the manual drift escape, so it must stay a real refresh.
+   * `paid` <-> `partially_paid` with the totals unchanged, so a recompute must stay a real
+   * refresh.
    */
   const unchanged =
     lineWrites.length === 0 &&
@@ -796,111 +746,6 @@ async function recomputeDocumentTotals(params: {
   }
 
   await spec.afterWrite?.({ organizationId, userId, documentInstanceId, db })
-}
-
-/**
- * Every line's contribution to its document, in ONE query per 200-id chunk.
- *
- * ⚠️ This replaced a serial `getFieldValues` per line — `await` inside a `for`
- * over an id list capped at 1000 — which made a 20-line document cost ~20
- * round trips per hook fire, and the hook fires once per changed FIELD. A
- * 20-line bulk paste therefore issued 40 recomputes, each re-reading every
- * line that existed so far. See `plans/events/08-derived-parent-reconciler-plan.md` §1.
- *
- * The set-based read itself lives in {@link readFieldScalars} — why it is raw
- * rather than `batchGetValues` or `fetchResourceSnapshots` is recorded there, and
- * it now has three callers.
- *
- * One entry per id in `lineInstanceIds`, in that order, INCLUDING a line with no
- * stored values at all — the previous loop pushed an entry per id unconditionally
- * and `computeDocumentTotals` counts a null `lineTotal` as a zero contribution.
- */
-/**
- * A line's contribution plus, for a document with `lineTaxAttr`, its transcribed tax -
- * and, for one with `allocatesHeaderDiscount`, the identity and stored NET the net write
- * is compared against. `lineTotal` is always the stored GROSS (`lineTotalAttr`, the line
- * hook's own `qty x unitPrice`); `storedNetTotal` is what `netTotalAttr` holds today, or
- * null on a document that does not allocate or a line never recomputed since 157.
- */
-type LineForTotalsWithTax = LineForTotals & {
-  lineTax?: number | null
-  lineInstanceId: string
-  storedNetTotal: number | null
-}
-
-async function readLinesForTotals(
-  db: Database | undefined,
-  organizationId: string,
-  spec: DocumentTotalsSpec,
-  cf: Partial<Record<SystemAttribute, { id: string } | null>>,
-  lineInstanceIds: string[]
-): Promise<LineForTotalsWithTax[]> {
-  if (lineInstanceIds.length === 0) return []
-
-  const idFor = (attr: SystemAttribute | undefined): string | undefined =>
-    attr ? (cf[attr]?.id ?? undefined) : undefined
-
-  const lineTotalFieldId = idFor(spec.line.lineTotalAttr)
-  const taxableFieldId = idFor(spec.line.taxableAttr)
-  const optionalFieldId = idFor(spec.line.optionalAttr)
-  const optionalSelectedFieldId = idFor(spec.line.optionalSelectedAttr)
-  const lineTaxFieldId = idFor(spec.line.lineTaxAttr)
-  const netTotalFieldId = spec.allocatesHeaderDiscount ? idFor(spec.line.netTotalAttr) : undefined
-
-  const fieldIds = [
-    lineTotalFieldId,
-    taxableFieldId,
-    optionalFieldId,
-    optionalSelectedFieldId,
-    lineTaxFieldId,
-    netTotalFieldId,
-  ].filter((id): id is string => !!id)
-  if (fieldIds.length === 0) return lineInstanceIds.map(emptyLineForTotals)
-
-  const byLine = await readFieldScalars(db, organizationId, lineInstanceIds, fieldIds)
-
-  return lineInstanceIds.map((lineInstanceId) => {
-    const values = byLine.get(lineInstanceId)
-    if (!values) return emptyLineForTotals(lineInstanceId)
-
-    const read = (fieldId: string | undefined): unknown =>
-      fieldId && values.has(fieldId) ? values.get(fieldId) : undefined
-
-    const stored = read(lineTotalFieldId)
-    const storedNet = read(netTotalFieldId)
-    const taxable = read(taxableFieldId)
-    const optional = read(optionalFieldId)
-    const optionalSelected = read(optionalSelectedFieldId)
-    const lineTax = read(lineTaxFieldId)
-
-    return {
-      lineInstanceId,
-      // The GROSS as the line hook wrote it (`qty x unitPrice`). On an allocating
-      // document the engine subtracts each line's discount share from this and
-      // writes the result to `netTotalAttr`; the gross column is never rewritten
-      // here, so it is always safe to read as the allocation's input.
-      lineTotal: stored == null ? null : (stored as number),
-      storedNetTotal: storedNet == null ? null : (storedNet as number),
-      // A line entity with no `taxable` field is wholly taxable as far as the math is
-      // concerned — with `taxRate` null (the buy side) that distinction never surfaces.
-      taxable: taxable == null ? true : (taxable as boolean),
-      optional: optional == null ? undefined : (optional as boolean),
-      optionalSelected: optionalSelected == null ? undefined : (optionalSelected as boolean),
-      lineTax: lineTax == null ? null : (lineTax as number),
-    }
-  })
-}
-
-/** A line the query returned nothing for — the previous loop's all-absent case. */
-function emptyLineForTotals(lineInstanceId: string): LineForTotalsWithTax {
-  return {
-    lineInstanceId,
-    storedNetTotal: null,
-    lineTotal: null,
-    taxable: true,
-    optional: undefined,
-    optionalSelected: undefined,
-  }
 }
 
 /**

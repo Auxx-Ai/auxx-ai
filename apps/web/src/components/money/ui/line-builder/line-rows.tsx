@@ -35,6 +35,12 @@
 // `CurrencyCellInput`/`QuantityCellView` are built on the kit's `CellInput`.
 
 import {
+  type AmountMode,
+  type Line,
+  type LineDocumentType,
+  lineKindFor,
+} from '@auxx/lib/accounting/documents/lines/client'
+import {
   computeLineTotal,
   formatLineItemUnit,
   LINE_ITEM_UNIT_OPTIONS,
@@ -94,25 +100,20 @@ import {
 import { PartCell } from '~/components/line-grid/ui/part-cell'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
 import type { CatalogPart } from '~/components/money/hooks/use-catalog-parts'
-import { type RecordId, type RecordMeta, toRecordId } from '~/components/resources'
+import { type RecordId, toRecordId } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { partToLinePatch } from './catalog-group-resolver'
 import { CatalogPicker } from './catalog-picker'
 import { LinePhotoPopover } from './line-photo-popover'
 import {
-  type AmountMode,
   crossFillAmount,
   DEFAULT_LINE_VALUES,
-  type DocumentType,
   hasAmountMismatch,
   type LinePatch,
   type LineValues,
-  lineAttributesFor,
-  lineSchemaFor,
-  lineSourceRecordId,
-  lineValuesFromSystemValues,
   numberOrNull,
+  partCellAttrs,
 } from './line-values'
 import { formatCurrency, titleCase } from './shared'
 import type { LineRowAction } from './use-line-hotkeys'
@@ -175,7 +176,7 @@ function badgeVariantForColor(color: string | undefined): Variant {
  * `LineBuilder`. Reaching for it from here would close that loop — `money` would
  * depend on `purchasing` while `purchasing` depends on `money`.
  *
- * `scopeRecordId` is resolved by the builder from `LineSchema.matchScopeAttr`, so
+ * `scopeRecordId` is resolved by the builder from `LineKind.matchScopeAttr`, so
  * the consumer never has to re-fetch the parent to scope its own picker.
  */
 export type MatchKeyEditorRenderer = (props: {
@@ -230,7 +231,7 @@ export interface PartPrefill {
  * the purchasing router from a document-agnostic builder makes every quote and
  * invoice carry a purchasing dependency to use a feature they do not have.
  *
- * `vendorRecordId` is resolved by the builder from {@link LineSchema.vendorAttr},
+ * `vendorRecordId` is resolved by the builder from `LineKind.vendorAttr`,
  * exactly as `scopeRecordId` is for the match key, so the consumer never re-fetches
  * the parent it is already rendered inside — and so this is never called at all
  * for an order with no vendor on it.
@@ -253,12 +254,8 @@ export type PartPrefillResolver = (partRecordId: RecordId) => Promise<PartPrefil
 export interface DraftLine extends LineValues {
   draftId: string
   creating: boolean
-  /**
-   * Real row this draft renders directly under — set on catalog-group bundle
-   * drafts staged from a middle row's pick, so the bundle stays together
-   * instead of pinning to the list tail. Absent → tail (the default).
-   */
-  anchorRecordId?: string
+  /** The line a middle-row group pick's bundle renders under; absent → the tail. */
+  anchorLineId?: string
 }
 
 export function freshDraft(draftId: string): DraftLine {
@@ -267,17 +264,6 @@ export function freshDraft(draftId: string): DraftLine {
     draftId,
     creating: false,
   }
-}
-
-/**
- * The document-relationship field a new line_item is stamped with, by document
- * type. A lookup rather than a ternary chain: a missing arm here stamps the line
- * onto the WRONG document instead of failing, and the fourth type
- * (`order`, plans/products/08-order-build.md §5.6) is exactly the kind of
- * addition a chain absorbs silently.
- */
-export function relKeyForDocumentType(documentType: DocumentType): string {
-  return lineSchemaFor(documentType).relKey
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1032,11 +1018,11 @@ function QuantityCellView({
   quantity: number
   unit: LineItemUnit | null
   /**
-   * Whether the unit is this row's to change — `schema.capabilities.unit`.
+   * Whether the unit is this row's to change — `kind.capabilities.unit`.
    *
    * 🛑 On a purchasing line it is FALSE, and the unit shown comes from the PART
    * (`part_unit`), not the line: `purchase_order_line` has no unit attribute, so
-   * a pick here would go through `linePatchToFieldValues`, which drops the key,
+   * a pick here would be dropped by `toLinePatch` (the kind has no `unit`),
    * and appear to work while changing nothing. It is on the part by design — a
    * line ordered in `box` and received in `ea` would make the received-vs-ordered
    * roll-up compare two different units. A PO does not get to choose the unit its
@@ -1364,22 +1350,21 @@ function LineRowMenu({
   optional: boolean
   showOptionalToggle: boolean
   /**
-   * `schema.capabilities.category` / `.taxable`. A purchasing line has neither
-   * field, so the item would write through `linePatchToFieldValues`, which drops
-   * the key — the click would appear to work and change nothing.
+   * `kind.capabilities.category` / `.taxable`. A purchasing line has neither field,
+   * so the write would be dropped and the click would change nothing.
    */
   showCategory?: boolean
   showTaxable?: boolean
-  /** `schema.attrs.purchaseOrderLineRecordId !== null` — a bill line's match key. */
+  /** The kind carries `purchaseOrderLineId` — a bill line's match key. */
   showMatchKey?: boolean
-  /** `schema.attrs.landedBillRecordId !== null` — a bill line's landed-cost link. */
+  /** The kind carries `landedBillId` — a bill line's landed-cost link. */
   showLandedBill?: boolean
-  /** `schema.attrs.glAccount !== null`. */
+  /** The kind carries `glAccountId`. */
   showGlAccount?: boolean
-  /** `schema.attrs.weight !== null` — a purchase order line's allocation basis. */
+  /** The kind carries `weight` — a purchase order line's allocation basis. */
   showWeight?: boolean
   /**
-   * `schema.attrs.returnsStock !== null` AND the row names a part — a vendor
+   * The kind carries `returnsStock` AND the row names a part — a vendor
    * credit line's "these goods went back" flag (73 §8.2). A credit line with no
    * part has nothing to send back, so the item is not offered at all rather
    * than offered and refused at issue.
@@ -1572,29 +1557,29 @@ function LinePartCellView({
   chips,
   menuItems,
 }: {
-  /** `purchase_order_line_part` / `vendor_bill_line_part`, from the schema. */
+  /** `purchase_order_line_part` / `vendor_bill_line_part` (`partCellAttrs`). */
   partAttribute: string
   partRecordId: RecordId | null
   description: string | null
-  /** `schema.attrs.purchaseOrderLineRecordId` — `null` on a line with no match key. */
+  /** `null` on a line with no match key. */
   matchKeyAttribute: string | null
   matchKeyRecordId: RecordId | null
-  /** `schema.attrs.landedBillRecordId` — `null` on every document but the bill. */
+  /** `null` on every document but the bill. */
   landedBillAttribute: string | null
   landedBillRecordId: RecordId | null
   renderLandedBillEditor?: LandedBillEditorRenderer
   onPickLandedBill: (recordId: RecordId | null) => void
-  /** Resolved by the builder from `schema.matchScopeAttr`; scopes the picker. */
+  /** Resolved by the builder from `kind.matchScopeAttr`; scopes the picker. */
   matchScopeRecordId: RecordId | null
   renderMatchKeyEditor?: MatchKeyEditorRenderer
   currencyCode: string
-  /** `schema.attrs.glAccount` — `null` on a line with no GL account. */
+  /** `null` on a line with no GL account. */
   glAccountAttribute: string | null
   glAccount: string | null
-  /** `schema.attrs.weight` — `null` on every document but the purchase order. */
+  /** `null` on every document but the purchase order. */
   weightAttribute: string | null
   weight: number | null
-  /** `schema.attrs.returnsStock` — `null` on every document but the vendor credit. */
+  /** `null` on every document but the vendor credit. */
   returnsStockAttribute?: string | null
   returnsStock?: boolean
   onToggleReturnsStock?: (next: boolean) => void
@@ -2256,7 +2241,8 @@ export async function applyPartPrefill({
 
 /** One sortable line row — a grid row whose leading slot is the drag grip. */
 export function LineRow({
-  record,
+  line: storedLine,
+  values: line,
   rowIndex,
   entityDefinitionId,
   categoryOptions,
@@ -2278,8 +2264,11 @@ export function LineRow({
   deleteLine,
   onSelectGroup,
 }: {
-  record: RecordMeta
+  /** The cached line; `values` is the same line in the row's vocabulary. */
+  line: Line
+  values: LineValues
   rowIndex: number
+  /** The line entity's def id, for the photo popover's record id. */
   entityDefinitionId: string
   categoryOptions: CategoryOption[]
   /** `line_item.photos` field def (plan 37b §4) — `null` skips the photo chip
@@ -2287,12 +2276,12 @@ export function LineRow({
   photosField: ResourceField | null
   readOnly: boolean
   currencyCode: string
-  documentType: DocumentType
+  documentType: LineDocumentType
   catalogParts: CatalogPart[]
   catalogGroups: CatalogGroup[]
   catalogPartMap: Map<string, CatalogPart>
   catalogLoading: boolean
-  /** Resolved from `schema.matchScopeAttr` by the builder; scopes the match picker. */
+  /** Resolved from `kind.matchScopeAttr` by the builder; scopes the match picker. */
   matchScopeRecordId: RecordId | null
   renderMatchKeyEditor?: MatchKeyEditorRenderer
   renderLandedBillEditor?: LandedBillEditorRenderer
@@ -2300,19 +2289,16 @@ export function LineRow({
   weightRevealed?: boolean
   resolvePartPrefill?: PartPrefillResolver
   onRevealWeight: () => void
-  onUpdateLine: (recordId: RecordId, patch: LinePatch) => void
+  onUpdateLine: (lineId: string, patch: LinePatch) => void
   deleteLine: (lineId: string) => void
-  onSelectGroup: (recordId: RecordId, group: CatalogGroup) => void
+  onSelectGroup: (lineId: string, group: CatalogGroup) => void
 }) {
-  const recordId = toRecordId(entityDefinitionId, record.id)
-  const schema = lineSchemaFor(documentType)
-  const showOptional = schema.capabilities.optional
-  const { values } = useSystemValues(recordId, lineAttributesFor(schema), { autoFetch: false })
-  const line = lineValuesFromSystemValues(values, schema)
-  const vendorCode =
-    documentType === 'vendor_bill' && typeof values.vendor_bill_line_vendor_code === 'string'
-      ? values.vendor_bill_line_vendor_code.trim()
-      : ''
+  const lineId = storedLine.id
+  const recordId = toRecordId(entityDefinitionId, lineId)
+  const kind = lineKindFor(documentType)
+  const attrs = partCellAttrs(kind)
+  const showOptional = kind.capabilities.optional
+  const vendorCode = storedLine.vendorCode?.trim() ?? ''
   const vendorCodeChip = vendorCode ? (
     <SimpleTooltip content='Vendor code'>
       <span className='max-w-28 truncate font-mono text-muted-foreground text-xs'>
@@ -2320,24 +2306,32 @@ export function LineRow({
       </span>
     </SimpleTooltip>
   ) : undefined
-  const partUnit = usePartUnit(schema.capabilities.partPicker ? line.partRecordId : null)
-  // `schema.attrs.vendorPartRecordId` is only set on the purchase order - a bill
-  // line has no offer link, so this is null there too (§2.9 item 2).
+  const partUnit = usePartUnit(kind.capabilities.partPicker ? line.partRecordId : null)
+  // Only the purchase order has an offer link (§2.9 item 2).
   const { purchaseUnit, purchaseRatio } = useVendorPartPurchaseUnit(
-    schema.attrs.vendorPartRecordId ? line.vendorPartRecordId : null
+    attrs.vendorPart ? line.vendorPartRecordId : null
   )
   // Read at prefill-completion time, never at pick time — see `applyPartPrefill`.
   const priceRef = useLatestRef(line.unitPriceCents)
-  // FILE is array-return (plan 37b §3) — the photos attribute reads back as an array
-  // of `{ ref, caption?, internal? }` envelopes (or is absent/empty when there are
-  // none). A document whose lines carry no photos field has no attribute to read.
-  const rawPhotos = schema.photosAttr ? values[schema.photosAttr] : undefined
-  const photoCount = Array.isArray(rawPhotos) ? rawPhotos.length : 0
+  // The popover writes photos through the field store, not the lines module, so that
+  // store is fresher than the cached line once this tab has touched them.
+  const { values: photoValues } = useSystemValues(
+    recordId,
+    kind.photosAttr ? [kind.photosAttr] : [],
+    {
+      autoFetch: false,
+      enabled: !!kind.photosAttr,
+    }
+  )
+  const storedPhotos = kind.photosAttr ? photoValues[kind.photosAttr] : undefined
+  const photoCount = Array.isArray(storedPhotos)
+    ? storedPhotos.length
+    : (storedLine.photos?.length ?? 0)
   // Photo popover open state lives here (not in LinePhotoPopover) so the `⋯`
   // menu's "Add images" and the ⇧P shortcut can open it (plan 40).
   const [photosOpen, setPhotosOpen] = useState(false)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: record.id,
+    id: lineId,
     disabled: readOnly,
   })
 
@@ -2351,27 +2345,27 @@ export function LineRow({
         optional={line.optional}
         grip={readOnly ? null : <GripSlot attributes={attributes} listeners={listeners} />}
         name={
-          schema.capabilities.partPicker && schema.attrs.partRecordId ? (
+          kind.capabilities.partPicker && attrs.part ? (
             <LinePartCellView
-              partAttribute={schema.attrs.partRecordId}
+              partAttribute={attrs.part}
               partRecordId={line.partRecordId}
               description={line.description}
-              matchKeyAttribute={schema.attrs.purchaseOrderLineRecordId}
+              matchKeyAttribute={attrs.matchKey}
               matchKeyRecordId={line.purchaseOrderLineRecordId}
-              landedBillAttribute={schema.attrs.landedBillRecordId}
+              landedBillAttribute={attrs.landedBill}
               landedBillRecordId={line.landedBillRecordId}
               renderLandedBillEditor={renderLandedBillEditor}
               matchScopeRecordId={matchScopeRecordId}
               renderMatchKeyEditor={renderMatchKeyEditor}
               currencyCode={currencyCode}
-              glAccountAttribute={schema.attrs.glAccount}
+              glAccountAttribute={attrs.glAccount}
               glAccount={line.glAccount}
-              weightAttribute={schema.attrs.weight}
+              weightAttribute={attrs.weight}
               weight={line.weight}
               weightRevealed={weightRevealed}
-              returnsStockAttribute={schema.attrs.returnsStock}
+              returnsStockAttribute={attrs.returnsStock}
               returnsStock={line.returnsStock}
-              onToggleReturnsStock={(returnsStock) => onUpdateLine(recordId, { returnsStock })}
+              onToggleReturnsStock={(returnsStock) => onUpdateLine(lineId, { returnsStock })}
               readOnly={readOnly}
               // The part write and the prefill are two separate patches on
               // purpose: the pick must land in this frame (it is what the person
@@ -2384,7 +2378,7 @@ export function LineRow({
                 // longer carries — the same reason `applyPartPrefill` rewrites
                 // it on every pick. It cannot do that job here, because it
                 // returns early on a null part.
-                onUpdateLine(recordId, {
+                onUpdateLine(lineId, {
                   partRecordId,
                   ...(partRecordId === null ? { vendorPartRecordId: null } : {}),
                 })
@@ -2392,26 +2386,26 @@ export function LineRow({
                   partRecordId,
                   resolve: resolvePartPrefill,
                   currentPriceRef: priceRef,
-                  apply: (patch) => onUpdateLine(recordId, patch),
+                  apply: (patch) => onUpdateLine(lineId, patch),
                 })
               }}
-              onCommitDescription={(description) => onUpdateLine(recordId, { description })}
+              onCommitDescription={(description) => onUpdateLine(lineId, { description })}
               onPickMatchKey={(purchaseOrderLineRecordId) =>
-                onUpdateLine(recordId, { purchaseOrderLineRecordId })
+                onUpdateLine(lineId, { purchaseOrderLineRecordId })
               }
               onPickLandedBill={(landedBillRecordId) =>
-                onUpdateLine(recordId, { landedBillRecordId })
+                onUpdateLine(lineId, { landedBillRecordId })
               }
-              onCommitGlAccount={(glAccount) => onUpdateLine(recordId, { glAccount })}
-              onCommitWeight={(weight) => onUpdateLine(recordId, { weight })}
+              onCommitGlAccount={(glAccount) => onUpdateLine(lineId, { glAccount })}
+              onCommitWeight={(weight) => onUpdateLine(lineId, { weight })}
               onRevealWeight={onRevealWeight}
-              onDelete={() => deleteLine(record.id)}
+              onDelete={() => deleteLine(lineId)}
               chips={vendorCodeChip}
             />
           ) : (
             <LineNameCellView
               name={line.name}
-              sourceRecordId={lineSourceRecordId(values, schema)}
+              sourceRecordId={kind.lineEntityType === 'line_item' ? line.partRecordId : null}
               description={line.description}
               category={line.category}
               categoryOptions={categoryOptions}
@@ -2425,17 +2419,17 @@ export function LineRow({
               showOptionalControls={showOptional}
               optional={line.optional}
               optionalSelected={line.optionalSelected}
-              onToggleOptional={(optional) => onUpdateLine(recordId, { optional })}
+              onToggleOptional={(optional) => onUpdateLine(lineId, { optional })}
               onToggleOptionalSelected={(optionalSelected) =>
-                onUpdateLine(recordId, { optionalSelected })
+                onUpdateLine(lineId, { optionalSelected })
               }
-              onToggleTaxable={(taxable) => onUpdateLine(recordId, { taxable })}
-              onPickPart={(part) => onUpdateLine(recordId, partToLinePatch(part))}
-              onSelectGroup={(group) => onSelectGroup(recordId, group)}
-              onFreeText={(name) => onUpdateLine(recordId, { name })}
-              onCommitDescription={(description) => onUpdateLine(recordId, { description })}
-              onCommitCategory={(category) => onUpdateLine(recordId, { category })}
-              onDelete={() => deleteLine(record.id)}
+              onToggleTaxable={(taxable) => onUpdateLine(lineId, { taxable })}
+              onPickPart={(part) => onUpdateLine(lineId, partToLinePatch(part))}
+              onSelectGroup={(group) => onSelectGroup(lineId, group)}
+              onFreeText={(name) => onUpdateLine(lineId, { name })}
+              onCommitDescription={(description) => onUpdateLine(lineId, { description })}
+              onCommitCategory={(category) => onUpdateLine(lineId, { category })}
+              onDelete={() => deleteLine(lineId)}
               photoChip={
                 photosField ? (
                   <LinePhotoPopover
@@ -2456,10 +2450,10 @@ export function LineRow({
         qty={
           <QuantityCellView
             quantity={line.qty}
-            // A purchasing line's unit is the PART's; the schema's own `unit`
+            // A purchasing line's unit is the PART's; the kind's own `unit`
             // attribute is `null` there, so `line.unit` is always null too.
-            unit={schema.capabilities.partPicker ? partUnit : line.unit}
-            unitEditable={schema.capabilities.unit}
+            unit={kind.capabilities.partPicker ? partUnit : line.unit}
+            unitEditable={kind.capabilities.unit}
             readOnly={readOnly}
             purchaseUnit={purchaseUnit}
             purchaseRatio={purchaseRatio}
@@ -2467,7 +2461,7 @@ export function LineRow({
               const patch: LinePatch = {}
               if (next.quantity !== line.qty) patch.qty = next.quantity
               if (next.unit !== line.unit) patch.unit = next.unit
-              onUpdateLine(recordId, patch)
+              onUpdateLine(lineId, patch)
             }}
           />
         }
@@ -2483,22 +2477,22 @@ export function LineRow({
             // delete the match finding. On the PO there is no amount field to
             // fill, so it passes straight through.
             onCommit={(unitPriceCents) =>
-              onUpdateLine(recordId, crossFillAmount({ unitPriceCents }, line, schema))
+              onUpdateLine(lineId, crossFillAmount({ unitPriceCents }, line, kind))
             }
           />
         }
-        totalNavigable={schema.amountMode === 'stored' || schema.amountMode === 'derived-editable'}
+        totalNavigable={kind.amountMode === 'stored' || kind.amountMode === 'derived-editable'}
         total={
           <LineTotalCellView
-            amountMode={schema.amountMode}
+            amountMode={kind.amountMode}
             qty={line.qty}
             unitPrice={line.unitPriceCents}
             lineTotal={line.lineTotal}
-            mismatch={hasAmountMismatch(line, schema)}
+            mismatch={hasAmountMismatch(line, kind)}
             readOnly={readOnly}
             currencyCode={currencyCode}
             onCommit={(lineTotal) =>
-              onUpdateLine(recordId, crossFillAmount({ lineTotal }, line, schema))
+              onUpdateLine(lineId, crossFillAmount({ lineTotal }, line, kind))
             }
           />
         }
@@ -2546,7 +2540,7 @@ export function DraftLineRow({
   autoFocus: boolean
   categoryOptions: CategoryOption[]
   currencyCode: string
-  documentType: DocumentType
+  documentType: LineDocumentType
   catalogParts: CatalogPart[]
   catalogGroups: CatalogGroup[]
   catalogPartMap: Map<string, CatalogPart>
@@ -2589,11 +2583,12 @@ export function DraftLineRow({
   applyPrefillPatch: (draftId: string, patch: LinePatch) => Promise<void>
   onSelectGroup: (draftId: string, group: CatalogGroup) => void
 }) {
-  const schema = lineSchemaFor(documentType)
-  const showOptional = schema.capabilities.optional
-  const partUnit = usePartUnit(schema.capabilities.partPicker ? draft.partRecordId : null)
+  const kind = lineKindFor(documentType)
+  const attrs = partCellAttrs(kind)
+  const showOptional = kind.capabilities.optional
+  const partUnit = usePartUnit(kind.capabilities.partPicker ? draft.partRecordId : null)
   const { purchaseUnit, purchaseRatio } = useVendorPartPurchaseUnit(
-    schema.attrs.vendorPartRecordId ? draft.vendorPartRecordId : null
+    attrs.vendorPart ? draft.vendorPartRecordId : null
   )
   const priceRef = useLatestRef(draft.unitPriceCents)
 
@@ -2603,25 +2598,25 @@ export function DraftLineRow({
       optional={showOptional && draft.optional}
       grip={grip}
       name={
-        schema.capabilities.partPicker && schema.attrs.partRecordId ? (
+        kind.capabilities.partPicker && attrs.part ? (
           <LinePartCellView
-            partAttribute={schema.attrs.partRecordId}
+            partAttribute={attrs.part}
             partRecordId={draft.partRecordId}
             description={draft.description}
-            matchKeyAttribute={schema.attrs.purchaseOrderLineRecordId}
+            matchKeyAttribute={attrs.matchKey}
             matchKeyRecordId={draft.purchaseOrderLineRecordId}
-            landedBillAttribute={schema.attrs.landedBillRecordId}
+            landedBillAttribute={attrs.landedBill}
             landedBillRecordId={draft.landedBillRecordId}
             renderLandedBillEditor={renderLandedBillEditor}
             matchScopeRecordId={matchScopeRecordId}
             renderMatchKeyEditor={renderMatchKeyEditor}
             currencyCode={currencyCode}
-            glAccountAttribute={schema.attrs.glAccount}
+            glAccountAttribute={attrs.glAccount}
             glAccount={draft.glAccount}
-            weightAttribute={schema.attrs.weight}
+            weightAttribute={attrs.weight}
             weight={draft.weight}
             weightRevealed={weightRevealed}
-            returnsStockAttribute={schema.attrs.returnsStock}
+            returnsStockAttribute={attrs.returnsStock}
             returnsStock={draft.returnsStock}
             onToggleReturnsStock={(returnsStock) =>
               void createDraft(draft.draftId, { returnsStock })
@@ -2704,8 +2699,8 @@ export function DraftLineRow({
       qty={
         <QuantityCellView
           quantity={draft.qty}
-          unit={schema.capabilities.partPicker ? partUnit : draft.unit}
-          unitEditable={schema.capabilities.unit}
+          unit={kind.capabilities.partPicker ? partUnit : draft.unit}
+          unitEditable={kind.capabilities.unit}
           readOnly={false}
           purchaseUnit={purchaseUnit}
           purchaseRatio={purchaseRatio}
@@ -2720,25 +2715,22 @@ export function DraftLineRow({
           readOnly={false}
           currencyCode={currencyCode}
           onCommit={(next) =>
-            void createDraft(
-              draft.draftId,
-              crossFillAmount({ unitPriceCents: next }, draft, schema)
-            )
+            void createDraft(draft.draftId, crossFillAmount({ unitPriceCents: next }, draft, kind))
           }
         />
       }
-      totalNavigable={schema.amountMode === 'stored' || schema.amountMode === 'derived-editable'}
+      totalNavigable={kind.amountMode === 'stored' || kind.amountMode === 'derived-editable'}
       total={
         <LineTotalCellView
-          amountMode={schema.amountMode}
+          amountMode={kind.amountMode}
           qty={draft.qty}
           unitPrice={draft.unitPriceCents}
           lineTotal={draft.lineTotal}
-          mismatch={hasAmountMismatch(draft, schema)}
+          mismatch={hasAmountMismatch(draft, kind)}
           readOnly={false}
           currencyCode={currencyCode}
           onCommit={(lineTotal) =>
-            void createDraft(draft.draftId, crossFillAmount({ lineTotal }, draft, schema))
+            void createDraft(draft.draftId, crossFillAmount({ lineTotal }, draft, kind))
           }
         />
       }

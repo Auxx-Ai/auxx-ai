@@ -6,7 +6,7 @@
 // name an attribute that does not exist and every test in `apps/web` still passes
 // — a test over there can only ever re-read the same table that is wrong.
 //
-// 🛑 This is not hypothetical. `LINE_SCHEMAS.purchase_order` first derived its
+// 🛑 This is not hypothetical. `LINE_KINDS.purchase_order` first derived its
 // billing attributes from its prefix the way the three sell-side documents do,
 // asking for `purchase_order_discount_type` / `_tax_name` / `_tax_rate`. A PO has
 // none of them: it carries `discountValue`, `shippingTotal` and `taxTotal` as
@@ -24,8 +24,8 @@ import { RESOURCE_FIELD_REGISTRY } from '../field-registry'
 
 /**
  * What the line builder names, per document. `header` is the parent's own billing
- * mirrors (`LineSchema.billingAttrs` plus the totals the footer displays); `line`
- * is the line entity's own vocabulary (`LineSchema.attrs` + `sortAttr` + `relKey`).
+ * mirrors (`LineKind.billingAttrs` plus the totals the footer displays); `line`
+ * is the line entity's own vocabulary (the lines module storage map).
  */
 const LINE_BUILDER_CONTRACT: Record<
   string,
@@ -33,7 +33,15 @@ const LINE_BUILDER_CONTRACT: Record<
 > = {
   quote: {
     lineEntityType: 'line_item',
-    header: ['quote_discount_type', 'quote_discount_value', 'quote_tax_name', 'quote_tax_rate'],
+    header: [
+      'quote_discount_type',
+      'quote_discount_value',
+      'quote_tax_name',
+      'quote_tax_rate',
+      'quote_subtotal',
+      'quote_tax_total',
+      'quote_total',
+    ],
     line: ['line_item_quote', 'line_item_sort_order'],
   },
   invoice: {
@@ -43,6 +51,9 @@ const LINE_BUILDER_CONTRACT: Record<
       'invoice_discount_value',
       'invoice_tax_name',
       'invoice_tax_rate',
+      'invoice_subtotal',
+      'invoice_tax_total',
+      'invoice_total',
       'invoice_amount_paid',
       'invoice_balance',
     ],
@@ -50,7 +61,16 @@ const LINE_BUILDER_CONTRACT: Record<
   },
   order: {
     lineEntityType: 'line_item',
-    header: ['order_discount_type', 'order_discount_value', 'order_tax_name', 'order_tax_rate'],
+    header: [
+      'order_discount_type',
+      'order_discount_value',
+      'order_tax_name',
+      'order_tax_rate',
+      'order_subtotal',
+      'order_tax_total',
+      'order_total',
+      'order_shipping_total',
+    ],
     line: ['line_item_order', 'line_item_sort_order'],
   },
   work_order: {
@@ -67,7 +87,7 @@ const LINE_BUILDER_CONTRACT: Record<
       'purchase_order_tax_total',
       'purchase_order_subtotal',
       'purchase_order_total',
-      // Scopes the vendor-part price prefill (`LineSchema.vendorAttr`).
+      // Scopes the vendor-part price prefill (`LineKind.vendorAttr`).
       'purchase_order_vendor',
     ],
     line: [
@@ -94,7 +114,7 @@ const LINE_BUILDER_CONTRACT: Record<
       'vendor_bill_tax_total',
       'vendor_bill_discount',
       'vendor_bill_total',
-      // Scopes the match-key picker (`LineSchema.matchScopeAttr`). Not a billing
+      // Scopes the match-key picker (`LineKind.matchScopeAttr`). Not a billing
       // mirror, but it is read off the parent by the same builder.
       'vendor_bill_purchase_order',
     ],

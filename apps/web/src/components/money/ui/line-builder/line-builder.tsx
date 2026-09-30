@@ -2,78 +2,30 @@
 
 'use client'
 
-// The document-agnostic line-items builder (money MQ1 build spec §H.1, 01-ui.md #1).
-// Lines render as plain `group/tree-row` grid rows under a matching grid header
-// (Description / Qty / Rate / Total): one shared
-// `grid-template-columns` keeps the number columns aligned across the header and
-// every row. Line counts are small, so plain rows replace the virtualized
-// `DynamicView` embed this used to be. Row/cell markup lives in `line-rows.tsx`;
-// this file owns state, data fetching, and mutations.
+// The document-agnostic line-items builder. Rows render as plain grid rows under one
+// shared `grid-template-columns`; row and cell markup lives in `line-rows.tsx`, this
+// file owns state and writes. Keyboard nav and focus restore come from `LineGridFrame`.
 //
-// Keyboard: the rows sit in a container wired to `useLineNav` (spreadsheet-style
-// focus movement across name → qty → rate, where Enter / ArrowDown / Tab
-// past the last row spawns a fresh draft via `addLine`) and the post-swap
-// focus-restore effect - both now owned by the document-agnostic
-// `~/components/line-grid` kit's `LineGridFrame`, which this file renders
-// rather than wiring up itself (money/tasks/56 §3.3). The name cell is
-// free-text; `/` on an empty cell opens the catalog picker.
-//
-// Data flow:
-// - `LineBuilder` preloads the displayed line-id × field matrix once through
-//   `useFieldValueSyncer`; each `LineRow` keeps one passive store subscription.
-// - Cells emit semantic patches to the builder's single `useSaveFieldValue`
-//   owner. Optimistic store writes repaint rows/totals immediately; the
-//   server-side field-change hooks (§F.2) recompute lineTotal + quote totals
-//   and publish via realtime back into the same store.
-// - Totals footer: pure client math via `computeDocumentTotals` /
-//   `computeLineTotal` from `@auxx/lib/accounting/sales/client` over store values — the
-//   same function the server hook uses, so the optimistic footer and the
-//   stored mirrors can never disagree.
-// - Add: pushes a purely-local "phantom draft" row (`DraftLine`, line-rows.tsx)
-//   — no mutation, no round-trip — with its name cell auto-focused. The
-//   record is only created on the draft's first real commit (catalog pick,
-//   free-text name, description, qty/price blur, taxable toggle, or a
-//   catalog-group pick), carrying every value accumulated on the draft in one
-//   `record.create` call. The create result seeds the record + field-value
-//   caches directly (`useSeedCreatedRecord`) — no `refresh()` — and the draft
-//   is swapped for the now-real row. Edits that land while the create is in
-//   flight keep mutating local draft state; once it resolves, anything that
-//   changed since the snapshot was sent is flushed via `saveMultipleAsync`
-//   against the real record. An untouched draft simply vanishes on unmount.
-//   An editable builder initially seeds three of these drafts as local loading
-//   placeholders. If persisted rows arrive, they replace only those initial
-//   drafts; they still follow the same no-save-until-edited rule. An editable
-//   builder also never renders zero rows: when the last real row and draft
-//   are gone, one placeholder draft re-seeds automatically.
-//   Every draft-state write goes through `mutateDrafts`, which updates
-//   `draftsRef` synchronously and mirrors it into state — a plain `setDrafts`
-//   built from a stale ref once clobbered a queued functional update and
-//   persisted a blank line (plans/dispatch/31 §1.1), so the ref is the single
-//   source of truth and `setDrafts` is never called directly.
-// - Group explode: a catalog-group pick fills the picked line (entry #1),
-//   stages entries 2…N as pre-filled phantom drafts in the same frame (also
-//   dropping any untouched initial placeholders so the bundle lands directly
-//   under the picked row), then materializes the whole bundle through ONE
-//   `record.createMany` round-trip (`createDrafts`) — the bundle is fully
-//   visible (and totaled) before any create resolves. The bundle stays
-//   together in place: on a middle REAL row the staged drafts carry an
-//   `anchorRecordId` (rendered interleaved under that row via `visualRows`)
-//   and the createMany completion reorders the persisted rows to match; on
-//   the draft-row path the drafts splice in right after the picked draft, and
-//   the bundle create waits for entry #1's own create so real rows always
-//   land in visual order.
-// - Reorder: dnd-kit sortable rows (grip handle) → `api.money.reorderLines`.
-//   Draft rows aren't part of the sortable set — they pin after the real rows.
-// - Delete: optimistic — `removeRecord` drops the row from the record store
-//   (and every cached list, so `TotalsFooter` repaints in the same frame),
-//   then `api.record.delete` + `api.money.recomputeTotals` (delete path
-//   doesn't fire field-change hooks, §F.2) fire without awaiting; an error
-//   restores the row via `invalidateRecord` + `refresh()`. Draft rows →
-//   local splice, no network.
+// Data flow (plans/entity/domain-tables/01-lines-module.md §3):
+// - Rows are the `api.lines.list` cache for the document; `useLinesSync` applies other
+//   tabs' `lines:updated` frames to it. Every write goes through `useLineWrites`, which
+//   patches that cache optimistically and rolls back with a toast.
+// - Add pushes a local phantom draft; the line is created on the draft's first real
+//   commit, carrying everything accumulated on it. Edits made while the create is in
+//   flight go out as one `updateMany` once it resolves. An untouched draft vanishes.
+//   Every draft-state write goes through `mutateDrafts` (plans/dispatch/31 §1.1).
+// - A catalog-group pick fills the picked line, stages the rest of the group as drafts
+//   in the same frame, and creates them in one request, spliced after the picked row.
+// - The footer shows the header's stored totals; the server recomputes them.
 
 import { FieldType } from '@auxx/database/enums'
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import {
+  type Line,
+  type LineDocumentType,
+  lineKindFor,
+} from '@auxx/lib/accounting/documents/lines/client'
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
+import { parseRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
@@ -96,21 +48,9 @@ import { LineGridFrame } from '~/components/line-grid/ui/line-grid-frame'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
 import { useCatalogGroups } from '~/components/money/hooks/use-catalog-groups'
 import { useCatalogParts } from '~/components/money/hooks/use-catalog-parts'
-import {
-  parseRecordId,
-  type RecordId,
-  type RecordMeta,
-  toRecordId,
-  useRecordList,
-  useRecordStore,
-  useResource,
-  useResourceFields,
-} from '~/components/resources'
-import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
+import { type RecordId, useResource, useResourceFields } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
-import { useSeedCreatedRecord } from '~/components/resources/hooks/use-seed-created-record'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
-import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
@@ -126,76 +66,51 @@ import {
   type MatchKeyEditorRenderer,
   type PartPrefillLookup,
   type PartPrefillResolver,
-  relKeyForDocumentType,
 } from './line-rows'
 import {
-  type DocumentType,
   diffLineValues,
-  documentLineFilters,
-  LINE_PAGE_SIZE,
-  LINE_SORT,
+  draftCreateInput,
   type LinePatch,
+  type LineRelationDefs,
   type LineValues,
-  lineAttributesFor,
-  linePatchToFieldValues,
-  lineSchemaFor,
-  numberOrNull,
+  lineValuesFromLine,
+  toLinePatch,
 } from './line-values'
+import { useLinesSync, useLineWrites } from './lines-cache'
 import { TotalsFooter } from './totals-footer'
 import { useLineHotkeys } from './use-line-hotkeys'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Props / shared types
-// ─────────────────────────────────────────────────────────────────────────────
-
 export interface LineBuilderProps {
   documentRecordId: string
-  documentType: DocumentType
+  documentType: LineDocumentType
   readOnly?: boolean
   /**
-   * Whether the footer's transcribed header amounts are inputs or text, on a
-   * `stored` document. Defaults to {@link readOnly}; the vendor bill passes its
-   * own lock (73 D5, widened by U3's edit flag).
+   * Whether the footer's transcribed header amounts are inputs or text, on a `stored`
+   * document. Defaults to {@link readOnly}; the vendor bill passes its own lock (73 D5).
    */
   amountsReadOnly?: boolean
   /**
-   * Scope the builder to a single visit's occurrence extras (work_order only, money 01-ui #13):
-   * set → shows/creates lines stamped `line_item_visit_id = visitId`; unset → the job's per-cycle
-   * set (`visitId` empty). The two sets never overlap — that split is enforced in `filters` below.
+   * work_order only: set → this visit's occurrence extras; unset → the job's per-cycle set.
+   * The two never overlap (the server's list membership rule).
    */
   visitId?: string
   /** Extra classes merged onto the builder's scroll-container root. */
   className?: string
-  /**
-   * Editor for a line's match key, rendered in the row's `⋯` swap slot.
-   *
-   * Required in practice by any document whose schema maps
-   * `attrs.purchaseOrderLineRecordId` — without it the menu item does not appear
-   * and the key is uneditable from the grid. A render prop rather than an import
-   * so `money` never depends on `purchasing`; see {@link MatchKeyEditorRenderer}.
-   */
+  /** Editor for a line's match key; a render prop so `money` never imports `purchasing`. */
   renderMatchKeyEditor?: MatchKeyEditorRenderer
-  /**
-   * The landed-bill picker for a vendor bill line (73 §7.2), supplied by the
-   * consumer for the same reason {@link MatchKeyEditorRenderer} is.
-   */
+  /** The landed-bill picker for a vendor bill line (73 §7.2). */
   renderLandedBillEditor?: LandedBillEditorRenderer
   /**
-   * Look up the supplier's price for a part just picked on a line
-   * (plans/purchasing/05-receiving-cost-and-corrections.md §5.2).
-   *
-   * Only ever called on a document whose schema names a {@link LineSchema.vendorAttr}
-   * AND whose parent record actually carries a vendor — so a purchase order with
-   * no supplier yet simply never prefills, rather than the resolver having to
-   * decide that for itself. Absent → picking a part writes the part and nothing
-   * else, which is the behaviour every document had before this existed.
+   * Supplier price lookup for a picked part (plans/purchasing/05 §5.2). Only called on a
+   * document whose kind names a `vendorAttr` and whose parent carries a vendor.
    */
   resolvePartPrefill?: PartPrefillLookup
 }
 
 const INITIAL_DRAFT_COUNT = 3
-/** Every fixed line-builder field is visible to the shared syncer. */
-const LINE_FIELD_VISIBILITY = {}
+/** `lines.create` takes at most this many per request. */
+const CREATE_CHUNK = 50
+const EMPTY_LINES: Line[] = []
 
 /** Org tax rate preset (`documents.taxRates` setting, money MQ1 build spec §G.1). */
 interface TaxRatePreset {
@@ -205,14 +120,13 @@ interface TaxRatePreset {
   isDefault?: boolean
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// The builder
-// ─────────────────────────────────────────────────────────────────────────────
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
+}
 
 /**
- * One document-agnostic line builder: quote detail tab, job Line-items section
- * (M2), invoice detail + gather dialogs (MI1, `readOnly`). Fetches the parent
- * document's billing fields itself — consumers only pass the document handle.
+ * One document-agnostic line builder: quote, order, invoice, work order, credit memo and
+ * the purchasing documents. Consumers pass only the document handle.
  */
 export function LineBuilder({
   documentRecordId,
@@ -226,31 +140,43 @@ export function LineBuilder({
   resolvePartPrefill,
 }: LineBuilderProps) {
   const docRecordId = documentRecordId as RecordId
-  // Everything document-shaped is one lookup. See the warning on `LINE_SCHEMAS`.
-  const schema = lineSchemaFor(documentType)
-  const { resource } = useResource(schema.slug)
+  const documentId = parseRecordId(docRecordId).entityInstanceId
+  const kind = lineKindFor(documentType)
+  const { resource } = useResource(kind.lineEntityType)
   const entityDefinitionId = resource?.id
-  // Category options come from the field definition (not a hardcoded list) so
-  // org-added categories appear in the badge dropdown with their own colors.
-  const { fields: lineItemFields } = useResourceFields(schema.slug)
+  // Category options come from the field definition so org-added categories show too.
+  const { fields: lineFields } = useResourceFields(kind.lineEntityType)
   const categoryOptions = useMemo<CategoryOption[]>(() => {
-    const field = lineItemFields.find((f) => f.key === 'category')
+    const field = lineFields.find((f) => f.key === 'category')
     return (field?.options?.options ?? []).map((o) => ({
       value: o.value,
       label: o.label,
       color: o.color,
     }))
-  }, [lineItemFields])
-  // Field def for the photo popover (line-photo-popover.tsx, plans 37b §4 / 40) —
-  // `null` on a pre-migration org that hasn't picked up the `line_item.photos`
-  // registry field yet, in which case `LineRow` renders no photo affordance at all.
+  }, [lineFields])
+  // `null` on an org without the `line_item.photos` field: rows render no photo affordance.
   const photosField = useMemo(
-    () => lineItemFields.find((f) => f.key === 'photos') ?? null,
-    [lineItemFields]
+    () => (kind.photosAttr ? (lineFields.find((f) => f.key === 'photos') ?? null) : null),
+    [lineFields, kind.photosAttr]
   )
-  // Catalog data is shared by every row picker. Editable builders preload it
-  // once so opening a picker or resolving a product group never starts a fetch.
-  const catalogEnabled = !!entityDefinitionId && !readOnly && schema.capabilities.catalogPicker
+
+  // Relationship values are instance ids on a `Line`; the pickers take RecordIds.
+  const partDefId = useResourceStore((s) => s.resourceMap.get('part')?.id)
+  const poLineDefId = useResourceStore((s) => s.resourceMap.get('purchase_order_line')?.id)
+  const vendorBillDefId = useResourceStore((s) => s.resourceMap.get('vendor_bill')?.id)
+  const vendorPartDefId = useResourceStore((s) => s.resourceMap.get('vendor_part')?.id)
+  const relationDefs = useMemo<LineRelationDefs>(
+    () => ({
+      part: partDefId,
+      purchase_order_line: poLineDefId,
+      vendor_bill: vendorBillDefId,
+      vendor_part: vendorPartDefId,
+    }),
+    [partDefId, poLineDefId, vendorBillDefId, vendorPartDefId]
+  )
+
+  // Catalog data is shared by every row picker, preloaded once per editable builder.
+  const catalogEnabled = !!entityDefinitionId && !readOnly && kind.capabilities.catalogPicker
   const {
     parts: catalogParts,
     partMap: catalogPartMap,
@@ -263,54 +189,30 @@ export function LineBuilder({
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
 
-  // work_order (M2 job view) has no billing fields (money MI1 build spec §J.2 precedent,
-  // mirrored from TotalsFooter) — group discount/tax set-if-unset skips entirely there.
-  // Everything else reads off the schema; see the warning on `LINE_SCHEMAS`.
-  const { billingPrefix } = schema
-  // `computed` is the only mode that WRITES a discount/tax mirror. `stored`
-  // (vendor bill) still fetches its billing attrs so the footer can display the
-  // transcribed totals, but nothing here may set them.
-  const hasBilling = schema.totalsMode === 'computed'
-  const { values: billingValues } = useSystemValues(docRecordId, schema.billingAttrs, {
-    autoFetch: schema.billingAttrs.length > 0,
-    enabled: schema.billingAttrs.length > 0,
+  const { billingPrefix } = kind
+  // `computed` is the only mode that writes a discount/tax pair.
+  const hasBilling = kind.totalsMode === 'computed'
+  const { values: billingValues } = useSystemValues(docRecordId, kind.billingAttrs, {
+    autoFetch: kind.billingAttrs.length > 0,
+    enabled: kind.billingAttrs.length > 0,
   })
-  /**
-   * The parent record the row's match-key picker is scoped to — a bill's own
-   * purchase order (`schema.matchScopeAttr`).
-   *
-   * 🛑 Read here rather than in the cell so the picker is scoped ONCE per builder
-   * instead of once per row, and so the consumer's editor never has to re-fetch
-   * the parent it is already rendered inside. An unscoped match-key picker offers
-   * every purchase order line in the org on the field `matchBill` reads the agreed
-   * price and received quantity through — see `purchase-order-line-picker.tsx`.
-   */
+  // Read once per builder: scopes every row's match-key picker to the bill's own order.
   const { values: matchScopeValues } = useSystemValues(
     docRecordId,
-    schema.matchScopeAttr ? [schema.matchScopeAttr] : [],
-    { autoFetch: !!schema.matchScopeAttr, enabled: !!schema.matchScopeAttr }
+    kind.matchScopeAttr ? [kind.matchScopeAttr] : [],
+    { autoFetch: !!kind.matchScopeAttr, enabled: !!kind.matchScopeAttr }
   )
-  const matchScopeRecordId = schema.matchScopeAttr
-    ? (extractRelationshipRecordIds(matchScopeValues[schema.matchScopeAttr])[0] ?? null)
+  const matchScopeRecordId = kind.matchScopeAttr
+    ? (extractRelationshipRecordIds(matchScopeValues[kind.matchScopeAttr])[0] ?? null)
     : null
-
-  /**
-   * The supplier this document is placed with (`schema.vendorAttr`), read once
-   * per builder for the same reason {@link matchScopeRecordId} is: the answer is
-   * identical for every row, and the price prefill needs it on every part pick.
-   *
-   * `null` on a purchase order with no vendor yet, which is a legitimate state —
-   * a person can start typing lines before deciding who to buy from. The prefill
-   * simply does not run, exactly as it does not for a part the supplier has no
-   * catalogue entry for.
-   */
+  // The supplier the price prefill resolves on; `null` on an order with no vendor yet.
   const { values: vendorValues } = useSystemValues(
     docRecordId,
-    schema.vendorAttr ? [schema.vendorAttr] : [],
-    { autoFetch: !!schema.vendorAttr, enabled: !!schema.vendorAttr }
+    kind.vendorAttr ? [kind.vendorAttr] : [],
+    { autoFetch: !!kind.vendorAttr, enabled: !!kind.vendorAttr }
   )
-  const vendorRecordId = schema.vendorAttr
-    ? (extractRelationshipRecordIds(vendorValues[schema.vendorAttr])[0] ?? null)
+  const vendorRecordId = kind.vendorAttr
+    ? (extractRelationshipRecordIds(vendorValues[kind.vendorAttr])[0] ?? null)
     : null
 
   const taxRates = useMemo(
@@ -321,97 +223,64 @@ export function LineBuilder({
     [getSetting]
   )
 
+  const listInput = useMemo(
+    () => ({
+      documentType,
+      documentId,
+      ...(kind.capabilities.visitScoped && visitId ? { visitId } : {}),
+    }),
+    [documentType, documentId, kind.capabilities.visitScoped, visitId]
+  )
+  const linesQuery = api.lines.list.useQuery(listInput, { enabled: !!documentId })
+  const lines = linesQuery.data ?? EMPTY_LINES
+  const isLoading = linesQuery.isLoading
+  useLinesSync(documentType, documentId)
+  const writes = useLineWrites({ documentType, documentId })
+
   const [orderOverride, setOrderOverride] = useState<string[] | null>(null)
   const [drafts, setDrafts] = useState<DraftLine[]>([])
-  // Id of the most recently added draft — its name cell auto-focuses on mount so
-  // a keyboard-driven or button-driven "add row" lands the caret ready to type.
+  // The most recently added draft; its name cell auto-focuses on mount.
   const [lastAddedDraftId, setLastAddedDraftId] = useState<string | null>(null)
   const draftsRef = useRef<DraftLine[]>([])
-  // draftId -> the record its create produced. Kept because a prefill that
-  // resolves on its own clock needs a target after the draft is gone.
-  const draftRecordIdsRef = useRef<Map<string, RecordId>>(new Map())
-  /**
-   * Single draft-state writer: applies the update to `draftsRef` synchronously
-   * and mirrors the result into state, so two writers in one tick can never
-   * clobber each other's queued update (the plan-31 §1.1 blank-line bug).
-   * `fn` runs exactly once, synchronously — side effects inside are safe.
-   */
+  // draftId -> the line its create produced, for a prefill that resolves after the draft is gone.
+  const draftLineIdsRef = useRef<Map<string, string>>(new Map())
+  /** Single draft-state writer: updates the ref synchronously, then mirrors it into state. */
   const mutateDrafts = useCallback((fn: (prev: DraftLine[]) => DraftLine[]) => {
     draftsRef.current = fn(draftsRef.current)
     setDrafts(draftsRef.current)
   }, [])
-  // An editable document starts with a small working set of local-only rows.
-  // Track just these initial rows so persisted records can replace them without
-  // hiding drafts the user explicitly added later.
+  // The initial placeholders only: persisted rows replace these, never drafts added later.
   const seededInitialDraftsRef = useRef(false)
   const initialDraftIdsRef = useRef<Set<string>>(new Set())
-  /**
-   * Rows container - the keydown listener `useLineNav` attaches to (inside
-   * `LineGridFrame`, which owns the nav call and the post-swap focus-restore
-   * effect now - see money/tasks/56 §3.3). Shared with `useLineHotkeys` below
-   * so both listen on the same element.
-   */
   const rowsContainerRef = useRef<HTMLDivElement>(null)
-  // Ref-guarded (not state-derived) so a synchronous double-commit can never
-  // race two `record.create` calls for the same draft before React re-renders.
+  // Ref-guarded so a synchronous double-commit never races two creates for one draft.
   const creatingDraftIdsRef = useRef<Set<string>>(new Set())
 
-  // The baseline filter is built by `documentLineFilters` in `line-values.ts`,
-  // NOT inline here: the condition ids are part of `createListKey`'s hash, so a
-  // second reader of these same rows must construct them identically or it lands
-  // on a private list cache that no optimistic append ever reaches. See that
-  // function's own note.
-  const filters = useMemo<ConditionGroup[]>(
-    () => documentLineFilters(schema, documentRecordId, visitId),
-    [schema, documentRecordId, visitId]
-  )
-
-  const {
-    records,
-    isLoading,
-    isLoadingRecords,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
-    refresh,
-    appendCreated,
-    removeFromList,
-  } = useRecordList<RecordMeta>({
-    entityDefinitionId: entityDefinitionId ?? '',
-    filters,
-    sorting: LINE_SORT,
-    limit: LINE_PAGE_SIZE,
-    enabled: !!entityDefinitionId,
-  })
-
-  // No virtualized scroll anymore — load every page eagerly (line counts are small).
-  useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage && !isLoading) fetchNextPage()
-  }, [hasNextPage, isFetchingNextPage, isLoading, fetchNextPage])
-
-  // Optimistic display order while a reorder mutation settles. Ids missing from
-  // the override (freshly added lines) append in server order.
-  const displayRecords = useMemo(() => {
-    if (!orderOverride) return records
-    const byId = new Map(records.map((r) => [r.id, r]))
+  // Display order while a reorder settles; ids missing from the override append in server order.
+  const displayLines = useMemo(() => {
+    if (!orderOverride) return lines
+    const byId = new Map(lines.map((line) => [line.id, line]))
     const overrideSet = new Set(orderOverride)
     const ordered = orderOverride
       .map((id) => byId.get(id))
-      .filter((r): r is RecordMeta => r !== undefined)
-    return [...ordered, ...records.filter((r) => !overrideSet.has(r.id))]
-  }, [records, orderOverride])
+      .filter((line): line is Line => line !== undefined)
+    return [...ordered, ...lines.filter((line) => !overrideSet.has(line.id))]
+  }, [lines, orderOverride])
 
   const displayIdsRef = useRef<string[]>([])
-  displayIdsRef.current = displayRecords.map((r) => r.id)
+  displayIdsRef.current = displayLines.map((line) => line.id)
 
-  // Seed local loading placeholders immediately. Persisted rows replace these
-  // exact drafts below; manually added drafts are never part of this set.
+  const rowValues = useMemo(
+    () => new Map(lines.map((line) => [line.id, lineValuesFromLine(line, kind, relationDefs)])),
+    [lines, kind, relationDefs]
+  )
+
   useEffect(() => {
     if (
       !entityDefinitionId ||
       readOnly ||
       seededInitialDraftsRef.current ||
-      displayRecords.length > 0 ||
+      displayLines.length > 0 ||
       draftsRef.current.length > 0
     ) {
       return
@@ -424,19 +293,16 @@ export function LineBuilder({
     initialDraftIdsRef.current = new Set(initialDrafts.map((draft) => draft.draftId))
     mutateDrafts(() => initialDrafts)
     setLastAddedDraftId(initialDrafts[0]?.draftId ?? null)
-  }, [entityDefinitionId, readOnly, displayRecords.length, mutateDrafts])
+  }, [entityDefinitionId, readOnly, displayLines.length, mutateDrafts])
 
-  // When persisted lines arrive, hide/remove the initial loading placeholders
-  // in the same render. A draft becomes non-placeholder before its first
-  // `record.create`, so a user edit is never discarded by this cleanup.
+  // Persisted lines hide the initial placeholders in the same render.
   const visibleDrafts = useMemo(() => {
     if (readOnly) return []
-    if (displayRecords.length === 0) return drafts
+    if (displayLines.length === 0) return drafts
     return drafts.filter((draft) => !initialDraftIdsRef.current.has(draft.draftId))
-  }, [displayRecords.length, drafts, readOnly])
+  }, [displayLines.length, drafts, readOnly])
 
-  // A document can lock while open (an order that ships): its unsaved drafts go
-  // with the lock, and Edit re-seeds from the persisted rows.
+  // A document can lock while open (an order that ships): its unsaved drafts go with it.
   useEffect(() => {
     if (!readOnly || draftsRef.current.length === 0) return
     initialDraftIdsRef.current = new Set()
@@ -445,165 +311,74 @@ export function LineBuilder({
   }, [readOnly, mutateDrafts])
 
   useEffect(() => {
-    if (displayRecords.length === 0 || initialDraftIdsRef.current.size === 0) return
+    if (displayLines.length === 0 || initialDraftIdsRef.current.size === 0) return
     const initialDraftIds = initialDraftIdsRef.current
     initialDraftIdsRef.current = new Set()
     mutateDrafts((current) => current.filter((draft) => !initialDraftIds.has(draft.draftId)))
     setLastAddedDraftId((current) => (current && initialDraftIds.has(current) ? null : current))
-  }, [displayRecords.length, mutateDrafts])
+  }, [displayLines.length, mutateDrafts])
 
-  // An editable builder never renders zero rows: when the last real row AND
-  // the last draft are gone (final line deleted, last placeholder trashed),
-  // re-seed one placeholder draft. It shares the initial-placeholder
-  // lifecycle — hidden again if a persisted row (re)appears (e.g. a failed
-  // delete restoring via refresh()), no record until its first edit. The
-  // initial-seed effect above owns the first paint (3 placeholders); this
-  // only re-arms after it.
+  // An editable builder never renders zero rows: re-seed one placeholder draft.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-check on any row-set change; refs hold the truth
   useEffect(() => {
     if (!entityDefinitionId || readOnly || !seededInitialDraftsRef.current) return
-    if (displayRecords.length > 0 || draftsRef.current.length > 0) return
+    if (displayLines.length > 0 || draftsRef.current.length > 0) return
     const draft = freshDraft(generateId())
     initialDraftIdsRef.current.add(draft.draftId)
     mutateDrafts(() => [draft])
     setLastAddedDraftId(draft.draftId)
-  }, [entityDefinitionId, readOnly, displayRecords.length, drafts.length, mutateDrafts])
+  }, [entityDefinitionId, readOnly, displayLines.length, drafts.length, mutateDrafts])
 
-  // Visual row list — each real row followed by any bundle drafts anchored to
-  // it (a catalog-group pick on a middle row), then unanchored drafts pinned
-  // at the tail. Nav row indexes are sequential across the interleaved list,
-  // so `useLineNav` and the focus-restore selector keep working unchanged.
+  // Each real row followed by the bundle drafts anchored to it, then the tail drafts.
   const visualRows = useMemo(() => {
     const anchored = new Map<string, DraftLine[]>()
     const tailDrafts: DraftLine[] = []
-    const recordIds = new Set(displayRecords.map((r) => r.id))
+    const lineIds = new Set(displayLines.map((line) => line.id))
     for (const draft of visibleDrafts) {
       // A dangling anchor (row deleted mid-flight) falls back to the tail.
-      if (draft.anchorRecordId && recordIds.has(draft.anchorRecordId)) {
-        const bucket = anchored.get(draft.anchorRecordId)
+      if (draft.anchorLineId && lineIds.has(draft.anchorLineId)) {
+        const bucket = anchored.get(draft.anchorLineId)
         if (bucket) bucket.push(draft)
-        else anchored.set(draft.anchorRecordId, [draft])
+        else anchored.set(draft.anchorLineId, [draft])
       } else {
         tailDrafts.push(draft)
       }
     }
     const rows: Array<
-      | { kind: 'record'; record: RecordMeta; rowIndex: number }
+      | { kind: 'line'; line: Line; rowIndex: number }
       | { kind: 'draft'; draft: DraftLine; rowIndex: number }
     > = []
-    for (const record of displayRecords) {
-      rows.push({ kind: 'record', record, rowIndex: rows.length })
-      for (const draft of anchored.get(record.id) ?? []) {
+    for (const line of displayLines) {
+      rows.push({ kind: 'line', line, rowIndex: rows.length })
+      for (const draft of anchored.get(line.id) ?? []) {
         rows.push({ kind: 'draft', draft, rowIndex: rows.length })
       }
     }
     for (const draft of tailDrafts) rows.push({ kind: 'draft', draft, rowIndex: rows.length })
     return rows
-  }, [displayRecords, visibleDrafts])
+  }, [displayLines, visibleDrafts])
 
-  const lineRecordIds = useMemo(
-    () =>
-      entityDefinitionId ? displayRecords.map((r) => toRecordId(entityDefinitionId, r.id)) : [],
-    [entityDefinitionId, displayRecords]
-  )
-
-  // Match records-view's fetch ownership: queue the complete displayed
-  // record-id × line-field matrix once, while rows subscribe passively.
-  const systemAttributeMap = useResourceStore((state) => state.systemAttributeMap)
-  const lineFieldIds = useMemo(() => {
-    return lineAttributesFor(schema)
-      .map((attribute) => systemAttributeMap[attribute])
-      .filter((fieldId): fieldId is NonNullable<typeof fieldId> => !!fieldId)
-  }, [schema, systemAttributeMap])
-  useFieldValueSyncer({
-    recordIds: lineRecordIds,
-    columnVisibility: LINE_FIELD_VISIBILITY,
-    resourceFieldIds: lineFieldIds,
-    enabled: lineRecordIds.length > 0 && lineFieldIds.length > 0,
-  })
-
-  /**
-   * The consumer's vendor-part lookup with this document's vendor bound in — or
-   * `undefined`, which is what every row reads as "picking a part writes the part
-   * and nothing else".
-   *
-   * Binding here rather than passing both halves down is what keeps the "no
-   * vendor ⇒ no prefill" rule in ONE place instead of in every row's pick handler.
-   */
+  /** The consumer's vendor-part lookup with this document's vendor bound in, or `undefined`. */
   const boundResolvePartPrefill = useMemo<PartPrefillResolver | undefined>(() => {
     if (!resolvePartPrefill || !vendorRecordId) return undefined
     return (partRecordId) => resolvePartPrefill({ partRecordId, vendorRecordId })
   }, [resolvePartPrefill, vendorRecordId])
 
-  /**
-   * Whether the weight cell is showing on EVERY line of this document
-   * (plans/purchasing/05-receiving-cost-and-corrections.md §5.3).
-   *
-   * 🛑 The one line-level concept resolved at DOCUMENT level, and deliberately so.
-   * `allocateLandedCost` spreads freight by each line's share of the total weight,
-   * so a set where some lines are weighed and others are not is not partly
-   * configured — the weighed lines silently absorb all of the freight. A per-row
-   * reveal (which is how the match key and the GL account behave) would make that
-   * the likely state, so instead: one line's menu declares it, and the cell
-   * appears on all of them, blanks included.
-   *
-   * Two sources, either of which is enough. `weightDeclared` is this session's
-   * intent — somebody opened the editor from a row menu, and the siblings must
-   * show their blanks immediately, before anything is saved. The store read is the
-   * persisted answer, so a reopened order that already has weights comes back
-   * revealed. Drafts are checked too: an unsaved row is part of the same set.
-   */
-  const weightAttr = schema.attrs.weight
-  const weightAttrs = useMemo(() => (weightAttr ? [weightAttr] : []), [weightAttr])
-  // A passive subscription over the keys the syncer above already queued — this
-  // is one shallow read across N lines, not N reads (see the hook's own note),
-  // and it is the only way the builder can see an answer that lives across rows.
-  const { valuesById: lineWeightValues } = useSystemValuesForRecords(lineRecordIds, weightAttrs, {
-    autoFetch: false,
-    enabled: !!weightAttr && lineRecordIds.length > 0,
-  })
+  // Document-level on purpose: a partly weighed set breaks the freight allocation (§5.3).
+  const hasWeight = kind.fields.includes('weight')
   const [weightDeclared, setWeightDeclared] = useState(false)
   const revealWeight = useCallback(() => setWeightDeclared(true), [])
-  const weightRevealed = useMemo(() => {
-    if (!weightAttr) return false
-    if (weightDeclared) return true
-    if (visibleDrafts.some((draft) => draft.weight !== null)) return true
-    return lineRecordIds.some(
-      (recordId) => numberOrNull(lineWeightValues[recordId]?.[weightAttr]) !== null
-    )
-  }, [weightAttr, weightDeclared, visibleDrafts, lineRecordIds, lineWeightValues])
-
-  // Mutations (stable fns destructured — the wrapper objects churn per render).
-  const reorderLines = api.money.reorderLines.useMutation()
-  const recomputeTotals = api.money.recomputeTotals.useMutation()
-  const deleteRecord = api.record.delete.useMutation()
-  const deleteInvoiceLine = api.money.deleteInvoiceLine.useMutation()
-  const createRecord = api.record.create.useMutation()
-  const createManyRecords = api.record.createMany.useMutation()
-  const { mutate: reorderMutate } = reorderLines
-  const { mutate: recomputeMutate } = recomputeTotals
-  const { mutateAsync: deleteMutateAsync } = deleteRecord
-  const { mutateAsync: deleteInvoiceLineMutateAsync } = deleteInvoiceLine
-  const { mutateAsync: createMutateAsync } = createRecord
-  const { mutateAsync: createManyMutateAsync } = createManyRecords
+  const weightRevealed =
+    hasWeight &&
+    (weightDeclared ||
+      visibleDrafts.some((draft) => draft.weight !== null) ||
+      lines.some((line) => line.weight !== null))
 
   const { saveFieldValue, saveMultipleAsync } = useSaveFieldValue()
-  const { seedCreatedRecord } = useSeedCreatedRecord()
 
-  /** Persist one semantic line patch through the single optimistic save owner. */
   const updateLine = useCallback(
-    (recordId: RecordId, patch: LinePatch) => {
-      const updates = linePatchToFieldValues(patch, schema)
-      if (updates.length === 0) return
-      if (updates.length === 1) {
-        const update = updates[0]
-        if (!update) return
-        saveFieldValue(recordId, update.fieldId, update.value, update.fieldType)
-        return
-      }
-      void saveMultipleAsync(recordId, updates)
-    },
-    [saveFieldValue, saveMultipleAsync]
+    (lineId: string, patch: LinePatch) => writes.update(lineId, toLinePatch(patch, kind)),
+    [writes, kind]
   )
 
   const updateDiscount = useCallback(
@@ -626,25 +401,15 @@ export function LineBuilder({
   )
 
   /**
-   * Write one of the document's own amount mirrors: `shipping_total`,
-   * `tax_total` and `discount_value` on a `stated` document, and the five
-   * transcribed headers on a `stored` one (73 D5).
-   *
-   * 🛑 These are INPUTS, not derived figures — `purchase_order_shipping_total` is
-   * described in the registry as *"typed by hand from the freight invoice"* and is
-   * what `allocateLandedCost` spreads across the lines on receipt. All three are
-   * `creatable: true, updatable: true` and `showInPanel: false`, so this footer is
-   * the ONLY place in the app they can be entered. Rendering them read-only (which
-   * is what `stated` did at first) leaves landed cost permanently unreachable.
+   * Write one of the document's own amount inputs: shipping / tax / discount on a `stated`
+   * document, the transcribed headers on a `stored` one. This footer is their only editor.
    */
   const updateStatedAmount = useCallback(
     (attribute: string, cents: number | null) => {
-      // `stored` writes them too since 73 D5: a bill's transcribed headers had
-      // no writer anywhere in the app, so its shipping and tax were unreachable.
-      if (schema.totalsMode === 'none' || schema.totalsMode === 'computed') return
+      if (kind.totalsMode === 'none' || kind.totalsMode === 'computed') return
       saveFieldValue(docRecordId, `${billingPrefix}_${attribute}`, cents, FieldType.CURRENCY)
     },
-    [schema.totalsMode, saveFieldValue, docRecordId, billingPrefix]
+    [kind.totalsMode, saveFieldValue, docRecordId, billingPrefix]
   )
 
   const updateTax = useCallback(
@@ -658,61 +423,7 @@ export function LineBuilder({
     [hasBilling, saveMultipleAsync, docRecordId, billingPrefix]
   )
 
-  const deleteLine = useCallback(
-    (lineId: string) => {
-      if (!entityDefinitionId) return
-      // Optimistic: drop the record from BOTH caches this list is served from —
-      // `lineRecordIds` shrinks, so the row AND the totals footer repaint in
-      // this frame — then fire the delete without awaiting. No `refresh()` on
-      // success — the caches are already correct, and the refetch is what made
-      // deletes feel slow.
-      //
-      // 🛑 `removeFromList`, not a bare `removeRecord`: the acting tab is
-      // excluded from its own `record:deleted` frame, so nothing else evicts the
-      // id from the tRPC pages and the row would come back on the next remount.
-      removeFromList(lineId)
-      const restoreOnError = (error: unknown) => {
-        // `removeRecord` marked the id not-found, which `requestRecord` would
-        // skip — clear that marker first so the refetched list can resurrect
-        // the row.
-        useRecordStore.getState().invalidateRecord(entityDefinitionId, lineId)
-        refresh()
-        toastError({
-          title: 'Error deleting line',
-          description: error instanceof Error ? error.message : 'Could not delete the line',
-        })
-      }
-      if (schema.capabilities.deleteMode === 'unstamp') {
-        // Unstamps the gathered source line + recomputes totals server-side
-        // (money MI1 build spec §G.3) — NOT the quote's record.delete + recompute pair.
-        deleteInvoiceLineMutateAsync({
-          lineRecordId: toRecordId(entityDefinitionId, lineId),
-        }).catch(restoreOnError)
-      } else {
-        deleteMutateAsync({ recordId: toRecordId(entityDefinitionId, lineId) })
-          .then(() => {
-            // Deletes don't fire field-change hooks — recompute explicitly (§F.2).
-            // Every totalled document needs this; work_order stores no totals.
-            // `recordId` (not the legacy `quoteRecordId`) so the router derives
-            // the document type from the def component.
-            if (schema.totalsMode === 'computed') {
-              recomputeMutate({ recordId: docRecordId })
-            }
-          })
-          .catch(restoreOnError)
-      }
-    },
-    [
-      entityDefinitionId,
-      documentType,
-      docRecordId,
-      deleteMutateAsync,
-      deleteInvoiceLineMutateAsync,
-      recomputeMutate,
-      removeFromList,
-      refresh,
-    ]
-  )
+  const deleteLine = useCallback((lineId: string) => writes.remove([lineId]), [writes])
 
   /** Draft delete (trash icon) — local splice, no network. */
   const deleteDraft = useCallback(
@@ -724,76 +435,31 @@ export function LineBuilder({
     [mutateDrafts]
   )
 
-  /**
-   * "+ Add line item" (and keyboard nav past the last row) — pushes a
-   * purely-local phantom draft and marks it as the one to auto-focus. No mutation.
-   */
+  /** "+ Add line item" and nav past the last row: a local draft, auto-focused. */
   const addLine = useCallback(() => {
     const draft = freshDraft(generateId())
     setLastAddedDraftId(draft.draftId)
     mutateDrafts((prev) => [...prev, draft])
   }, [mutateDrafts])
 
-  /** Build a draft's `record.create` values payload (shared by the single and bulk paths). */
-  const draftCreateValues = useCallback(
-    (snapshot: DraftLine, sortOrder: number): Record<string, unknown> => {
-      const values: Record<string, unknown> = {
-        [schema.relKey]: documentRecordId,
-        [schema.sortAttr]: sortOrder,
-      }
-      // Keys the schema maps to `null` are dropped rather than sent — a
-      // purchasing line has no `taxable`/`optional` field, and a create carrying
-      // one names a field id that does not resolve on that entity.
-      const set = (key: keyof LineValues, value: unknown) => {
-        const attr = schema.attrs[key]
-        if (attr) values[attr] = value
-      }
-      set('qty', snapshot.qty)
-      set('unit', snapshot.unit)
-      set('taxable', snapshot.taxable)
-      set('optional', snapshot.optional)
-      set('optionalSelected', snapshot.optionalSelected)
-      if (visitId && schema.capabilities.visitScoped) values.line_item_visit_id = visitId
-      if (snapshot.name) set('name', snapshot.name)
-      if (snapshot.description) set('description', snapshot.description)
-      if (snapshot.category) set('category', snapshot.category)
-      if (snapshot.unitPriceCents !== null) set('unitPriceCents', snapshot.unitPriceCents)
-      if (snapshot.partRecordId) set('partRecordId', snapshot.partRecordId)
-      // Transcribed on a `stored` document, absent (and so dropped by `set`)
-      // everywhere else, where the server totals hook owns the amount.
-      if (snapshot.lineTotal !== null) set('lineTotal', snapshot.lineTotal)
-      if (snapshot.purchaseOrderLineRecordId) {
-        set('purchaseOrderLineRecordId', snapshot.purchaseOrderLineRecordId)
-      }
-      if (snapshot.landedBillRecordId) set('landedBillRecordId', snapshot.landedBillRecordId)
-      if (snapshot.glAccount) set('glAccount', snapshot.glAccount)
-      // Both are purchase-order-only and dropped by `set` everywhere else. The
-      // vendor part is provenance stamped by the price prefill; the weight is the
-      // freight allocation's basis input. Sent on the create rather than as a
-      // follow-up write so a row picked-and-prefilled before it materializes
-      // lands complete in one round trip.
-      if (snapshot.vendorPartRecordId) set('vendorPartRecordId', snapshot.vendorPartRecordId)
-      if (snapshot.weight !== null) set('weight', snapshot.weight)
-      return values
-    },
-    [schema, documentRecordId, visitId]
+  /** What changed on each draft while its create was in flight, for one `updateMany`. */
+  const draftEditsSince = useCallback(
+    (created: Array<{ lineId: string; snapshot: DraftLine; draftId: string }>) =>
+      created.flatMap(({ lineId, snapshot, draftId }) => {
+        const latest = draftsRef.current.find((d) => d.draftId === draftId) ?? snapshot
+        const patch = toLinePatch(diffLineValues(snapshot, latest), kind)
+        return Object.keys(patch).length > 0 ? [{ lineId, patch }] : []
+      }),
+    [kind]
   )
 
   /**
-   * Fire the draft's first `record.create`, carrying every accumulated draft
-   * value (merged with `overrides`, the field that just committed). Guarded
-   * against double-create: once a draft is already creating, subsequent
-   * commits just keep mutating local state — the in-flight create's
-   * completion handler diffs + flushes them once it resolves.
+   * Fire the draft's create with every accumulated value plus `overrides`. A second commit
+   * while it is in flight only accumulates; the completion flushes the difference.
    */
   const createDraft = useCallback(
     async (draftId: string, overrides: LinePatch = {}) => {
-      // The first real edit retires the whole initial-placeholder concept: the
-      // edited draft materializes into a real record, and the remaining seeded
-      // rows demote to ordinary empty drafts instead of being cleared as stale
-      // placeholders. Clearing the WHOLE set (not just this id) is what keeps
-      // the other default rows on screen after you fill one in — placeholder
-      // replacement only ever runs before the user has touched anything.
+      // The first real edit demotes the other placeholders to ordinary drafts.
       initialDraftIdsRef.current.clear()
       const accumulate = () =>
         mutateDrafts((prev) =>
@@ -803,19 +469,8 @@ export function LineBuilder({
         accumulate()
         return
       }
-      // 🛑 Where the line's identity IS its part — `purchase_order_line.part` is
-      // `required: true` and leg 2 of the natural key `(purchaseOrder, part)` — a
-      // qty, a price or a description typed before a part is picked must
-      // ACCUMULATE on the draft rather than fire a create the server has to
-      // reject. Guarding here rather than in each cell is what keeps every cell —
-      // including any added later — safe by default.
-      //
-      // ⚠️ Gated on `draftRequiresPart`, NOT on `partPicker`, and the two are not
-      // the same question. `vendor_bill_line.part` is NULLABLE and stamped from
-      // the PO line: a bill line with no part is legal (freight, a one-off, a line
-      // the vendor invented). Sharing one flag meant such a line was typed and
-      // then silently never materialized — nothing threw and nothing logged.
-      if (schema.capabilities.draftRequiresPart) {
+      // A purchase order line has no identity without its part: accumulate until one is picked.
+      if (kind.capabilities.draftRequiresPart) {
         const pending = draftsRef.current.find((d) => d.draftId === draftId)
         const partRecordId = overrides.partRecordId ?? pending?.partRecordId ?? null
         if (!partRecordId) {
@@ -824,45 +479,17 @@ export function LineBuilder({
         }
       }
 
-      const draftIndex = draftsRef.current.findIndex((d) => d.draftId === draftId)
-      const currentDraft = draftsRef.current[draftIndex]
+      const currentDraft = draftsRef.current.find((d) => d.draftId === draftId)
       if (!currentDraft || !entityDefinitionId) return
-      const snapshot: DraftLine = {
-        ...currentDraft,
-        ...overrides,
-        creating: true,
-      }
+      const snapshot: DraftLine = { ...currentDraft, ...overrides, creating: true }
 
       creatingDraftIdsRef.current.add(draftId)
       mutateDrafts((prev) => prev.map((d) => (d.draftId === draftId ? snapshot : d)))
 
-      const values = draftCreateValues(snapshot, displayIdsRef.current.length + draftIndex)
-
+      let created: Line | undefined
       try {
-        const result = await createMutateAsync({
-          entityDefinitionId: schema.lineEntityType,
-          values,
-        })
-
-        seedCreatedRecord({
-          entityDefinitionId,
-          recordId: result.recordId,
-          instance: result.instance,
-          values: linePatchToFieldValues(snapshot, schema),
-        })
-        appendCreated(result.instance.id)
-
-        // Diff whatever landed locally while the create was in flight, and
-        // flush just the changed fields against the now-real record.
-        const latest = draftsRef.current.find((d) => d.draftId === draftId) ?? snapshot
-        const changed = linePatchToFieldValues(diffLineValues(snapshot, latest), schema)
-        if (changed.length > 0) {
-          await saveMultipleAsync(result.recordId, changed)
-        }
-
-        creatingDraftIdsRef.current.delete(draftId)
-        draftRecordIdsRef.current.set(draftId, result.recordId)
-        mutateDrafts((prev) => prev.filter((d) => d.draftId !== draftId))
+        ;[created] = await writes.create([draftCreateInput(snapshot, kind, visitId)])
+        if (!created) throw new Error('The line was not created')
       } catch (error) {
         creatingDraftIdsRef.current.delete(draftId)
         mutateDrafts((prev) =>
@@ -870,75 +497,55 @@ export function LineBuilder({
         )
         toastError({
           title: 'Error adding line',
-          description: error instanceof Error ? error.message : 'Could not add the line',
+          description: errorMessage(error, 'Could not add the line'),
         })
+        return
+      }
+
+      const updates = draftEditsSince([{ lineId: created.id, snapshot, draftId }])
+      creatingDraftIdsRef.current.delete(draftId)
+      draftLineIdsRef.current.set(draftId, created.id)
+      mutateDrafts((prev) => prev.filter((d) => d.draftId !== draftId))
+      if (updates.length > 0) {
+        await writes.updateMany(updates).catch((error: unknown) =>
+          toastError({
+            title: 'Error saving line',
+            description: errorMessage(error, 'Could not save the line'),
+          })
+        )
       }
     },
-    [
-      entityDefinitionId,
-      draftCreateValues,
-      mutateDrafts,
-      createMutateAsync,
-      saveMultipleAsync,
-      seedCreatedRecord,
-      appendCreated,
-    ]
+    [entityDefinitionId, kind, visitId, mutateDrafts, writes, draftEditsSince]
   )
 
   /**
-   * Land a patch that resolved on its OWN clock — the supplier price prefill
-   * (plans/purchasing/05-receiving-cost-and-corrections.md section 5.2).
-   *
-   * 🛑 Deliberately NOT `createDraft`, which was the first implementation and
-   * carried two defects, both of which need this function to stay separate:
-   *
-   * 1. `createDraft` opens with `initialDraftIdsRef.current.clear()`. A second
-   *    call arriving just after the first create dropped its draft can land in
-   *    the frame where the "never render zero rows" effect has re-seeded a
-   *    placeholder. Clearing the set orphans that placeholder from the cleanup
-   *    that would have removed it, and the row visibly flickers in and out.
-   * 2. A prefill patch carries no `partRecordId`, so it fails the
-   *    `draftRequiresPart` guard and accumulates onto a draft that no longer
-   *    exists — a silent no-op. Whenever the lookup finished after the create,
-   *    the price was simply dropped, with nothing thrown and nothing logged.
-   *
-   * The caller sequences this AFTER the create rather than racing it, so the
-   * common path is the record write below. The draft branch is the retry case:
-   * `createDraft` toasts and leaves the draft in place when the create fails,
-   * and the patch should survive to be carried by the next attempt.
+   * Land the supplier price prefill, which resolves on its own clock. Not `createDraft`:
+   * that would re-arm placeholder cleanup and trip the part guard (plans/purchasing/05 §5.2).
    */
   const applyPrefillPatch = useCallback(
     async (draftId: string, patch: LinePatch) => {
-      const recordId = draftRecordIdsRef.current.get(draftId)
-      if (!recordId) {
+      const lineId = draftLineIdsRef.current.get(draftId)
+      if (!lineId) {
         mutateDrafts((prev) => prev.map((d) => (d.draftId === draftId ? { ...d, ...patch } : d)))
         return
       }
-      const changed = linePatchToFieldValues(patch, schema)
-      if (changed.length === 0) return
+      const changed = toLinePatch(patch, kind)
+      if (Object.keys(changed).length === 0) return
       try {
-        await saveMultipleAsync(recordId, changed)
+        await writes.updateMany([{ lineId, patch: changed }])
       } catch (error) {
         toastError({
           title: 'Error applying the supplier price',
-          description:
-            error instanceof Error ? error.message : 'Could not apply the supplier price',
+          description: errorMessage(error, 'Could not apply the supplier price'),
         })
       }
     },
-    [mutateDrafts, saveMultipleAsync, schema]
+    [mutateDrafts, writes, kind]
   )
 
   /**
-   * Materialize a staged bundle of pre-filled drafts through ONE
-   * `record.createMany` round-trip (plan 31 §D). Marks every draft
-   * `creating`, calls `createMany` (all-or-nothing server-side), then per
-   * result — in input order, so the list cache appends agree with the
-   * `line_item_sort_order` stamps — seeds the record + field-value caches and
-   * diff-flushes anything the user edited while the create was in flight.
-   * Anchored bundles (a middle-row group pick) finish with one `reorderLines`
-   * that splices the created rows in directly after their anchor row.
-   * On error, every bundle draft resets to editable with one toast.
+   * Materialize a staged bundle of pre-filled drafts in one create (plan 31 §D), spliced
+   * after the anchor row when there is one. On error every bundle draft resets to editable.
    */
   const createDrafts = useCallback(
     async (bundleDrafts: DraftLine[]) => {
@@ -949,8 +556,7 @@ export function LineBuilder({
         creatingDraftIdsRef.current.add(draftId)
       }
 
-      // Snapshot each draft's CURRENT values (edits may have landed since
-      // staging) while marking them all `creating` in one write.
+      // Snapshot each draft's current values while marking them all `creating` in one write.
       const snapshots = new Map<string, DraftLine>()
       mutateDrafts((prev) =>
         prev.map((d) => {
@@ -960,118 +566,70 @@ export function LineBuilder({
           return snapshot
         })
       )
-
-      const orderedDrafts = bundleDrafts.filter((d) => snapshots.has(d.draftId))
-      const records = orderedDrafts.map((draft) => {
-        const draftIndex = draftsRef.current.findIndex((d) => d.draftId === draft.draftId)
-        return draftCreateValues(
-          snapshots.get(draft.draftId)!,
-          displayIdsRef.current.length + draftIndex
-        )
+      const ordered = bundleDrafts.flatMap((d) => {
+        const snapshot = snapshots.get(d.draftId)
+        return snapshot ? [snapshot] : []
       })
-      if (records.length === 0) return
+      if (ordered.length === 0) return
 
+      const anchorLineId = ordered[0]?.anchorLineId
+      let afterLineId =
+        anchorLineId && displayIdsRef.current.includes(anchorLineId) ? anchorLineId : undefined
+      const created: Array<{ lineId: string; snapshot: DraftLine; draftId: string }> = []
       try {
-        const results = await createManyMutateAsync({
-          entityDefinitionId: schema.lineEntityType,
-          records,
-        })
-
-        const flushes: Promise<unknown>[] = []
-        results.forEach((result, i) => {
-          const draft = orderedDrafts[i]
-          const snapshot = draft ? snapshots.get(draft.draftId) : undefined
-          if (!draft || !snapshot) return
-          seedCreatedRecord({
-            entityDefinitionId,
-            recordId: result.recordId,
-            instance: result.instance,
-            values: linePatchToFieldValues(snapshot, schema),
+        for (let start = 0; start < ordered.length; start += CREATE_CHUNK) {
+          const chunk = ordered.slice(start, start + CREATE_CHUNK)
+          const lines = await writes.create(
+            chunk.map((draft) => draftCreateInput(draft, kind, visitId)),
+            afterLineId
+          )
+          lines.forEach((line, index) => {
+            const snapshot = chunk[index]
+            if (snapshot) created.push({ lineId: line.id, snapshot, draftId: snapshot.draftId })
           })
-          appendCreated(result.instance.id)
-          const latest = draftsRef.current.find((d) => d.draftId === draft.draftId) ?? snapshot
-          const changed = linePatchToFieldValues(diffLineValues(snapshot, latest), schema)
-          if (changed.length > 0) flushes.push(saveMultipleAsync(result.recordId, changed))
-        })
-
-        for (const draftId of draftIds) creatingDraftIdsRef.current.delete(draftId)
-        mutateDrafts((prev) => prev.filter((d) => !draftIds.has(d.draftId)))
-
-        // Anchored bundle (group pick on a middle row): the creates append at
-        // the list end, so splice the new rows in directly after their anchor
-        // and persist that order — otherwise the bundle tears apart on the
-        // next refetch. Anchor gone (deleted mid-flight) or already the last
-        // row → the natural append order is already correct.
-        const anchorRecordId = orderedDrafts[0]?.anchorRecordId
-        if (anchorRecordId) {
-          const createdIds = results.map((result) => result.instance.id)
-          const createdIdSet = new Set(createdIds)
-          const existing = displayIdsRef.current.filter((id) => !createdIdSet.has(id))
-          const anchorIndex = existing.indexOf(anchorRecordId)
-          if (anchorIndex !== -1 && anchorIndex < existing.length - 1) {
-            const nextOrder = [
-              ...existing.slice(0, anchorIndex + 1),
-              ...createdIds,
-              ...existing.slice(anchorIndex + 1),
-            ]
-            setOrderOverride(nextOrder)
-            reorderMutate({
-              documentRecordId: docRecordId,
-              lineEntityType: schema.lineEntityType,
-              orderedLineRecordIds: nextOrder.map((id) => toRecordId(entityDefinitionId, id)),
-            })
-          }
+          if (afterLineId) afterLineId = lines.at(-1)?.id ?? afterLineId
         }
-
-        await Promise.all(flushes)
       } catch (error) {
+        const done = new Set(created.map((entry) => entry.draftId))
         for (const draftId of draftIds) creatingDraftIdsRef.current.delete(draftId)
         mutateDrafts((prev) =>
-          prev.map((d) => (draftIds.has(d.draftId) ? { ...d, creating: false } : d))
+          prev
+            .filter((d) => !done.has(d.draftId))
+            .map((d) => (draftIds.has(d.draftId) ? { ...d, creating: false } : d))
         )
         toastError({
           title: 'Error adding lines',
-          description: error instanceof Error ? error.message : 'Could not add the lines',
+          description: errorMessage(error, 'Could not add the lines'),
         })
+        return
+      }
+
+      const updates = draftEditsSince(created)
+      for (const draftId of draftIds) creatingDraftIdsRef.current.delete(draftId)
+      mutateDrafts((prev) => prev.filter((d) => !draftIds.has(d.draftId)))
+      if (updates.length > 0) {
+        await writes.updateMany(updates).catch((error: unknown) =>
+          toastError({
+            title: 'Error saving lines',
+            description: errorMessage(error, 'Could not save the lines'),
+          })
+        )
       }
     },
-    [
-      entityDefinitionId,
-      docRecordId,
-      draftCreateValues,
-      mutateDrafts,
-      createManyMutateAsync,
-      saveMultipleAsync,
-      seedCreatedRecord,
-      reorderMutate,
-      appendCreated,
-    ]
+    [entityDefinitionId, kind, visitId, mutateDrafts, writes, draftEditsSince]
   )
 
   /**
-   * Step 2 of a catalog-group explode (money 09-product-groups.md
-   * "Line-builder consumption"): stage entries 2…N as pre-filled phantom
-   * drafts IMMEDIATELY — instant paint, and totals are right on the first
-   * frame (`TotalsFooter` already folds drafts into its math). The same write
-   * drops any untouched initial placeholder drafts (plan 31 §C) so the bundle
-   * lands directly under the picked row instead of below empty warm-up rows.
-   * `position` keeps the bundle together on a middle-row pick: `anchorRecordId`
-   * pins the drafts under that real row (see `visualRows`), `afterDraftId`
-   * splices them into the drafts array right after the picked draft.
-   * Returns the staged drafts for {@link createDrafts} to materialize
-   * (freshDraft's optional=false / optionalSelected=true defaults are exactly
-   * the "group-exploded lines start required" rule, money plan 18 §3).
+   * Step 2 of a catalog-group explode: stage entries 2…N as pre-filled drafts in the same
+   * frame, dropping untouched placeholders so the bundle lands under the picked row.
    */
   const stageBundleDrafts = useCallback(
-    (
-      rest: LineValues[],
-      position?: { anchorRecordId?: string; afterDraftId?: string }
-    ): DraftLine[] => {
+    (rest: LineValues[], position?: { anchorLineId?: string; afterDraftId?: string }) => {
       if (rest.length === 0) return []
       const bundleDrafts: DraftLine[] = rest.map((line) => ({
         ...freshDraft(generateId()),
         ...line,
-        anchorRecordId: position?.anchorRecordId,
+        anchorLineId: position?.anchorLineId,
       }))
       const initialDraftIds = initialDraftIdsRef.current
       initialDraftIdsRef.current = new Set()
@@ -1090,98 +648,58 @@ export function LineBuilder({
     [mutateDrafts]
   )
 
-  /**
-   * Steps 4–5 of a catalog-group explode: document discount/tax set-if-unset —
-   * quote/invoice only, never overwriting a value the document already has.
-   */
+  /** Group discount/tax, set-if-unset, on a `computed` document only. */
   const applyGroupBilling = useCallback(
     (pick: ResolvedCatalogGroup) => {
-      if (hasBilling) {
-        const currentDiscountValue = billingValues[`${billingPrefix}_discount_value`] as
-          | number
-          | null
-          | undefined
-        if (pick.discountType && pick.discountValue !== null && currentDiscountValue == null) {
-          updateDiscount(pick.discountType, pick.discountValue)
-        }
-
-        const currentTaxRate = billingValues[`${billingPrefix}_tax_rate`] as
-          | number
-          | null
-          | undefined
-        if (pick.taxRateId && currentTaxRate == null) {
-          // A deleted preset id silently no-ops — no tax write.
-          const preset = taxRates.find((r) => r.id === pick.taxRateId)
-          if (preset) updateTax(preset.name, preset.rate)
-        }
+      if (!hasBilling) return
+      const currentDiscountValue = billingValues[`${billingPrefix}_discount_value`] as
+        | number
+        | null
+        | undefined
+      if (pick.discountType && pick.discountValue !== null && currentDiscountValue == null) {
+        updateDiscount(pick.discountType, pick.discountValue)
+      }
+      const currentTaxRate = billingValues[`${billingPrefix}_tax_rate`] as number | null | undefined
+      if (pick.taxRateId && currentTaxRate == null) {
+        // A deleted preset id silently no-ops.
+        const preset = taxRates.find((r) => r.id === pick.taxRateId)
+        if (preset) updateTax(preset.name, preset.rate)
       }
     },
     [hasBilling, billingPrefix, billingValues, taxRates, updateDiscount, updateTax]
   )
 
-  /**
-   * Explode a picked catalog group onto a REAL line (money 09-product-groups.md
-   * "Line-builder consumption"): entry #1 fills the line whose picker was open,
-   * entries 2…N are staged in the same frame and materialized through one
-   * `record.createMany`.
-   */
+  /** Explode a picked catalog group onto a real line: entry #1 fills it, the rest follow it. */
   const handleGroupPick = useCallback(
-    (recordId: RecordId, group: CatalogGroup) => {
+    (lineId: string, group: CatalogGroup) => {
       const pick = resolveCatalogGroup(group, catalogPartMap)
       if (pick.skippedCount > 0) {
         console.warn(`Catalog group "${pick.name}" skipped ${pick.skippedCount} dangling item(s).`)
       }
-      if (pick.lines.length === 0) return
-
       const [first, ...rest] = pick.lines
       if (!first) return
-
-      // Step 1: entry #1 fills the CURRENT line — the handlePick shape (catalog-picker.tsx)
-      // plus qty, which the single-item pick leaves untouched. Resets optional/optionalSelected
-      // to required (money plan 18 §3) — same "pick overwrites the line's identity" precedent
-      // as taxable already follows.
-      updateLine(recordId, first)
-
-      // Anchor the staged drafts to the picked row so the bundle renders (and
-      // persists — createDrafts reorders after the createMany) directly under
-      // it instead of appending at the list end.
-      const bundleDrafts = stageBundleDrafts(rest, {
-        anchorRecordId: parseRecordId(recordId).entityInstanceId,
-      })
+      updateLine(lineId, first)
+      const bundleDrafts = stageBundleDrafts(rest, { anchorLineId: lineId })
       applyGroupBilling(pick)
       void createDrafts(bundleDrafts)
     },
     [catalogPartMap, updateLine, stageBundleDrafts, applyGroupBilling, createDrafts]
   )
 
-  /** Same explode intent as {@link handleGroupPick}, targeting a phantom draft. */
+  /** Same explode, targeting a draft: the bundle is created once entry #1's create settles. */
   const handleGroupPickDraft = useCallback(
     (draftId: string, group: CatalogGroup) => {
       const pick = resolveCatalogGroup(group, catalogPartMap)
       if (pick.skippedCount > 0) {
         console.warn(`Catalog group "${pick.name}" skipped ${pick.skippedCount} dangling item(s).`)
       }
-      if (pick.lines.length === 0) return
-
       const [first, ...rest] = pick.lines
       if (!first) return
-
-      // Step 1: entry #1's values become THIS draft's create. Catalog/group-exploded
-      // lines start required (money plan 18 §3). Called BEFORE staging so its
-      // synchronous prefix promotes the picked draft out of the initial
-      // placeholder set — otherwise the §C cleanup below would drop it.
+      // Before staging: its synchronous prefix promotes the draft out of the placeholder set.
       const firstCreate = createDraft(draftId, first)
-
-      // Splice the bundle right after the picked draft (not the drafts tail)
-      // so it stays together even with user-added drafts below.
       const bundleDrafts = stageBundleDrafts(rest, { afterDraftId: draftId })
       applyGroupBilling(pick)
-
-      // Materialize the bundle only after entry #1's create settles: real rows
-      // append to the list cache in completion order, so entry #1 must land
-      // first for the persisted rows to match the on-screen (and sort_order)
-      // order. The bundle rows are already painted as drafts, so this costs
-      // nothing visually. `createDraft` never rejects (it toasts internally).
+      // Tail appends land in completion order, so entry #1 must land first.
       void firstCreate.then(() => createDrafts(bundleDrafts))
     },
     [catalogPartMap, createDraft, stageBundleDrafts, applyGroupBilling, createDrafts]
@@ -1192,7 +710,7 @@ export function LineBuilder({
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event
-      if (!entityDefinitionId || !over || active.id === over.id) return
+      if (!over || active.id === over.id) return
       const current = displayIdsRef.current
       const oldIndex = current.indexOf(String(active.id))
       const newIndex = current.indexOf(String(over.id))
@@ -1200,61 +718,28 @@ export function LineBuilder({
 
       const nextOrder = arrayMove(current, oldIndex, newIndex)
       setOrderOverride(nextOrder)
-      reorderMutate(
-        {
-          documentRecordId: docRecordId,
-          lineEntityType: schema.lineEntityType,
-          orderedLineRecordIds: nextOrder.map((id) => toRecordId(entityDefinitionId, id)),
-        },
-        {
-          onError: (error) => {
-            setOrderOverride(null)
-            refresh()
-            toastError({ title: 'Error reordering lines', description: error.message })
-          },
-        }
-      )
+      void writes.reorder(nextOrder).then(() => setOrderOverride(null))
     },
-    [entityDefinitionId, docRecordId, reorderMutate, refresh]
+    [writes]
   )
 
-  // Row-action shortcuts (description / category / optional / taxable / delete)
-  // on the same container — resolved to whichever row holds focus.
-  useLineHotkeys({
-    containerRef: rowsContainerRef,
-    schema,
-    readOnly,
-  })
+  useLineHotkeys({ containerRef: rowsContainerRef, kind, readOnly })
 
   if (!entityDefinitionId) return null
 
-  const rowCount = displayRecords.length + visibleDrafts.length
-  // 4 where the amount cell is an INPUT (`stored`, or the purchase order's
-  // `derived-editable`) - otherwise nav would land on a column with nothing
-  // focusable in it. `LineGridRow`'s `totalNavigable` tags the cell to match.
-  const colCount =
-    schema.amountMode === 'stored' || schema.amountMode === 'derived-editable' ? 4 : 3
-  const isEmpty =
-    !isLoading && !isLoadingRecords && displayRecords.length === 0 && visibleDrafts.length === 0
+  const rowCount = displayLines.length + visibleDrafts.length
+  // 4 where the amount cell is an input, so nav never lands on a column with nothing to focus.
+  const colCount = kind.amountMode === 'stored' || kind.amountMode === 'derived-editable' ? 4 : 3
+  const isEmpty = !isLoading && displayLines.length === 0 && visibleDrafts.length === 0
 
   return (
-    <div
-      className={cn(
-        'flex min-h-0 flex-1 flex-col  rounded-lg',
-        // Left gutter so the drag grip can sit outside the framed box (grips
-        // absolutely position into this space at `-left-4`).
-        // !readOnly && 'pl-4',
-        className
-      )}>
-      {/* Header + rows share one bordered box, so the grid reads as a single
-          framed table. Totals sit outside the frame, below. The `data-slot` lets a
-          parent (e.g. `TuckedSection`) override the frame's radius/border/ring. */}
+    <div className={cn('flex min-h-0 flex-1 flex-col  rounded-lg', className)}>
       <LineGridFrame
         containerRef={rowsContainerRef}
         cols={LINE_COLS}
         header={[
           {
-            label: schema.primaryColumnLabel,
+            label: kind.primaryColumnLabel,
             addButton: !readOnly && (
               <SimpleTooltip content='Add line item' side='right'>
                 <Button
@@ -1293,15 +778,42 @@ export function LineBuilder({
             items={displayIdsRef.current}
             strategy={verticalListSortingStrategy}
             disabled={readOnly}>
-            {/* Interleaved real rows + phantom drafts (`visualRows`): anchored
-                bundle drafts render directly under their picked row, tail
-                drafts after every real row. Drafts are never drag-sortable —
-                only real record ids are in the SortableContext. */}
-            {visualRows.map((row) =>
-              row.kind === 'record' ? (
+            {/* Only real line ids are sortable; drafts pin under their anchor or the tail. */}
+            {visualRows.map((row) => {
+              if (row.kind === 'draft') {
+                return (
+                  <DraftLineRow
+                    key={row.draft.draftId}
+                    draft={row.draft}
+                    rowIndex={row.rowIndex}
+                    autoFocus={row.draft.draftId === lastAddedDraftId}
+                    categoryOptions={categoryOptions}
+                    currencyCode={currencyCode}
+                    documentType={documentType}
+                    catalogParts={catalogParts}
+                    catalogGroups={catalogGroups}
+                    catalogPartMap={catalogPartMap}
+                    catalogLoading={catalogLoading}
+                    matchScopeRecordId={matchScopeRecordId}
+                    renderMatchKeyEditor={renderMatchKeyEditor}
+                    renderLandedBillEditor={renderLandedBillEditor}
+                    weightRevealed={weightRevealed}
+                    resolvePartPrefill={boundResolvePartPrefill}
+                    onRevealWeight={revealWeight}
+                    deleteDraft={deleteDraft}
+                    createDraft={createDraft}
+                    applyPrefillPatch={applyPrefillPatch}
+                    onSelectGroup={handleGroupPickDraft}
+                  />
+                )
+              }
+              const values = rowValues.get(row.line.id)
+              if (!values) return null
+              return (
                 <LineRow
-                  key={row.record.id}
-                  record={row.record}
+                  key={row.line.id}
+                  line={row.line}
+                  values={values}
                   rowIndex={row.rowIndex}
                   entityDefinitionId={entityDefinitionId}
                   categoryOptions={categoryOptions}
@@ -1323,32 +835,8 @@ export function LineBuilder({
                   deleteLine={deleteLine}
                   onSelectGroup={handleGroupPick}
                 />
-              ) : (
-                <DraftLineRow
-                  key={row.draft.draftId}
-                  draft={row.draft}
-                  rowIndex={row.rowIndex}
-                  autoFocus={row.draft.draftId === lastAddedDraftId}
-                  categoryOptions={categoryOptions}
-                  currencyCode={currencyCode}
-                  documentType={documentType}
-                  catalogParts={catalogParts}
-                  catalogGroups={catalogGroups}
-                  catalogPartMap={catalogPartMap}
-                  catalogLoading={catalogLoading}
-                  matchScopeRecordId={matchScopeRecordId}
-                  renderMatchKeyEditor={renderMatchKeyEditor}
-                  renderLandedBillEditor={renderLandedBillEditor}
-                  weightRevealed={weightRevealed}
-                  resolvePartPrefill={boundResolvePartPrefill}
-                  onRevealWeight={revealWeight}
-                  deleteDraft={deleteDraft}
-                  createDraft={createDraft}
-                  applyPrefillPatch={applyPrefillPatch}
-                  onSelectGroup={handleGroupPickDraft}
-                />
               )
-            )}
+            })}
           </SortableContext>
         </DndContext>
       </LineGridFrame>
@@ -1358,8 +846,7 @@ export function LineBuilder({
         readOnly={readOnly}
         amountsReadOnly={amountsReadOnly}
         currencyCode={currencyCode}
-        lineRecordIds={lineRecordIds}
-        draftLines={visibleDrafts}
+        lines={lines}
         billingValues={billingValues}
         taxRates={taxRates}
         onUpdateDiscount={updateDiscount}

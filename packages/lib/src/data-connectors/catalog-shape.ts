@@ -41,6 +41,7 @@ import {
   isOwnedCatalogMapping,
 } from './app-catalog'
 import type { StreamWithRawMappings } from './service'
+import { type SinkWriter, sinkWriterFor } from './sinks/writers'
 import { isBoundaryPrefix, relativeSourcePath } from './source-paths'
 import { catalogSyncMode } from './stream-query'
 import type {
@@ -183,7 +184,9 @@ export function resolveRelationshipFieldKeyFromFields(
   parentSlug: string,
   /** The parent def id when the parent is a CONTRIBUTING mapping; null otherwise. */
   parentDefId: string | null,
-  parentFields: readonly ContributingTargetField[]
+  parentFields: readonly ContributingTargetField[],
+  /** The child def's writer: a parent key it holds keeps an edge whose field is gone. */
+  childWriter?: SinkWriter
 ): string | null {
   if (!bareKey) return null
   if (!bareKey.startsWith(SYSTEM_RELATIONSHIP_PREFIX)) {
@@ -198,6 +201,9 @@ export function resolveRelationshipFieldKeyFromFields(
     return null
   }
   const field = parentFields.find((f) => f.systemAttribute === systemAttribute)
+  if (!field && childWriter?.parentKeys[parentSlug]) {
+    return toResourceFieldId(parentDefId, systemAttribute)
+  }
   if (!field) {
     logger.warn('system relationshipFieldKey does not resolve on parent def, dropping edge', {
       appSlug,
@@ -680,7 +686,13 @@ function deriveContributingMappings(
     const boundTargets = new Set(matchBindings.map((b) => b.targetFieldRef))
     const valueBindings = (
       fields.length > 0
-        ? buildContributingFieldBindings(entityDefinitionId, appSlug, fields, defFields)
+        ? buildContributingFieldBindings(
+            entityDefinitionId,
+            appSlug,
+            fields,
+            defFields,
+            sinkWriterFor(entityKind)
+          )
         : buildContributingAutoBindings(
             entityDefinitionId,
             mapping.rootPath,
@@ -759,7 +771,8 @@ function deriveContributingMappings(
           contribParent?.entityDefinitionId ?? null,
           contribParent?.entityDefinitionId
             ? resolver.fieldsByDefId(contribParent.entityDefinitionId)
-            : []
+            : [],
+          sinkWriterFor(entityKind)
         ),
         fieldMappings,
         // Declared by the app, defaulting to `'ignore'`. A contributing mapping CAN now

@@ -4,6 +4,7 @@ import type { ThreadSentiment, TicketPriority } from '@auxx/database/types'
 import type { ActorId } from '@auxx/types/actor'
 import type { FieldValueKey } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
+import type { Line, LineDocumentType } from '../accounting/documents/lines/client'
 import type { ExportBatchState, ExportFailureClass } from '../accounting/export/client'
 import type { EditStamp } from '../resources/picker/types'
 import type { ThreadMergeData } from '../threads/types'
@@ -66,6 +67,7 @@ export type ResourceSyncEvent =
   | BackflushRunEvent
   | UndoBackflushRunEvent
   | BuildChangedEvent
+  | LinesUpdatedEvent
   | ExportBatchChangedEvent
   | AccountingWorkChangedEvent
   | RunCompletedEvent
@@ -316,6 +318,21 @@ export interface BuildChangedEvent {
     partIds: string[]
     orderIds: string[]
     batchRuns: number[]
+  }
+}
+
+/**
+ * A document's lines were written, on the parent def's record room. Row payloads: `upserted`
+ * replaces cached rows by id, `deleted` drops them. Chunked like `fieldValues:updated`.
+ */
+export interface LinesUpdatedEvent {
+  event: 'lines:updated'
+  data: {
+    documentType: LineDocumentType
+    documentId: string
+    upserted: Line[]
+    deleted: string[]
+    chunk?: { index: number; total: number }
   }
 }
 

@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   getFieldValues: vi.fn(),
-  listFiltered: vi.fn(),
+  readLinesForTotals: vi.fn(),
   setValuesForEntity: vi.fn(),
   /** `select()` with no projection — the LINE VALUE read in `totals-hooks`. */
   fieldValueRows: vi.fn(),
@@ -28,9 +28,9 @@ vi.mock('../../../../cache', () => ({
 vi.mock('../../../../resources/crud', () => ({
   UnifiedCrudHandler: class {
     getFieldValues = h.getFieldValues
-    listFiltered = h.listFiltered
   },
 }))
+vi.mock('../../../documents/lines/reads', () => ({ readLinesForTotals: h.readLinesForTotals }))
 vi.mock('../../../../field-values/field-value-service', () => ({
   FieldValueService: class {
     setValuesForEntity = h.setValuesForEntity
@@ -54,6 +54,7 @@ vi.mock('@auxx/database', async () => {
 })
 
 import { recomputeLineTotal, recomputeTotals } from '../totals-hooks'
+import { totalsRow } from './support/totals-rows'
 
 const FIELDS: Record<string, { id: string; type: string }> = {
   order_discount_type: { id: 'f-o-dtype', type: 'SINGLE_SELECT' },
@@ -66,14 +67,6 @@ const FIELDS: Record<string, { id: string; type: string }> = {
   line_item_line_total: { id: 'f-li-total', type: 'CURRENCY' },
   line_item_qty: { id: 'f-li-qty', type: 'NUMBER' },
   line_item_unit_price: { id: 'f-li-price', type: 'CURRENCY' },
-}
-
-function row(
-  entityId: string,
-  fieldId: string,
-  value: number
-): { entityId: string } & Record<string, unknown> {
-  return { entityId, fieldId, valueNumber: value }
 }
 
 function writtenValues(): Array<{ fieldId: string; value: number }> {
@@ -89,7 +82,7 @@ beforeEach(() => {
     Object.fromEntries(attrs.filter((a) => FIELDS[a]).map((a) => [a, FIELDS[a]]))
   )
   h.setValuesForEntity.mockResolvedValue(undefined)
-  h.listFiltered.mockResolvedValue({ ids: [] })
+  h.readLinesForTotals.mockResolvedValue([])
   h.getFieldValues.mockResolvedValue(new Map())
   h.fieldValueRows.mockResolvedValue([])
   h.managedFieldsRows.mockResolvedValue([])
@@ -97,8 +90,7 @@ beforeEach(() => {
 
 describe('the document-level stand-down', () => {
   it('writes nothing for an order whose total is connector-managed', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['li-1'] })
-    h.fieldValueRows.mockResolvedValue([row('li-1', 'f-li-total', 10_000)])
+    h.readLinesForTotals.mockResolvedValue([totalsRow('li-1', { lineTotal: 10_000 })])
     h.managedFieldsRows.mockResolvedValue([{ managedFields: ['def_o:f-o-total'] }])
 
     await recomputeTotals({
@@ -112,8 +104,7 @@ describe('the document-level stand-down', () => {
   })
 
   it('writes normally when the order is not connector-managed', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['li-1'] })
-    h.fieldValueRows.mockResolvedValue([row('li-1', 'f-li-total', 10_000)])
+    h.readLinesForTotals.mockResolvedValue([totalsRow('li-1', { lineTotal: 10_000 })])
 
     await recomputeTotals({
       organizationId: 'org_1',
@@ -127,8 +118,7 @@ describe('the document-level stand-down', () => {
   })
 
   it('checks connector-managed status ONCE per record, not once per mirror field', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['li-1'] })
-    h.fieldValueRows.mockResolvedValue([row('li-1', 'f-li-total', 10_000)])
+    h.readLinesForTotals.mockResolvedValue([totalsRow('li-1', { lineTotal: 10_000 })])
 
     await recomputeTotals({
       organizationId: 'org_1',
@@ -143,8 +133,7 @@ describe('the document-level stand-down', () => {
   })
 
   it('folds order_shipping_total into order_total as a header input (money plan 37 §6)', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['li-1'] })
-    h.fieldValueRows.mockResolvedValue([row('li-1', 'f-li-total', 10_000)])
+    h.readLinesForTotals.mockResolvedValue([totalsRow('li-1', { lineTotal: 10_000 })])
     h.getFieldValues.mockResolvedValue(
       new Map<string, unknown>([['f-o-shipping', { type: 'number', value: 500 }]])
     )

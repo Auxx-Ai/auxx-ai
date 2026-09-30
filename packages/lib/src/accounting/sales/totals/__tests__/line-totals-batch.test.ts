@@ -3,7 +3,7 @@
 // plans/events/10 §4.4: the sync lane's core for `recomputeOnLineChange`, through the real
 // reconciler. Ported from the retired pass 1 of
 // `events/handlers/__tests__/finalize-integrity-passes.test.ts`. Same mock harness as
-// totals-coalescing.test.ts next door — `listFiltered` counts document rebuilds.
+// totals-coalescing.test.ts next door — `readLinesForTotals` counts document rebuilds.
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FieldChangeRef } from '../../../../field-hooks/types'
@@ -13,7 +13,7 @@ import { runWithDirtyParents } from '../../../../reconcilers/dirty-parents'
 const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   getFieldValues: vi.fn(),
-  listFiltered: vi.fn(),
+  readLinesForTotals: vi.fn(),
   setValuesForEntity: vi.fn(),
   fieldValueRows: vi.fn(),
   relationRows: vi.fn(),
@@ -26,9 +26,9 @@ vi.mock('../../../../cache', () => ({
 vi.mock('../../../../resources/crud', () => ({
   UnifiedCrudHandler: class {
     getFieldValues = h.getFieldValues
-    listFiltered = h.listFiltered
   },
 }))
+vi.mock('../../../documents/lines/reads', () => ({ readLinesForTotals: h.readLinesForTotals }))
 vi.mock('../../../../field-values/field-value-service', () => ({
   FieldValueService: class {
     setValuesForEntity = h.setValuesForEntity
@@ -101,7 +101,7 @@ const lineTotalWrites = () =>
   )
 
 /** How many times a whole document was rebuilt. */
-const rebuilds = () => h.listFiltered.mock.calls.length
+const rebuilds = () => h.readLinesForTotals.mock.calls.length
 
 beforeAll(() => {
   registerMoneyTotalsReconcilers()
@@ -113,7 +113,7 @@ beforeEach(() => {
     Object.fromEntries(attrs.filter((a) => FIELDS[a]).map((a) => [a, FIELDS[a]]))
   )
   h.setValuesForEntity.mockResolvedValue(undefined)
-  h.listFiltered.mockResolvedValue({ ids: [] })
+  h.readLinesForTotals.mockResolvedValue([])
   h.getFieldValues.mockResolvedValue(new Map())
   h.fieldValueRows.mockResolvedValue([])
   h.relationRows.mockResolvedValue([])
@@ -131,7 +131,7 @@ describe('recomputeLineTotalsBatch', () => {
     expect(lineTotalWrites()).toHaveLength(1)
     expect(rebuilds()).toBe(1)
     expect(h.setValuesForEntity.mock.invocationCallOrder[0]!).toBeLessThan(
-      h.listFiltered.mock.invocationCallOrder[0]!
+      h.readLinesForTotals.mock.invocationCallOrder[0]!
     )
   })
 

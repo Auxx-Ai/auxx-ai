@@ -73,9 +73,11 @@ export function VendorBillActions({ billRecordId, status, editing }: VendorBillA
   const cancelEdit = api.documentEdit.cancel.useMutation({
     onSuccess: (result) => {
       stampEdit(result.edit)
-      // Restore rewrote header values and deleted the lines the edit added, so
-      // every value the drawer holds for this bill is stale.
+      // Restore rewrote header values and recreated the lines under new ids.
       utils.record.invalidate().catch(() => {})
+      utils.lines.list
+        .invalidate({ documentType: 'vendor_bill', documentId: vendorBillId })
+        .catch(() => {})
     },
     onError: (error) => toastError({ title: 'Error cancelling edit', description: error.message }),
   })

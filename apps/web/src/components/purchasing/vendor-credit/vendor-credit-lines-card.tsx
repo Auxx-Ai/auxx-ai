@@ -5,7 +5,7 @@
 // entry of `drawer-config.ts` (71 §5 U7).
 //
 // A skin over the shared `LineBuilder`, like `vendor-bill-lines-card.tsx`, with
-// `LINE_SCHEMAS.vendor_credit` supplying the vocabulary. The one thing worth
+// `LINE_KINDS.vendor_credit` supplying the vocabulary. The one thing worth
 // saying here: a credit line names its GL account by id, and on a PO-backed
 // credit that account arrives prefilled with the org's GRNI — the person is
 // recoding a prefill, not filling a blank.

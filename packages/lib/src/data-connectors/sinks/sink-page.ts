@@ -69,6 +69,8 @@ export interface SinkPage extends ItemIo {
   flushForItemReads(): Promise<void>
   /** Drop an item from memory after a path outside the page wrote it. */
   forget(itemId: string): void
+  /** Copies of the page's in-memory items of one mapping. */
+  itemsOf(mappingId: string): Row[]
 }
 
 /** What a deferred write must set on an item; a new binding or a rebind is written at once. */
@@ -321,6 +323,10 @@ export function createSinkPage(ctx: SyncCtx): SinkPage {
 
     async flushForItemReads() {
       if ([...dirty.values()].some((d) => d.visible)) await page.flush()
+    },
+
+    itemsOf(mappingId) {
+      return [...rows.values()].filter((r) => r.mappingId === mappingId).map((r) => ({ ...r }))
     },
 
     forget(itemId) {

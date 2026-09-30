@@ -104,9 +104,11 @@ export function CreditMemoLinesCard({ recordId }: DrawerTabProps) {
   const cancelEdit = api.documentEdit.cancel.useMutation({
     onSuccess: (result) => {
       stampEdit(result.edit)
-      // Restore rewrote header values and deleted the lines the edit added, so
-      // every value the drawer holds for this memo is stale.
+      // Restore rewrote header values and recreated the lines under new ids.
       utils.record.invalidate().catch(() => {})
+      utils.lines.list
+        .invalidate({ documentType: 'credit_memo', documentId: creditMemoId })
+        .catch(() => {})
       invalidate()
     },
     onError: (error) => toastError({ title: 'Error cancelling edit', description: error.message }),

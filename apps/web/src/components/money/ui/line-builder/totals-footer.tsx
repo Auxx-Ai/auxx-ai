@@ -2,24 +2,17 @@
 
 'use client'
 
-// Totals footer for the line builder (money MQ1 build spec §H.1): subtotal →
-// discount → tax → total (the add-line row lives in the builder itself).
-// All amounts are computed client-side with `computeDocumentTotals` from
-// `@auxx/lib/accounting/sales/client` over the same optimistic field-value store the
-// editors write to. `LineBuilder` owns fetching and mutations; this footer is
-// a passive aggregate subscriber plus totals UI.
+// Totals footer for the line builder: subtotal → discount → tax → total. It shows the
+// header's stored mirrors (the server recomputes them on every line write and realtime
+// refreshes them), so a draft row counts once it is committed. `LineBuilder` owns the
+// fetch and the writes; this renders and edits the header's own inputs.
 
-import { FieldType } from '@auxx/database/enums'
-import type { FieldType as FieldTypeValue } from '@auxx/database/types'
 import {
-  computeDocumentTotals,
-  computeLineTotal,
-  type DiscountType,
-  type DocumentBillingInputs,
-  type DocumentTotals,
-  type LineForTotals,
-} from '@auxx/lib/accounting/sales/client'
-import { formatToRawValue } from '@auxx/lib/field-values/client'
+  type Line,
+  type LineDocumentType,
+  lineKindFor,
+} from '@auxx/lib/accounting/documents/lines/client'
+import { computeLineTotal, type DiscountType } from '@auxx/lib/accounting/sales/client'
 import {
   Select,
   SelectContent,
@@ -28,17 +21,7 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 import { cn } from '@auxx/ui/lib/utils'
-import { useCallback, useMemo, useState } from 'react'
-import { useShallow } from 'zustand/react/shallow'
-import type { RecordId } from '~/components/resources'
-import {
-  buildFieldValueKey,
-  type CustomFieldValueState,
-  useFieldValueStore,
-} from '~/components/resources/store/field-value-store'
-import { useResourceStore } from '~/components/resources/store/resource-store'
-import type { DraftLine } from './line-rows'
-import { type DocumentType, type LineSchema, lineSchemaFor } from './line-values'
+import { useMemo, useState } from 'react'
 import { formatCurrency } from './shared'
 
 /** Org tax rate preset (`documents.taxRates` setting, §G.1). */
@@ -49,218 +32,61 @@ export interface TaxRatePreset {
   isDefault?: boolean
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Totals data — all lines' qty/unitPrice/taxable, reactively from the store
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Subscribe to every REAL line's qty/unitPrice/taxable/optional/optionalSelected and shape
- * them as `LineForTotals[]`, then append local phantom draft lines' equivalent values
- * (`draftLines` — pure client state, no store fetch needed) so the optimistic footer counts
- * in-progress rows too. `LineBuilder` preloads these keys; the footer only subscribes.
- */
-function useLinesForTotals(
-  lineRecordIds: RecordId[],
-  draftLines: DraftLine[],
-  schema: LineSchema
-): LineForTotals[] {
-  const systemAttributeMap = useResourceStore((s) => s.systemAttributeMap)
-  // An attribute the schema maps to `null` has no field to resolve, so its key is
-  // `undefined` and the reader below falls back to the default.
-  //
-  // 🛑 Only qty and price may hard-gate. This used to bail to `[]` unless ALL FIVE
-  // resolved, which on a document whose lines carry no `taxable`/`optional` fields
-  // (every purchasing line) would silently total the whole document to zero.
-  const ref = (key: keyof typeof schema.attrs) => {
-    const attr = schema.attrs[key]
-    return attr ? systemAttributeMap[attr] : undefined
-  }
-  const qtyRef = ref('qty')
-  const priceRef = ref('unitPriceCents')
-  const taxableRef = ref('taxable')
-  const optionalRef = ref('optional')
-  const optionalSelectedRef = ref('optionalSelected')
-
-  const keys = useMemo(() => {
-    if (!qtyRef || !priceRef) return []
-    return lineRecordIds.map((recordId) => ({
-      qty: buildFieldValueKey(recordId, qtyRef),
-      price: buildFieldValueKey(recordId, priceRef),
-      taxable: taxableRef ? buildFieldValueKey(recordId, taxableRef) : null,
-      optional: optionalRef ? buildFieldValueKey(recordId, optionalRef) : null,
-      optionalSelected: optionalSelectedRef
-        ? buildFieldValueKey(recordId, optionalSelectedRef)
-        : null,
-    }))
-  }, [lineRecordIds, qtyRef, priceRef, taxableRef, optionalRef, optionalSelectedRef])
-  const keysKey = keys.map((k) => k.qty).join(',')
-
-  const storeValues = useFieldValueStore(
-    useShallow(
-      // biome-ignore lint/correctness/useExhaustiveDependencies: keys is captured from the same render as keysKey; keysKey is the stable content key
-      useCallback(
-        (state: CustomFieldValueState) => {
-          const result: Record<string, unknown> = {}
-          for (const k of keys) {
-            result[k.qty] = state.values[k.qty]
-            result[k.price] = state.values[k.price]
-            if (k.taxable) result[k.taxable] = state.values[k.taxable]
-            if (k.optional) result[k.optional] = state.values[k.optional]
-            if (k.optionalSelected) result[k.optionalSelected] = state.values[k.optionalSelected]
-          }
-          return result
-        },
-        [keysKey]
-      )
-    )
-  )
-
-  const realLines = useMemo(
-    () =>
-      keys.map((k) => {
-        // formatToRawValue returns arrays for array-stored values — collapse to
-        // the scalar (the same treatment useSystemValues applies).
-        const scalar = (raw: unknown, fieldType: FieldTypeValue): unknown => {
-          if (raw === undefined) return undefined
-          const formatted = formatToRawValue(raw, fieldType)
-          return Array.isArray(formatted) ? formatted[0] : formatted
-        }
-        const qty = (scalar(storeValues[k.qty], FieldType.NUMBER) as number | null | undefined) ?? 1
-        const unitPrice =
-          (scalar(storeValues[k.price], FieldType.CURRENCY) as number | null | undefined) ?? null
-        // Absent field -> the neutral default: taxable, not optional, selected.
-        // That is what makes `computeDocumentTotals` (which takes all four) correct
-        // for a document carrying none of them.
-        const taxable = k.taxable
-          ? scalar(storeValues[k.taxable], FieldType.CHECKBOX) !== false
-          : true
-        const optional = k.optional
-          ? scalar(storeValues[k.optional], FieldType.CHECKBOX) === true
-          : false
-        const optionalSelected = k.optionalSelected
-          ? scalar(storeValues[k.optionalSelected], FieldType.CHECKBOX) !== false
-          : true
-        return { lineTotal: computeLineTotal(qty, unitPrice), taxable, optional, optionalSelected }
-      }),
-    [keys, storeValues]
-  )
-
-  const draftLinesForTotals = useMemo(
-    () =>
-      draftLines.map((draft) => ({
-        lineTotal: computeLineTotal(draft.qty, draft.unitPriceCents),
-        taxable: draft.taxable,
-        optional: draft.optional,
-        optionalSelected: draft.optionalSelected,
-      })),
-    [draftLines]
-  )
-
-  return useMemo(() => [...realLines, ...draftLinesForTotals], [realLines, draftLinesForTotals])
+interface DisplayTotals {
+  subtotal: number
+  discountAmount: number
+  taxTotal: number
+  total: number
 }
 
 /**
- * The sum of the lines' own TRANSCRIBED totals, for a `stored` document.
- *
- * Not `computeDocumentTotals`' subtotal, which is `qty x rate`: on a bill those
- * two legitimately disagree, and the disagreement is the vendor's arithmetic.
- * Computes nothing that is written - it is the hint beside the typed subtotal
- * and the §5 tie.
+ * Σ the committed lines' amounts as the rows show them: the stored amount where the kind
+ * stores one, `qty × rate` elsewhere. Unselected optional lines count nothing.
  */
-function useStoredLineTotalSum(
-  lineRecordIds: RecordId[],
-  draftLines: DraftLine[],
-  schema: LineSchema
-): number {
-  const systemAttributeMap = useResourceStore((s) => s.systemAttributeMap)
-  const attr = schema.attrs.lineTotal
-  const fieldId = attr ? systemAttributeMap[attr] : undefined
-
-  const keys = useMemo(
-    () => (fieldId ? lineRecordIds.map((recordId) => buildFieldValueKey(recordId, fieldId)) : []),
-    [lineRecordIds, fieldId]
-  )
-  const keysKey = keys.join(',')
-
-  const storeValues = useFieldValueStore(
-    useShallow(
-      // biome-ignore lint/correctness/useExhaustiveDependencies: keys is captured from the same render as keysKey; keysKey is the stable content key
-      useCallback((state: CustomFieldValueState) => keys.map((key) => state.values[key]), [keysKey])
-    )
-  )
-
-  return useMemo(() => {
-    const scalar = (raw: unknown): number => {
-      if (raw === undefined) return 0
-      const formatted = formatToRawValue(raw, FieldType.CURRENCY)
-      const value = Array.isArray(formatted) ? formatted[0] : formatted
-      return typeof value === 'number' ? value : 0
-    }
-    return (
-      storeValues.reduce((sum: number, raw) => sum + scalar(raw), 0) +
-      draftLines.reduce(
-        (sum, draft) =>
-          sum + (draft.lineTotal ?? computeLineTotal(draft.qty, draft.unitPriceCents) ?? 0),
-        0
-      )
-    )
-  }, [storeValues, draftLines])
+function lineAmountSum(lines: readonly Line[], storesAmount: boolean): number {
+  return lines.reduce((sum, line) => {
+    if (line.optional === true && line.optionalSelected === false) return sum
+    const amount = storesAmount ? line.lineTotal : computeLineTotal(line.qty ?? 1, line.unitPrice)
+    return sum + (amount ?? 0)
+  }, 0)
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Totals footer
-// ─────────────────────────────────────────────────────────────────────────────
 
 export function TotalsFooter({
   documentType,
   readOnly,
   amountsReadOnly,
   currencyCode,
-  lineRecordIds,
-  draftLines,
+  lines,
   billingValues,
   taxRates,
   onUpdateDiscount,
   onUpdateTax,
   onUpdateStatedAmount,
 }: {
-  documentType: DocumentType
+  documentType: LineDocumentType
   readOnly: boolean
-  /**
-   * The document's LOCK, for a `stored` document whose headers are typed.
-   * Defaults to {@link readOnly}; 73 U3 points it at the bill's lock (posted,
-   * and no edit flag) without touching this component.
-   */
+  /** The lock on a `stored` document's typed headers. Defaults to {@link readOnly} (73 U3). */
   amountsReadOnly?: boolean
   currencyCode: string
-  lineRecordIds: RecordId[]
-  /** Local phantom draft lines not yet persisted — counted optimistically (money plan 18 §3). */
-  draftLines: DraftLine[]
-  /** Parent-document billing values fetched once by `LineBuilder`. */
+  /** The committed lines, from the builder's `lines.list` cache. */
+  lines: readonly Line[]
+  /** The header's billing inputs and totals mirrors (`LineKind.billingAttrs`). */
   billingValues: Record<string, unknown>
   taxRates: TaxRatePreset[]
   onUpdateDiscount: (type: DiscountType | null, value: number | null) => void
   onUpdateTax: (name: string | null, rate: number | null) => void
-  /**
-   * `stated` only — writes one of the document's own amount mirrors by attribute
-   * suffix (`discount_value` / `shipping_total` / `tax_total`), in integer minor
-   * units. See `updateStatedAmount` in `line-builder.tsx` for why these must be
-   * writable at all.
-   */
+  /** `stated` / `stored` only: write one of the header's own amounts, in minor units. */
   onUpdateStatedAmount: (attribute: string, cents: number | null) => void
 }) {
-  const schema = lineSchemaFor(documentType)
-  const { totalsMode, billingPrefix: prefix } = schema
+  const kind = lineKindFor(documentType)
+  const { totalsMode, billingPrefix: prefix } = kind
   /** Discount + tax are editable only where the document computes its own totals. */
   const editableBilling = totalsMode === 'computed'
-  const showPaymentMirrors = schema.capabilities.paymentMirrors
-  // All THREE totalled documents mirror the same billing shape (discount/tax) onto their
-  // own systemAttribute prefix (money MI1 build spec §J.2, widened to `order` by
-  // plans/products/08-order-build.md §5.6) — work_order (M2 job view) has none.
-  // Keyed lookups, not `isInvoice ? 'invoice' : 'quote'`: that shape reads an order's
-  // totals off `quote_*` and shows the wrong numbers.
-  const lines = useLinesForTotals(lineRecordIds, draftLines, schema)
-  const lineTotalSum = useStoredLineTotalSum(lineRecordIds, draftLines, schema)
+  const showPaymentMirrors = kind.capabilities.paymentMirrors
+  const lineSum = useMemo(
+    () => lineAmountSum(lines, kind.amountMode === 'stored'),
+    [lines, kind.amountMode]
+  )
   const [discountDraft, setDiscountDraft] = useState<string | null>(null)
 
   const discountType =
@@ -269,7 +95,7 @@ export function TotalsFooter({
     (billingValues[`${prefix}_discount_value`] as number | null | undefined) ?? null
   const taxName = (billingValues[`${prefix}_tax_name`] as string | null | undefined) ?? null
   const taxRate = (billingValues[`${prefix}_tax_rate`] as number | null | undefined) ?? null
-  // Invoice-only: the ledger-sync mirrors (§E.4) — never written from here, read-only.
+  // Invoice-only ledger mirrors (§E.4), never written from here.
   const amountPaid = showPaymentMirrors
     ? ((billingValues.invoice_amount_paid as number | null | undefined) ?? 0)
     : null
@@ -277,23 +103,23 @@ export function TotalsFooter({
     ? ((billingValues.invoice_balance as number | null | undefined) ?? null)
     : null
 
-  const billing: DocumentBillingInputs = editableBilling
-    ? { discountType, discountValue, taxRate }
-    : {}
-  const computed = computeDocumentTotals(lines, billing)
-  // 🛑 `stored` reads the mirrors and computes NOTHING. A vendor bill's totals are
-  // transcribed from the vendor's paper, and recomputing them from the lines would
-  // silently correct the vendor's own arithmetic — the exact discrepancy the
-  // three-way match exists to surface (plans/purchasing/01-build-plan.md §5.4b).
   const stored = (key: string): number =>
     (billingValues[`${prefix}_${key}`] as number | null | undefined) ?? 0
-  // Stated amounts, read for `stated` mode only. A PO's shipping and tax are keyed
-  // or produced by the freight allocation, never derived from a rate.
   const statedDiscount = stored('discount_value')
   const statedShipping = stored('shipping_total')
   const statedTax = stored('tax_total')
-  let totals: DocumentTotals = computed
-  if (totalsMode === 'stored') {
+  let totals: DisplayTotals
+  if (totalsMode === 'computed') {
+    // An order stores its subtotal net of the allocated discount (29 §2.3); show the gross.
+    const subtotal = documentType === 'order' ? lineSum : stored('subtotal')
+    const total = stored('total')
+    totals = {
+      subtotal,
+      discountAmount: Math.max(0, subtotal + statedTax + statedShipping - total),
+      taxTotal: statedTax,
+      total,
+    }
+  } else if (totalsMode === 'stored') {
     totals = {
       subtotal: stored('subtotal'),
       discountAmount: stored('discount'),
@@ -301,27 +127,24 @@ export function TotalsFooter({
       total: stored('total'),
     }
   } else if (totalsMode === 'stated') {
-    // 🛑 Must match what the server persists: subtotal − discount + shipping + tax
-    // (plans/purchasing/01-build-plan.md §4.1). `computed.subtotal` is the line sum;
-    // `computed.total` is NOT usable here because it applies a rate this document
-    // does not have.
     totals = {
-      subtotal: computed.subtotal,
+      subtotal: stored('subtotal'),
       discountAmount: statedDiscount,
       taxTotal: statedTax,
-      total: computed.subtotal - statedDiscount + statedShipping + statedTax,
+      total: stored('total'),
     }
+  } else {
+    // A work order stores no totals.
+    totals = { subtotal: lineSum, discountAmount: 0, taxTotal: 0, total: lineSum }
   }
 
-  // A credit memo's stored headers are hook-written, so they stay text whatever
-  // the lock says - see `LineSchema.headerAmountsTyped`.
-  const headersReadOnly = !schema.headerAmountsTyped || (amountsReadOnly ?? readOnly)
-  // Σ line totals + shipping + tax − discount = total (73 §5.2). Computed for
-  // the hint only: nothing here writes a header the vendor did not print.
+  // A credit memo's stored headers are hook-written, so they stay text whatever the lock says.
+  const headersReadOnly = !kind.headerAmountsTyped || (amountsReadOnly ?? readOnly)
+  // Σ line totals + shipping + tax − discount = total (73 §5.2); a hint only.
   const tieDifference =
     totalsMode === 'stored'
       ? totals.total -
-        (lineTotalSum + stored('shipping_total') + totals.taxTotal - totals.discountAmount)
+        (lineSum + stored('shipping_total') + totals.taxTotal - totals.discountAmount)
       : 0
 
   const selectedTaxId =
@@ -380,8 +203,8 @@ export function TotalsFooter({
                 currencyCode={currencyCode}
                 onCommit={(next) => onUpdateStatedAmount('subtotal', next)}
               />
-              {schema.headerAmountsTyped && lineTotalSum !== totals.subtotal && (
-                <Hint>Lines add up to {formatCurrency(lineTotalSum, currencyCode)}</Hint>
+              {kind.headerAmountsTyped && lineSum !== totals.subtotal && (
+                <Hint>Lines add up to {formatCurrency(lineSum, currencyCode)}</Hint>
               )}
             </>
           ) : (
@@ -489,6 +312,14 @@ export function TotalsFooter({
             </div>
           )}
 
+          {/* An order's shipping is folded into its stored total; edited on the order. */}
+          {editableBilling && statedShipping !== 0 && (
+            <div className='flex items-center justify-between'>
+              <span className='text-muted-foreground'>Shipping</span>
+              <span className='tabular-nums'>{formatCurrency(statedShipping, currencyCode)}</span>
+            </div>
+          )}
+
           {/* `stored` (vendor bill, credit memo): the vendor's own arithmetic,
               transcribed and never computed — but TYPED here, because this footer
               is the only surface any of these fields has (73 D5). "Transcribed"
@@ -496,8 +327,8 @@ export function TotalsFooter({
           {totalsMode === 'stored' && (
             <>
               {/* A credit memo is `stored` too and has no shipping field, so the
-                  row is keyed on the attribute being part of the schema. */}
-              {schema.billingAttrs.includes(`${prefix}_shipping_total`) && (
+                  row is keyed on the attribute being one the kind reads. */}
+              {kind.billingAttrs.includes(`${prefix}_shipping_total`) && (
                 <StatedAmountRow
                   label='Shipping'
                   cents={stored('shipping_total')}
@@ -513,7 +344,7 @@ export function TotalsFooter({
                 currencyCode={currencyCode}
                 onCommit={(next) => onUpdateStatedAmount('tax_total', next)}
               />
-              {schema.billingAttrs.includes(`${prefix}_discount`) && (
+              {kind.billingAttrs.includes(`${prefix}_discount`) && (
                 <StatedAmountRow
                   label='Discount'
                   cents={totals.discountAmount}
@@ -569,7 +400,7 @@ export function TotalsFooter({
               />
               {/* The same arithmetic Post refuses on (73 §5.2), shown while the
                   paper is still in hand. */}
-              {schema.headerAmountsTyped && tieDifference !== 0 && (
+              {kind.headerAmountsTyped && tieDifference !== 0 && (
                 <Hint>
                   Lines, shipping, tax and discount are{' '}
                   {formatCurrency(Math.abs(tieDifference), currencyCode)}{' '}

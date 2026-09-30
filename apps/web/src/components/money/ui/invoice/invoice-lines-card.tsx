@@ -11,9 +11,9 @@
 // An issued invoice is edited in place through the generic lane (74 §1.3), never by writing
 // its status back to `draft`.
 
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { CreateLineInput } from '@auxx/lib/accounting/documents/lines/client'
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
-import type { EditStamp, RecordId } from '@auxx/lib/resources/client'
+import { type EditStamp, parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
@@ -28,35 +28,17 @@ import {
   DocumentSectionActions,
 } from '~/components/money/ui/document-actions-cluster'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
-import {
-  documentLineFilters,
-  LINE_PAGE_SIZE,
-  LINE_SCHEMAS,
-  LINE_SORT,
-} from '~/components/money/ui/line-builder/line-values'
 import { useDocumentSendActions } from '~/components/money/ui/use-document-send-actions'
 import { useOpenRecord } from '~/components/records/record-drill-panels'
-import { toRecordId, useRecordList } from '~/components/resources'
 import { useRecordEditState, useSystemValues } from '~/components/resources/hooks'
-import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
 import { useRecordStore } from '~/components/resources/store/record-store'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 
 const INVOICE_STATUS_ATTRS = ['invoice_status', 'invoice_due_date', 'invoice_contact'] as const
 
-const INVOICE_LINE_SCHEMA = LINE_SCHEMAS.invoice
-
-/** What a credit memo line transcribes off an invoice line (accounting/10 §5.1). */
-const CREDIT_SOURCE_LINE_ATTRS = [
-  'line_item_name',
-  'line_item_qty',
-  'line_item_unit_price',
-  'line_item_line_total',
-  'line_item_tax_total',
-  'line_item_sort_order',
-] as const
-type CreditSourceLineValues = Partial<Record<(typeof CREDIT_SOURCE_LINE_ATTRS)[number], unknown>>
+/** `lines.create` takes at most this many per request. */
+const CREATE_CHUNK = 50
 
 /** Statuses where the invoice can still be (re)sent — void is terminal, paid rarely resent. */
 const SENDABLE_STATUSES = new Set(['draft', 'sent', 'partially_paid'])
@@ -83,28 +65,11 @@ export function InvoiceLinesCard({ recordId }: DrawerTabProps) {
   const dueDate = values.invoice_due_date as string | null | undefined
   const contactRecordId = extractRelationshipRecordIds(values.invoice_contact)[0]
 
-  // The invoice's OWNED lines, read through the same list key the `LineBuilder` below
-  // builds (`documentLineFilters` + `LINE_SORT`), so this is the already-loaded list and
-  // not a second fetch. Owned only: a gather stamps source work-order lines onto the
-  // invoice rather than copying them, and those are excluded by the schema's filter.
-  const lineFilters = useMemo<ConditionGroup[]>(
-    () => documentLineFilters(INVOICE_LINE_SCHEMA, recordId),
-    [recordId]
-  )
-  const { records: lineRecords } = useRecordList({
-    entityDefinitionId: INVOICE_LINE_SCHEMA.lineEntityType,
-    filters: lineFilters,
-    sorting: LINE_SORT,
-    limit: LINE_PAGE_SIZE,
-  })
-  const lineRecordIds = useMemo(
-    () => lineRecords.map((r) => toRecordId(INVOICE_LINE_SCHEMA.lineEntityType, r.id)),
-    [lineRecords]
-  )
-  const { valuesById: lineValuesById } = useSystemValuesForRecords(
-    lineRecordIds,
-    CREDIT_SOURCE_LINE_ATTRS,
-    { autoFetch: true, enabled: lineRecordIds.length > 0 }
+  // The invoice's own lines: the `LineBuilder` below reads the same cache, so no second fetch.
+  const [, invoiceId] = recordId.split(':')
+  const { data: invoiceLines } = api.lines.list.useQuery(
+    { documentType: 'invoice', documentId: invoiceId ?? '' },
+    { enabled: !!invoiceId }
   )
 
   const isOverdue = useMemo(() => {
@@ -140,7 +105,6 @@ export function InvoiceLinesCard({ recordId }: DrawerTabProps) {
 
   // The edit-in-place lane (74 §1.3). The three mutations return the stamp, so
   // the store is patched without waiting on the realtime echo or a refetch.
-  const [, invoiceId] = recordId.split(':')
   const editTarget = { family: 'invoice' as const, recordId: invoiceId ?? '' }
   const stampEdit = (edit: EditStamp | null) => {
     const [defId] = recordId.split(':')
@@ -160,27 +124,27 @@ export function InvoiceLinesCard({ recordId }: DrawerTabProps) {
   const cancelEdit = api.documentEdit.cancel.useMutation({
     onSuccess: (result) => {
       stampEdit(result.edit)
-      // Restore rewrote header values and deleted the lines the edit added, so
-      // every value the drawer holds for this invoice is stale.
+      // Restore rewrote header values and recreated the lines under new ids.
       utils.record.invalidate().catch(() => {})
+      utils.lines.list
+        .invalidate({ documentType: 'invoice', documentId: invoiceId })
+        .catch(() => {})
     },
     onError: (error) => toastError({ title: 'Error cancelling edit', description: error.message }),
   })
 
   // Raises a draft memo carrying every line of this invoice, then drills into it: the memo's
-  // own drawer is where lines are trimmed and the memo is issued (§6.2). Done client-side
-  // the way the line builder materializes drafts: `record.create` the memo (draft, native,
-  // this invoice and its contact), then `record.createMany` one `credit_memo_line` per
-  // invoice line, transcribing qty, unit price, subtotal and the line's own tax share.
+  // own drawer is where lines are trimmed and the memo is issued (§6.2). The memo header is a
+  // `record.create`; its lines transcribe qty, rate, subtotal and each line's own tax share.
   const createRecord = api.record.create.useMutation({
     onError: (error) =>
       toastError({ title: 'Error creating credit memo', description: error.message }),
   })
-  const createManyRecords = api.record.createMany.useMutation({
+  const createLines = api.lines.create.useMutation({
     onError: (error) =>
       toastError({ title: 'Error copying invoice lines', description: error.message }),
   })
-  const isCreditPending = createRecord.isPending || createManyRecords.isPending
+  const isCreditPending = createRecord.isPending || createLines.isPending
 
   const handleCredit = async () => {
     if (!contactRecordId) {
@@ -201,31 +165,26 @@ export function InvoiceLinesCard({ recordId }: DrawerTabProps) {
         },
       })
 
-      const lines = lineRecordIds.map((lineRecordId, index) => {
-        const line: CreditSourceLineValues = lineValuesById[lineRecordId] ?? {}
-        const qty = (line.line_item_qty as number | null | undefined) ?? 1
-        const unitPrice = line.line_item_unit_price as number | null | undefined
-        const lineTotal = line.line_item_line_total as number | null | undefined
-        const taxTotal = line.line_item_tax_total as number | null | undefined
-        const sortOrder = line.line_item_sort_order as number | null | undefined
-        return {
-          credit_memo_line_credit_memo: creditMemoRecordId,
-          credit_memo_line_line_item: lineRecordId,
-          credit_memo_line_description: (line.line_item_name as string | undefined) || undefined,
-          credit_memo_line_qty: qty,
-          credit_memo_line_unit_price: unitPrice ?? undefined,
-          credit_memo_line_subtotal:
-            lineTotal ??
-            (unitPrice !== null && unitPrice !== undefined ? Math.round(unitPrice * qty) : 0),
-          credit_memo_line_tax_total: taxTotal ?? undefined,
-          credit_memo_line_sort_order: sortOrder ?? index,
+      // Created in the invoice's order; the module stamps sort order at the tail.
+      const lines = (invoiceLines ?? []).map((line): CreateLineInput => {
+        const qty = line.qty ?? 1
+        const input: CreateLineInput = {
+          sourceLineItemId: line.id,
+          qty,
+          lineTotal:
+            line.lineTotal ?? (line.unitPrice !== null ? Math.round(line.unitPrice * qty) : 0),
         }
+        if (line.name) input.name = line.name
+        if (line.unitPrice !== null) input.unitPrice = line.unitPrice
+        if (line.taxTotal !== null) input.taxTotal = line.taxTotal
+        return input
       })
-      // `createMany` is capped at 50 per call, the interactive bulk-add ceiling.
-      for (let start = 0; start < lines.length; start += 50) {
-        await createManyRecords.mutateAsync({
-          entityDefinitionId: 'credit_memo_line',
-          records: lines.slice(start, start + 50),
+      const creditMemoId = parseRecordId(creditMemoRecordId).entityInstanceId
+      for (let start = 0; start < lines.length; start += CREATE_CHUNK) {
+        await createLines.mutateAsync({
+          documentType: 'credit_memo',
+          documentId: creditMemoId,
+          lines: lines.slice(start, start + CREATE_CHUNK),
         })
       }
 

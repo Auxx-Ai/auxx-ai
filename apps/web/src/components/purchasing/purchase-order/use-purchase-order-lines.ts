@@ -27,31 +27,37 @@
 //     B-9/D-11 in `plans/events/`, an open defect, and it is why this hook used
 //     to go stale.
 //
-// `LineBuilder` has been on the list lane since #1918 with the identical filter,
-// so a PO drawer mixing the two showed its Lines card updating live and its
-// Receiving card frozen — same rows, same drawer, two answers.
-//
-// The filter reuses `LINE_SCHEMAS`' own `relFieldId` rather than restating
-// `'purchase_order_line:purchaseOrder'` here. That table is the single place a
-// document's line wiring is declared, and its own warning says why: "three
-// hand-copied copies is how the read prefix and the write prefix drift apart."
+// The line builder reads `api.lines.list`; its writes still publish `record:*` and
+// `fieldValues:updated` to every tab (the acting one included), which keeps this lane live.
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import { useEffect, useMemo } from 'react'
 import { isServiceKind } from '~/components/drawers/part-kind-gates'
-import {
-  documentLineFilters,
-  LINE_PAGE_SIZE,
-  LINE_SORT,
-  lineSchemaFor,
-  numberOrNull,
-} from '~/components/money/ui/line-builder/line-values'
+import { numberOrNull } from '~/components/money/ui/line-builder/line-values'
 import { type RecordId, toRecordId, useRecordList, useResource } from '~/components/resources'
 import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
 import { numberValue, unwrapValue } from '../purchasing-summary-strip'
 
-const PO_LINE_SCHEMA = lineSchemaFor('purchase_order')
+const LINE_PAGE_SIZE = 100
+const LINE_SORT = [{ id: 'sortOrder', desc: false }]
+
+function purchaseOrderLineFilters(purchaseOrderRecordId: string): ConditionGroup[] {
+  return [
+    {
+      id: 'purchase-order-lines',
+      logicalOperator: 'AND',
+      conditions: [
+        {
+          id: 'purchase-order-lines-parent',
+          fieldId: 'purchase_order_line:purchaseOrder',
+          operator: 'is',
+          value: purchaseOrderRecordId,
+        },
+      ],
+    },
+  ]
+}
 
 const LINE_ATTRS = [
   'purchase_order_line_part',
@@ -128,22 +134,11 @@ export function usePurchaseOrderLines(purchaseOrderRecordId: RecordId | null): {
   lines: PurchaseOrderLineRow[]
   isLoading: boolean
 } {
-  const { resource } = useResource(PO_LINE_SCHEMA.slug)
+  const { resource } = useResource('purchase_order_line')
   const entityDefinitionId = resource?.id
 
-  // 🛑 Built by `documentLineFilters`, the same call the line builder makes, and
-  // that sharing is load-bearing rather than tidy. `createListKey` hashes
-  // `JSON.stringify(filters)`, so the condition ID STRINGS decide which
-  // `lists[...]` entry this read subscribes to. An equivalent filter written by
-  // hand here — same field, same operator, different ids — produces a DIFFERENT
-  // key, and `appendCreatedRecord(key, id)` only ever patches the one key that
-  // created the record while the acting tab is excluded from its own
-  // `record:created` frame. The card would then be just as stale as it was on the
-  // inverse mirror, for a completely different reason. Identical filters +
-  // identical sorting + identical limit is what puts this card on the builder's
-  // cache entry, which is the entry that gets the optimistic append.
   const filters = useMemo<ConditionGroup[]>(
-    () => documentLineFilters(PO_LINE_SCHEMA, purchaseOrderRecordId ?? ''),
+    () => purchaseOrderLineFilters(purchaseOrderRecordId ?? ''),
     [purchaseOrderRecordId]
   )
 
@@ -157,7 +152,7 @@ export function usePurchaseOrderLines(purchaseOrderRecordId: RecordId | null): {
 
   // Load every page rather than the first. A silently truncated set here would
   // read as "the order has 100 lines" to the picker and to the receiving totals,
-  // which is worse than slow — same reasoning (and same shape) as the builder's.
+  // which is worse than slow.
   useEffect(() => {
     if (hasNextPage && !isFetchingNextPage && !isLoading) fetchNextPage()
   }, [hasNextPage, isFetchingNextPage, isLoading, fetchNextPage])

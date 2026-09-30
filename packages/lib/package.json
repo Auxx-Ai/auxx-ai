@@ -64,6 +64,18 @@
       "import": "./dist/accounting/documents/edit-in-place/index.mjs",
       "default": "./src/accounting/documents/edit-in-place/index.ts"
     },
+    "./accounting/documents/lines": {
+      "types": "./src/accounting/documents/lines/index.ts",
+      "source": "./src/accounting/documents/lines/index.ts",
+      "import": "./dist/accounting/documents/lines/index.mjs",
+      "default": "./src/accounting/documents/lines/index.ts"
+    },
+    "./accounting/documents/lines/client": {
+      "types": "./src/accounting/documents/lines/client.ts",
+      "source": "./src/accounting/documents/lines/client.ts",
+      "import": "./dist/accounting/documents/lines/client.mjs",
+      "default": "./src/accounting/documents/lines/client.ts"
+    },
     "./accounting/export": {
       "types": "./src/accounting/export/index.ts",
       "source": "./src/accounting/export/index.ts",
