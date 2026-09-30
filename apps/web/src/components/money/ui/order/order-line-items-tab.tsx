@@ -20,6 +20,7 @@
 import { getInstanceId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { useEffect, useState } from 'react'
 import type { DetailViewTabProps } from '~/components/detail-view'
@@ -121,6 +122,9 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
         <DocumentSectionActions
           badge={
             <div className='flex items-center gap-1.5'>
+              {isConnectorManaged && (
+                <TooltipExplanation text='Shipments arrive from the sales channel and are posted in bulk.' />
+              )}
               {lane.editing && (
                 <Badge variant='amber' size='sm'>
                   Editing
@@ -157,11 +161,6 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
             <Button variant='outline' size='xs' onClick={() => setFulfillOpen(true)}>
               Fulfill
             </Button>
-          )}
-          {isConnectorManaged && (
-            <span className='text-muted-foreground text-xs'>
-              Shipments arrive from the sales channel and are posted in bulk
-            </span>
           )}
         </DocumentSectionActions>
       )}
