@@ -9,6 +9,9 @@ import {
   restoreRecordSnapshot,
 } from '../../../entity-instances/edit-snapshot'
 import { ConflictError } from '../../../errors'
+import { LINE_DOCUMENT_TYPES, type LineDocumentType } from '../lines/client'
+import { readDocumentLines } from '../lines/reads'
+import { publishLinesUpdated } from '../lines/realtime'
 import type { DocumentEditInput } from './open'
 import { documentEditRow } from './spec'
 
@@ -39,12 +42,26 @@ export async function cancelDocumentEdit(
     )
   }
 
+  const lineDoc = (LINE_DOCUMENT_TYPES as readonly string[]).includes(family)
+    ? { documentType: family as LineDocumentType, documentId: entityInstanceId }
+    : null
+  const linesBefore = lineDoc ? await readDocumentLines(db, organizationId, lineDoc) : []
+
   await restoreRecordSnapshot(db, {
     organizationId,
     entityInstanceId,
     actorUserId: userId,
     derivedTotalAttrs: documentEditRow(family).derivedTotalAttrs,
   })
+
+  // The restore writes lines through crud, which announces no `lines:updated`; open builders
+  // would otherwise keep the discarded rows until their next refetch.
+  if (lineDoc) {
+    const upserted = await readDocumentLines(db, organizationId, lineDoc)
+    const restoredIds = new Set(upserted.map((line) => line.id))
+    const deleted = linesBefore.map((line) => line.id).filter((id) => !restoredIds.has(id))
+    await publishLinesUpdated(organizationId, { ...lineDoc, upserted, deleted })
+  }
 
   const entityDefinitionId = await getCachedEntityDefId(organizationId, family)
   if (entityDefinitionId) {
