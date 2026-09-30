@@ -115,7 +115,6 @@ export {
 export {
   computeFlags,
   type FlagInput,
-  hasMirrorDrift,
   isUnbuiltSeller,
   unbuiltSalesPartIds,
 } from './run/flags'

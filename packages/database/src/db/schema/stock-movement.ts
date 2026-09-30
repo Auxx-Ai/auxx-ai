@@ -2,7 +2,11 @@
 // The inventory ledger: one row per stock movement, append-only. See plans/mrp/20-stock-movement-table.md §3.
 
 import { createId } from '@paralleldrive/cuid2'
-import { StockMovementCostBasisValues, StockMovementTypeValues } from '../../enums'
+import {
+  StockMovementConsumptionClassValues,
+  StockMovementCostBasisValues,
+  StockMovementTypeValues,
+} from '../../enums'
 import {
   type AnyPgColumn,
   bigint,
@@ -24,6 +28,11 @@ import { User } from './user'
 
 export const stockMovementType = pgEnum('StockMovementType', StockMovementTypeValues)
 export const stockMovementCostBasis = pgEnum('StockMovementCostBasis', StockMovementCostBasisValues)
+/** The pg type name predates this table; kept so no new type is made. */
+export const inventoryConsumptionClass = pgEnum(
+  'InventoryConsumptionClass',
+  StockMovementConsumptionClassValues
+)
 
 // Parent links are `no action`, not cascade: the lib seam deletes movements so QoH and roll-ups on
 // surviving parts are recomputed (plan §2 S9). Each FK column has an index leading with it, because
@@ -90,6 +99,8 @@ export const StockMovement = pgTable(
     countQuantity: numeric({ precision: 20, scale: 6, mode: 'number' }),
     /** Book-zone calendar day of the count. */
     countDate: date({ mode: 'string' }),
+    /** Planning class; a reversal carries its original's. Null until backfill 203. */
+    consumptionClass: inventoryConsumptionClass(),
     createdAt: timestamp({ precision: 3, withTimezone: true }).defaultNow().notNull(),
     createdById: text().references((): AnyPgColumn => User.id, {
       onUpdate: 'cascade',

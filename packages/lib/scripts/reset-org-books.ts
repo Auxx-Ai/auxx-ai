@@ -221,7 +221,6 @@ const SIDE_TABLES = [
   { name: 'WorkOrderVisit', table: schema.WorkOrderVisit },
   // The inventory ledger: its part/line FKs are NO ACTION, so it goes before the waves.
   { name: 'StockMovement', table: schema.StockMovement },
-  { name: 'InventoryMovementFact', table: schema.InventoryMovementFact },
   // `Build.partId` is NO ACTION, so builds go before a `--catalog` part delete.
   { name: 'Build', table: schema.Build },
   // Planned from the movements and documents above; `MrpPlanRunItem` cascades.

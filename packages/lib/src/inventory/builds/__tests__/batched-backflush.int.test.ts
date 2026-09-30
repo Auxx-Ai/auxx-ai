@@ -203,10 +203,6 @@ async function snapshot(s: Scenario): Promise<unknown> {
     .select()
     .from(schema.StockMovement)
     .where(inArray(schema.StockMovement.id, movementIds))
-  const facts = await db()
-    .select()
-    .from(schema.InventoryMovementFact)
-    .where(inArray(schema.InventoryMovementFact.id, movementIds))
   const qohField = await fieldId(org, 'part_quantity_on_hand')
   const qoh = await db()
     .select({ entityId: schema.FieldValue.entityId, value: schema.FieldValue.valueNumber })
@@ -227,7 +223,6 @@ async function snapshot(s: Scenario): Promise<unknown> {
 
   const data = {
     builds: builds.map(({ createdAt: _c, updatedAt: _u, startedAt: _s, ...rest }) => rest),
-    facts: facts.map(({ createdAt: _c, ...rest }) => rest),
     qoh,
     workItems: workItems.map(
       ({ id: _i, createdAt: _c, updatedAt: _u, nextAttemptAt: _n, ...rest }) => rest
@@ -242,7 +237,7 @@ async function snapshot(s: Scenario): Promise<unknown> {
   const relabelled = JSON.parse(text) as Record<string, Array<Record<string, unknown>>>
   const canonical = (rows: Array<Record<string, unknown>>) =>
     rows.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
-  for (const key of ['builds', 'facts', 'qoh', 'workItems', 'movements', 'posts']) {
+  for (const key of ['builds', 'qoh', 'workItems', 'movements', 'posts']) {
     canonical(relabelled[key]!)
   }
   return relabelled
@@ -271,7 +266,7 @@ async function countStatements(fn: () => Promise<unknown>): Promise<number> {
 }
 
 describe('a batched backflush slice stores what one completion per build stores', () => {
-  it('builds, movements, facts, QoH, parking and postings; contiguous numbers in walk order', async () => {
+  it('builds, movements, QoH, parking and postings; contiguous numbers in walk order', async () => {
     const perBuild = await seedScenario({ refusal: false })
     h.perBuild = true
     const one = await backflush(perBuild)

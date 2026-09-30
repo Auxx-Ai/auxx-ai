@@ -16,7 +16,6 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { withAccountingCommitLock } from '../src/accounting/ledger/post/accounting-commit-lock'
 import { getOrgCache } from '../src/cache'
 import { batchRecalculateQoH } from '../src/inventory/costing/qoh'
-import { deleteMovementFacts } from '../src/inventory/movements/fact/writes'
 import { syncReliefWorkItems } from '../src/inventory/relief/relieve'
 import { readOrganizationSettings } from '../src/settings/read'
 
@@ -495,7 +494,6 @@ async function main() {
   const backflushIdList = [...backflushSet]
   await db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, orgId)
-    await deleteMovementFacts(tx, legIdList)
     await tx.execute(sql`
       DELETE FROM "StockMovement" WHERE "organizationId" = ${orgId}
         AND id = ANY(string_to_array(${legIdList.join(',')}, ','))`)

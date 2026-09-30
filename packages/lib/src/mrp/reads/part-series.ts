@@ -13,7 +13,7 @@ import {
 import { and, eq, min } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
-import { type DailySeriesRow, readDailySeries } from '../../inventory/movements/fact/reads'
+import { type DailySeriesRow, readDailySeries } from '../../inventory/movements/usage-reads'
 import { readOpenBuilds } from '../run/load-inputs'
 import { poLineLandingDay } from '../run/stockout'
 import { isStockoutDay } from '../run/usage'
@@ -225,12 +225,12 @@ export async function readPartSeries(
       const from = addMonthsToDayKey(end, -PART_SERIES_WINDOW_MONTHS[input.window])
       const to = previousDayKey(end)
 
-      const F = schema.InventoryMovementFact
+      const M = schema.StockMovement
       const [[first], series, items] = await Promise.all([
         db
-          .select({ at: min(F.occurredAt) })
-          .from(F)
-          .where(and(eq(F.organizationId, organizationId), eq(F.partId, partId))),
+          .select({ at: min(M.effectiveAt) })
+          .from(M)
+          .where(and(eq(M.organizationId, organizationId), eq(M.partId, partId))),
         readDailySeries(db, organizationId, { partIds: [partId], from, to, zone }),
         run ? readItems(db, organizationId, run.id, [partId]) : new Map<string, MrpPlanItemRow>(),
       ])

@@ -5,7 +5,7 @@ import { addDaysToDayKey, type DayKey, todayInZone } from '@auxx/utils/calendar-
 import type { Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { getOrgCache } from '../../cache'
-import { readDailyActivity, readDailySeries } from '../../inventory/movements/fact/reads'
+import { readDailyActivity, readDailySeries } from '../../inventory/movements/usage-reads'
 import { readFamilyVariants } from './family-variants'
 import { guard } from './guard'
 import { readPartLabels, readRecordNames } from './labels'

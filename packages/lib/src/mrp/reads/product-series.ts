@@ -11,7 +11,7 @@ import {
 import { and, eq, inArray, min } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
-import { readDailySeries } from '../../inventory/movements/fact/reads'
+import { readDailySeries } from '../../inventory/movements/usage-reads'
 import { readFamilyVariants } from './family-variants'
 import { guard } from './guard'
 import { readItems } from './part-item'
@@ -79,13 +79,13 @@ export async function readProductSeries(
 
       const stocked = variants.filter((v) => v.stocked)
       const stockedIds = stocked.map((v) => v.partId)
-      const F = schema.InventoryMovementFact
+      const M = schema.StockMovement
       const [[first], rows, items] = await Promise.all([
         stockedIds.length
           ? db
-              .select({ at: min(F.occurredAt) })
-              .from(F)
-              .where(and(eq(F.organizationId, organizationId), inArray(F.partId, stockedIds)))
+              .select({ at: min(M.effectiveAt) })
+              .from(M)
+              .where(and(eq(M.organizationId, organizationId), inArray(M.partId, stockedIds)))
           : [{ at: null }],
         readDailySeries(db, organizationId, { partIds: stockedIds, from, to, zone }),
         run ? readItems(db, organizationId, run.id, stockedIds) : new Map<string, MrpPlanItemRow>(),

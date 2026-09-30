@@ -26,8 +26,6 @@ export function explainFlag(
       return 'Some sales never relieved stock in the ledger, so usage reads low'
     case 'unbuilt_sales':
       return 'More was sold than was built plus opening stock'
-    case 'mirror_drift':
-      return 'The movement history disagrees with on hand'
     case 'negative_on_hand':
       return 'On hand went below zero, so builds or receipts are missing'
     case 'thin_usage':

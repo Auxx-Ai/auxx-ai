@@ -1,13 +1,7 @@
 // packages/lib/src/mrp/__tests__/flags.test.ts
 
 import { describe, expect, it } from 'vitest'
-import {
-  computeFlags,
-  type FlagInput,
-  hasMirrorDrift,
-  isUnbuiltSeller,
-  unbuiltSalesPartIds,
-} from '../run/flags'
+import { computeFlags, type FlagInput, isUnbuiltSeller, unbuiltSalesPartIds } from '../run/flags'
 import { classifySupply, resolveStatedLeadTime } from '../run/lead-time'
 import type { OpenPoLineInput } from '../types'
 
@@ -21,7 +15,6 @@ const CLEAN: FlagInput = {
   negativeOnHand: false,
   thinUsage: false,
   leadTimeDrift: false,
-  mirrorDrift: false,
   wontMakeNextArrival: false,
   poLines: [],
 }
@@ -102,10 +95,11 @@ describe('the remaining flags', () => {
     ])
   })
 
-  it('lead_time_drift, mirror_drift and wont_make_next_arrival pass through', () => {
-    expect(
-      computeFlags({ ...CLEAN, leadTimeDrift: true, mirrorDrift: true, wontMakeNextArrival: true })
-    ).toEqual(['lead_time_drift', 'mirror_drift', 'wont_make_next_arrival'])
+  it('lead_time_drift and wont_make_next_arrival pass through', () => {
+    expect(computeFlags({ ...CLEAN, leadTimeDrift: true, wontMakeNextArrival: true })).toEqual([
+      'lead_time_drift',
+      'wont_make_next_arrival',
+    ])
   })
 
   it('overdue_receipt for an issued open line past its expected date only', () => {
@@ -129,11 +123,5 @@ describe('helpers', () => {
   it('does not flag a seller covered by builds or opening stock', () => {
     expect(isUnbuiltSeller({ sold: 40, produced: 30, opening: 10 })).toBe(false)
     expect(isUnbuiltSeller({ sold: 0, produced: 0, opening: 0 })).toBe(false)
-  })
-
-  it('compares the mirror close to part_quantity_on_hand', () => {
-    expect(hasMirrorDrift(10, 10)).toBe(false)
-    expect(hasMirrorDrift(9, 10)).toBe(true)
-    expect(hasMirrorDrift(null, 10)).toBe(false)
   })
 })

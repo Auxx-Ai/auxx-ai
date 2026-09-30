@@ -71,17 +71,13 @@ async function startedBuild(quantity: number): Promise<string> {
   return created.value.buildId
 }
 
-/** Movement rows, facts and the GL entry of one build's ledger, ids and times stripped. */
+/** Movement rows and the GL entry of one build's ledger, ids and times stripped. */
 async function ledgerSnapshot(result: CompleteBuildResult): Promise<string> {
   const { buildId, movementIds } = result
   const rows = await db()
     .select()
     .from(schema.StockMovement)
     .where(inArray(schema.StockMovement.id, movementIds))
-  const facts = await db()
-    .select()
-    .from(schema.InventoryMovementFact)
-    .where(inArray(schema.InventoryMovementFact.id, movementIds))
   // The fixture keeps no books, so the entry is compared as the build hands it to the poster.
   const posted = h.posts.find((post) => post.subject.sourceId === buildId) ?? null
 
@@ -90,9 +86,6 @@ async function ledgerSnapshot(result: CompleteBuildResult): Promise<string> {
     rows: [...rows]
       .sort((a, b) => byId(a.id) - byId(b.id))
       .map(({ createdAt: _c, effectiveAt: _e, ...rest }) => rest),
-    facts: [...facts]
-      .sort((a, b) => byId(a.id) - byId(b.id))
-      .map(({ createdAt: _c, ...rest }) => rest),
     posted,
   }
   let text = JSON.stringify(stripped)

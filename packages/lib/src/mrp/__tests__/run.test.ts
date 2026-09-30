@@ -159,7 +159,6 @@ function night(): RunInputs {
     monthly: [],
     whereUsed: [],
     receipts: [],
-    driftedPartIds: new Set(['widget']),
   }
 }
 
@@ -265,7 +264,7 @@ describe('runMrpPlan: a normal night (04 §1)', () => {
     })
   })
 
-  it('bad data surfaces as flags (04 §6) and mirror drift comes from the drift check', async () => {
+  it('bad data surfaces as flags (04 §6)', async () => {
     vi.mocked(loadRunInputs).mockResolvedValue(ok(night()))
     await runMrpPlan(db, 'org-1', { trigger: 'nightly' })
     const items = writtenItems()
@@ -277,13 +276,13 @@ describe('runMrpPlan: a normal night (04 §1)', () => {
       suggestionKind: null,
       flags: ['no_lead_time'],
     })
-    expect(items.get('widget')?.flags).toEqual(['mirror_drift', 'unclassified'])
+    expect(items.get('widget')?.flags).toEqual(['unclassified'])
   })
 })
 
 describe('runMrpPlan: failures', () => {
   it('a failing load marks the run failed and returns the error', async () => {
-    const boom = new Error('mirror unavailable')
+    const boom = new Error('ledger unavailable')
     vi.mocked(loadRunInputs).mockResolvedValue(err(boom))
     const result = await runMrpPlan(db, 'org-1', { trigger: 'manual' })
 

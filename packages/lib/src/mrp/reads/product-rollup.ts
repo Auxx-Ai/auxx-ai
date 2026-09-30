@@ -1,7 +1,7 @@
 // packages/lib/src/mrp/reads/product-rollup.ts
 
 import type { DayKey } from '@auxx/utils/calendar-day'
-import type { DailySeriesRow } from '../../inventory/movements/fact/reads'
+import type { DailySeriesRow } from '../../inventory/movements/usage-reads'
 import type { MrpSuggestionKind } from '../client'
 import { isStockoutDay } from '../run/usage'
 import type { FamilyVariant } from './family-variants'

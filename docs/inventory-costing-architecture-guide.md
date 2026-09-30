@@ -370,8 +370,7 @@ after D stand (Q15). The `initial` is therefore a **derived anchor, not an event
 one row on the append-only ledger allowed to move: `reanchorInitials` runs in front of the SUM
 in `batchRecalculateQoH`, and when a movement older than the initial has arrived or the replay
 no longer reads N on D it re-dates and re-quantifies the row on the quiet lane
-(`REANCHOR_INITIAL_REASON`), idempotently. `onInitialReanchored` is the seam where the MRP
-mirror's `updateMovementFactAnchor` goes. Migration 193 (c) stamps every pre-existing `initial`
+(`REANCHOR_INITIAL_REASON`), idempotently. Migration 193 (c) stamps every pre-existing `initial`
 with its own (quantity, day) so old openings re-anchor too.
 
 ### 6.3 `occurredAt`
@@ -526,16 +525,14 @@ supersedes to `reversed`, so a reversed entry stops matching on its own.
 balance or a `build_consume` would pass a receipts-only check and delete clean out of a posted
 month.
 
-### 6.5 The planning mirror: `InventoryMovementFact`
+### 6.5 The planning class: `StockMovement.consumptionClass`
 
-A derived, rebuildable copy of every `StockMovement` row (id, part, type, signed quantity,
-`effectiveAt`, links, and a consumption class), owned by `inventory/movements/fact/`
-(plans/mrp/02-data-structures.md §3). `writeStockMovements` writes it in the caller's transaction
-(the opening-stock writers included, through `setCount`), `deleteMovementsFor` deletes it with its
-movements (its `EntityInstance` FK is gone), and `rebuildMovementFacts` replays it;
-`compareFactsToLedger` is its drift check. **Nothing in QoH, costing, relief or the GL reads it** —
-it carries no cost, and a bug in it can make a chart wrong, never the books. plans/mrp/20 phase 2
-moves its MRP readers onto the table and drops it.
+MRP charts and usage read `StockMovement` directly. Each row carries a `consumptionClass`
+(`consumption`, `scrap`, `supply`, `adjustment`, `none`), stamped by `writeStockMovements` from
+`inventory/movements/classify.ts`: a reversal takes its original's class, a BOM child is
+`adjustment`. The column is nullable because rows written before it are backfilled by data
+migration 203. **Nothing in QoH, costing, relief or the GL reads it** — a wrong class can make a
+chart wrong, never the books.
 
 ---
 

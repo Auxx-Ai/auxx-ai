@@ -829,6 +829,17 @@ export type StockMovementTypeValue = (typeof StockMovementTypeValues)[number]
 export const StockMovementCostBasisValues = ['standard', 'actual', 'pending'] as const
 export type StockMovementCostBasisValue = (typeof StockMovementCostBasisValues)[number]
 
+/** How a movement counts for planning; see lib's `inventory/movements/classify.ts`. */
+export const StockMovementConsumptionClassValues = [
+  'consumption', // sale, ship, build_consume
+  'scrap', // consumption, reported separately
+  'supply', // receive, build_produce, initial, salvage return_in, return_out
+  'adjustment', // adjust, and children of an exploded adjustment
+  'none', // revalue (quantity 0)
+] as const
+export type StockMovementConsumptionClassValue =
+  (typeof StockMovementConsumptionClassValues)[number]
+
 /** A `Build.status`. Mirrors the `BuildStatus` pgEnum; labels live in lib's `enum-values.ts`. */
 export const BuildStatusValues = ['planned', 'in_progress', 'completed', 'canceled'] as const
 export type BuildStatusValue = (typeof BuildStatusValues)[number]

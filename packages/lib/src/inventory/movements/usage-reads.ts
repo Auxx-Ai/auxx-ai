@@ -1,14 +1,13 @@
-// packages/lib/src/inventory/movements/fact/reads.ts
+// packages/lib/src/inventory/movements/usage-reads.ts
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, asc, count, eq, inArray, type SQL, sql, sum } from 'drizzle-orm'
+import { and, asc, eq, inArray, type SQL, sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { chunkArray } from '../../../import/utils/chunk-array'
-import { StockMovementType } from '../../../resources/registry/enum-values'
-import { guard } from '../guard'
-import type { ConsumptionClass } from './classify'
+import { chunkArray } from '../../import/utils/chunk-array'
+import { StockMovementType } from '../../resources/registry/enum-values'
+import { guard } from './guard'
 
-const F = schema.InventoryMovementFact
+const M = schema.StockMovement
 const ID_CHUNK = 500
 
 type Db = Database | Transaction
@@ -69,12 +68,6 @@ export interface DailyActivityRow {
   consumeCount: number
 }
 
-/** Count and signed sum of one part's mirror rows. */
-export interface FactTotals {
-  count: number
-  sum: number
-}
-
 /** `(day::timestamp AT TIME ZONE zone)`: the instant a book day starts. */
 function dayStart(dayKey: SQL, zone: string): SQL {
   return sql`((${dayKey})::timestamp AT TIME ZONE ${zone})`
@@ -91,24 +84,24 @@ function seriesCte(organizationId: string, partIds: readonly string[], range: Fa
       SELECT generate_series(${from}::date, ${to}::date, interval '1 day')::date AS day
     ),
     opening AS (
-      SELECT ${F.partId} AS "partId", SUM(${F.quantity}) AS qty
-      FROM ${F}
-      WHERE ${F.organizationId} = ${organizationId}
-        AND ${F.partId} = ANY(${sql.param([...partIds])}::text[])
-        AND ${F.occurredAt} < ${fromInstant}
+      SELECT ${M.partId} AS "partId", SUM(${M.quantity}) AS qty
+      FROM ${M}
+      WHERE ${M.organizationId} = ${organizationId}
+        AND ${M.partId} = ANY(${sql.param([...partIds])}::text[])
+        AND ${M.effectiveAt} < ${fromInstant}
       GROUP BY 1
     ),
     agg AS (
-      SELECT ${F.partId} AS "partId",
-             (${F.occurredAt} AT TIME ZONE ${zone})::date AS day,
-             SUM(-${F.quantity}) FILTER (WHERE ${F.consumptionClass} = 'consumption') AS consumed,
-             SUM(-${F.quantity}) FILTER (WHERE ${F.consumptionClass} = 'scrap') AS scrapped,
-             SUM(${F.quantity}) AS net
-      FROM ${F}
-      WHERE ${F.organizationId} = ${organizationId}
-        AND ${F.partId} = ANY(${sql.param([...partIds])}::text[])
-        AND ${F.occurredAt} >= ${fromInstant}
-        AND ${F.occurredAt} < ${toInstant}
+      SELECT ${M.partId} AS "partId",
+             (${M.effectiveAt} AT TIME ZONE ${zone})::date AS day,
+             SUM(-${M.quantity}) FILTER (WHERE ${M.consumptionClass} = 'consumption') AS consumed,
+             SUM(-${M.quantity}) FILTER (WHERE ${M.consumptionClass} = 'scrap') AS scrapped,
+             SUM(${M.quantity}) AS net
+      FROM ${M}
+      WHERE ${M.organizationId} = ${organizationId}
+        AND ${M.partId} = ANY(${sql.param([...partIds])}::text[])
+        AND ${M.effectiveAt} >= ${fromInstant}
+        AND ${M.effectiveAt} < ${toInstant}
       GROUP BY 1, 2
     ),
     series AS (
@@ -125,7 +118,7 @@ function seriesCte(organizationId: string, partIds: readonly string[], range: Fa
     )`
 }
 
-/** Per part per book day: consumed, scrapped, net and end-of-day on hand replayed from the mirror. */
+/** Per part per book day: consumed, scrapped, net and end-of-day on hand replayed from the ledger. */
 export async function readDailySeries(
   db: Db,
   organizationId: string,
@@ -203,20 +196,20 @@ export async function readReceiptsForPoLines(
       for (const chunk of chunkArray([...new Set(poLineIds)], ID_CHUNK)) {
         const rows = await db
           .select({
-            movementId: F.id,
-            purchaseOrderLineId: F.purchaseOrderLineId,
-            occurredAt: F.occurredAt,
-            quantity: F.quantity,
+            movementId: M.id,
+            purchaseOrderLineId: M.purchaseOrderLineId,
+            occurredAt: M.effectiveAt,
+            quantity: M.quantity,
           })
-          .from(F)
+          .from(M)
           .where(
             and(
-              eq(F.organizationId, organizationId),
-              eq(F.type, StockMovementType.RECEIVE),
-              inArray(F.purchaseOrderLineId, chunk)
+              eq(M.organizationId, organizationId),
+              eq(M.type, StockMovementType.RECEIVE),
+              inArray(M.purchaseOrderLineId, chunk)
             )
           )
-          .orderBy(asc(F.occurredAt), asc(F.id))
+          .orderBy(asc(M.effectiveAt), asc(M.id))
         for (const row of rows) {
           out.push({ ...row, purchaseOrderLineId: row.purchaseOrderLineId as string })
         }
@@ -243,22 +236,22 @@ export async function readWhereUsedShares(
       // An aggregate over a self-join through buildId, with a window share: no query-builder form.
       const result = await db.execute(sql`
         WITH produced AS (
-          SELECT DISTINCT ${F.buildId} AS "buildId", ${F.partId} AS "partId"
-          FROM ${F}
-          WHERE ${F.organizationId} = ${organizationId}
-            AND ${F.type} = ${StockMovementType.BUILD_PRODUCE}
-            AND ${F.buildId} IS NOT NULL
+          SELECT DISTINCT ${M.buildId} AS "buildId", ${M.partId} AS "partId"
+          FROM ${M}
+          WHERE ${M.organizationId} = ${organizationId}
+            AND ${M.type} = ${StockMovementType.BUILD_PRODUCE}
+            AND ${M.buildId} IS NOT NULL
         ),
         used AS (
-          SELECT ${F.partId} AS "componentId", produced."partId" AS "producedPartId",
-                 SUM(-${F.quantity}) AS qty
-          FROM ${F}
-          JOIN produced ON produced."buildId" = ${F.buildId}
-          WHERE ${F.organizationId} = ${organizationId}
-            AND ${F.type} = ${StockMovementType.BUILD_CONSUME}
-            AND ${F.partId} = ANY(${sql.param([...partIds])}::text[])
-            AND ${F.occurredAt} >= ${fromInstant}
-            AND ${F.occurredAt} < ${toInstant}
+          SELECT ${M.partId} AS "componentId", produced."partId" AS "producedPartId",
+                 SUM(-${M.quantity}) AS qty
+          FROM ${M}
+          JOIN produced ON produced."buildId" = ${M.buildId}
+          WHERE ${M.organizationId} = ${organizationId}
+            AND ${M.type} = ${StockMovementType.BUILD_CONSUME}
+            AND ${M.partId} = ANY(${sql.param([...partIds])}::text[])
+            AND ${M.effectiveAt} >= ${fromInstant}
+            AND ${M.effectiveAt} < ${toInstant}
           GROUP BY 1, 2
         )
         SELECT "componentId", "producedPartId", qty::float8 AS quantity,
@@ -289,26 +282,26 @@ export async function readDailyActivity(
       if (input.partIds.length === 0) return []
       const fromInstant = dayStart(sql`${input.from}::date`, input.zone)
       const toInstant = dayStart(sql`${input.to}::date + 1`, input.zone)
-      const sale = sql`${F.type} IN (${StockMovementType.SALE}, ${StockMovementType.SHIP})`
-      const produce = sql`${F.type} = ${StockMovementType.BUILD_PRODUCE}`
-      const consume = sql`${F.type} = ${StockMovementType.BUILD_CONSUME}`
+      const sale = sql`${M.type} IN (${StockMovementType.SALE}, ${StockMovementType.SHIP})`
+      const produce = sql`${M.type} = ${StockMovementType.BUILD_PRODUCE}`
+      const consume = sql`${M.type} = ${StockMovementType.BUILD_CONSUME}`
       // Aggregate per book day with FILTERs; reversals and exploded children are left out, these are shape signals, not totals.
       const result = await db.execute(sql`
-        SELECT ${F.partId} AS "partId",
-               to_char((${F.occurredAt} AT TIME ZONE ${input.zone})::date, 'YYYY-MM-DD') AS day,
-               COALESCE(SUM(-${F.quantity}) FILTER (WHERE ${sale}), 0)::float8 AS "saleQty",
+        SELECT ${M.partId} AS "partId",
+               to_char((${M.effectiveAt} AT TIME ZONE ${input.zone})::date, 'YYYY-MM-DD') AS day,
+               COALESCE(SUM(-${M.quantity}) FILTER (WHERE ${sale}), 0)::float8 AS "saleQty",
                COUNT(*) FILTER (WHERE ${sale})::int AS "saleCount",
-               COALESCE(SUM(${F.quantity}) FILTER (WHERE ${produce}), 0)::float8 AS "produceQty",
+               COALESCE(SUM(${M.quantity}) FILTER (WHERE ${produce}), 0)::float8 AS "produceQty",
                COUNT(*) FILTER (WHERE ${produce})::int AS "produceCount",
-               COALESCE(SUM(-${F.quantity}) FILTER (WHERE ${consume}), 0)::float8 AS "consumeQty",
+               COALESCE(SUM(-${M.quantity}) FILTER (WHERE ${consume}), 0)::float8 AS "consumeQty",
                COUNT(*) FILTER (WHERE ${consume})::int AS "consumeCount"
-        FROM ${F}
-        WHERE ${F.organizationId} = ${organizationId}
-          AND ${F.partId} = ANY(${sql.param([...input.partIds])}::text[])
-          AND ${F.occurredAt} >= ${fromInstant}
-          AND ${F.occurredAt} < ${toInstant}
-          AND ${F.reversesMovementId} IS NULL
-          AND ${F.parentMovementId} IS NULL
+        FROM ${M}
+        WHERE ${M.organizationId} = ${organizationId}
+          AND ${M.partId} = ANY(${sql.param([...input.partIds])}::text[])
+          AND ${M.effectiveAt} >= ${fromInstant}
+          AND ${M.effectiveAt} < ${toInstant}
+          AND ${M.reversesMovementId} IS NULL
+          AND ${M.parentMovementId} IS NULL
           AND (${sale} OR ${produce} OR ${consume})
         GROUP BY 1, 2
         ORDER BY 1, 2
@@ -327,35 +320,4 @@ export async function readDailyActivity(
     'Failed to read daily movement activity',
     { organizationId, parts: input.partIds.length }
   )
-}
-
-/** Count and signed sum of the mirror per part, for the drift check. */
-export async function readFactTotalsByPart(
-  db: Db,
-  organizationId: string
-): Promise<Map<string, FactTotals>> {
-  // Aggregate: one grouped count and SUM per part.
-  const rows = await db
-    .select({ partId: F.partId, n: count(), total: sum(F.quantity) })
-    .from(F)
-    .where(eq(F.organizationId, organizationId))
-    .groupBy(F.partId)
-  return new Map(rows.map((row) => [row.partId, { count: row.n, sum: Number(row.total ?? 0) }]))
-}
-
-/** The stored class of each of these movements that the mirror holds. */
-export async function readMovementFactClasses(
-  db: Db,
-  organizationId: string,
-  ids: readonly string[]
-): Promise<Map<string, ConsumptionClass>> {
-  const out = new Map<string, ConsumptionClass>()
-  for (const chunk of chunkArray([...new Set(ids)], ID_CHUNK)) {
-    const rows = await db
-      .select({ id: F.id, consumptionClass: F.consumptionClass })
-      .from(F)
-      .where(and(eq(F.organizationId, organizationId), inArray(F.id, chunk)))
-    for (const row of rows) out.set(row.id, row.consumptionClass)
-  }
-  return out
 }

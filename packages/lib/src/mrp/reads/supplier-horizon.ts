@@ -11,7 +11,10 @@ import {
 import type { Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { NotFoundError } from '../../errors'
-import { type PoLineReceiptRow, readReceiptsForPoLines } from '../../inventory/movements/fact/reads'
+import {
+  type PoLineReceiptRow,
+  readReceiptsForPoLines,
+} from '../../inventory/movements/usage-reads'
 import { summarizeSupplyHistory } from '../run/lead-time'
 import { rhythmDate } from '../run/scheduled'
 import type { ReceiptObservation, SupplierInput } from '../types'

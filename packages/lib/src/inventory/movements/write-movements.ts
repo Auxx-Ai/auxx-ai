@@ -18,9 +18,9 @@ import { getDeductionTargets, loadSubpartGraph } from '../bom/subpart-graph'
 import { readPartKinds } from '../builds/build-queries'
 import { isServicePartKind } from '../costing/client'
 import { batchRecalculateQoH } from '../costing/qoh'
-import { movementFactFromInput, readOriginalClasses } from './fact/live'
-import { insertMovementFacts, type MovementFactInput } from './fact/writes'
+import { type ConsumptionClass, classifyMovement } from './classify'
 import { guard } from './guard'
+import { readConsumptionClasses } from './reads'
 import { toStockMovementRow } from './row'
 import type {
   StockMovementInput,
@@ -59,7 +59,7 @@ export async function assertNoServiceParts(
 
 /**
  * Write movements as one batched insert on `ctx.db` (pass the caller's transaction), plus their BOM
- * children and planning facts. Never opens a transaction and never recomputes QoH or roll-ups: the
+ * children. Never opens a transaction and never recomputes QoH or roll-ups: the
  * caller MUST pass `touched` to {@link settleStockMovements} after its commit.
  */
 export async function writeStockMovements(
@@ -79,6 +79,7 @@ export async function writeStockMovements(
         createdAt,
       })
       const rows = inputs.map((input) => toStockMovementRow(meta(generateId()), input))
+      await stampConsumptionClasses(ctx, rows)
       const children = await explodeBomRows(ctx, inputs, rows)
 
       // Parents before children, so a chunk never holds a child whose parent is still unwritten.
@@ -94,17 +95,6 @@ export async function writeStockMovements(
           })
       }
 
-      const reversed = inputs.flatMap((input) => input.links?.reversesMovementId ?? [])
-      const originalClasses = reversed.length
-        ? await readOriginalClasses(ctx.db, ctx.organizationId, reversed)
-        : new Map()
-      await insertMovementFacts(ctx.db, ctx.organizationId, [
-        ...inputs.map((input, i) =>
-          movementFactFromInput(rows[i]!.id!, createdAt, input, originalClasses)
-        ),
-        ...children.map(childFact),
-      ])
-
       const records: WrittenStockMovement[] = rows.map((row, i) => ({
         id: row.id!,
         partInstanceId: row.partId,
@@ -119,6 +109,25 @@ export async function writeStockMovements(
     'Failed to write stock movements',
     { organizationId: ctx.organizationId, count: inputs.length }
   )
+}
+
+/** Set each row's class; a reversal's original was written before this call, so it is readable. */
+async function stampConsumptionClasses(
+  ctx: StockMovementsCtx,
+  rows: CreateStockMovementInput[]
+): Promise<void> {
+  const reversed = rows.flatMap((row) => row.reversesMovementId ?? [])
+  const originalClasses = reversed.length
+    ? await readConsumptionClasses(ctx.db, ctx.organizationId, reversed)
+    : new Map<string, ConsumptionClass>()
+  for (const row of rows) {
+    const reverses = row.reversesMovementId ?? null
+    row.consumptionClass = classifyMovement(row.type, {
+      reversesClass: reverses ? originalClasses.get(reverses) : null,
+      parentMovementId: row.parentMovementId,
+      isSalvage: !reverses,
+    })
+  }
 }
 
 /** Child rows for every input that asked for a BOM explosion (inventory guide §8.2); uncosted, as before. */
@@ -147,24 +156,11 @@ async function explodeBomRows(
         reference: parent.reference,
         occurredAt: parent.occurredAt,
         parentMovementId: parent.id,
+        consumptionClass: 'adjustment',
       })
     }
   }
   return children
-}
-
-/** A BOM child's planning fact: an exploded adjustment is always `adjustment`. */
-function childFact(row: CreateStockMovementInput): MovementFactInput {
-  return {
-    id: row.id!,
-    partId: row.partId,
-    type: row.type,
-    quantity: row.quantity,
-    occurredAt: row.occurredAt ?? null,
-    createdAt: row.createdAt!,
-    consumptionClass: 'adjustment',
-    parentMovementId: row.parentMovementId ?? null,
-  }
 }
 
 function emptyTouched(): StockMovementTouched {

@@ -10,7 +10,7 @@ import {
   readDailySeries,
   readWhereUsedShares,
   type WhereUsedShareRow,
-} from '../../inventory/movements/fact/reads'
+} from '../../inventory/movements/usage-reads'
 import { guard } from './guard'
 import { readPartLabels } from './labels'
 import { readItems } from './part-item'

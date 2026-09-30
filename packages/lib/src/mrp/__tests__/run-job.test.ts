@@ -13,9 +13,6 @@ vi.mock('../run/write-run', () => ({ pruneRuns: vi.fn(), failStaleRuns: vi.fn() 
 vi.mock('../../settings/read', () => ({
   readOrganizationSettings: vi.fn(async () => ({ 'mrp.runRetentionDays': 30 })),
 }))
-vi.mock('../../inventory/movements/fact/reads', () => ({ readFactTotalsByPart: vi.fn() }))
-vi.mock('../../inventory/movements/fact/drift-check', () => ({ compareFactsToLedger: vi.fn() }))
-vi.mock('../../inventory/movements/fact/rebuild', () => ({ rebuildMovementFacts: vi.fn() }))
 const queue = { add: vi.fn(), getJob: vi.fn() }
 vi.mock('../../jobs/queues', () => ({
   getQueue: () => queue,
@@ -25,9 +22,6 @@ vi.mock('../../jobs/queues', () => ({
 const { isMrpEnabled } = await import('../guard')
 const { runMrpPlan } = await import('../run/run')
 const { failStaleRuns, pruneRuns } = await import('../run/write-run')
-const { readFactTotalsByPart } = await import('../../inventory/movements/fact/reads')
-const { compareFactsToLedger } = await import('../../inventory/movements/fact/drift-check')
-const { rebuildMovementFacts } = await import('../../inventory/movements/fact/rebuild')
 const { enqueueMrpRun, isMrpRunActive, mrpNightlyJob, runMrpForOrganization } = await import(
   '../run/run-job'
 )
@@ -43,7 +37,6 @@ beforeEach(() => {
   vi.mocked(runMrpPlan).mockResolvedValue(ok({ runId: 'r', itemCount: 1, durationMs: 1 }))
   vi.mocked(pruneRuns).mockResolvedValue(ok({ deleted: 0 }))
   vi.mocked(failStaleRuns).mockResolvedValue(ok({ failed: 0 }))
-  vi.mocked(readFactTotalsByPart).mockResolvedValue(new Map([['p', { count: 1, sum: 1 }]]))
 })
 
 describe('runMrpForOrganization', () => {
@@ -65,7 +58,6 @@ describe('runMrpForOrganization', () => {
     expect(await runMrpForOrganization(db, 'org-1', 'nightly')).toBe('completed')
     expect(runMrpPlan).toHaveBeenCalledWith(db, 'org-1', { trigger: 'nightly' })
     expect(pruneRuns).toHaveBeenCalledWith(db, 'org-1', 30)
-    expect(rebuildMovementFacts).not.toHaveBeenCalled()
     expect(lock.release).toHaveBeenCalledOnce()
   })
 
@@ -75,17 +67,6 @@ describe('runMrpForOrganization', () => {
     expect(vi.mocked(failStaleRuns).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(runMrpPlan).mock.invocationCallOrder[0] ?? 0
     )
-  })
-
-  it('rebuilds an empty mirror once when the ledger has movements', async () => {
-    vi.mocked(readFactTotalsByPart).mockResolvedValue(new Map())
-    vi.mocked(compareFactsToLedger).mockResolvedValue(
-      ok([{ partId: 'p', ledgerCount: 3, factCount: 0, ledgerSum: 5, factSum: 0 }])
-    )
-    vi.mocked(rebuildMovementFacts).mockResolvedValue(ok({ inserted: 3 }))
-    await runMrpForOrganization(db, 'org-1', 'nightly')
-    expect(rebuildMovementFacts).toHaveBeenCalledWith(db, 'org-1')
-    expect(runMrpPlan).toHaveBeenCalledOnce()
   })
 
   it('runs unlocked when Redis is down', async () => {

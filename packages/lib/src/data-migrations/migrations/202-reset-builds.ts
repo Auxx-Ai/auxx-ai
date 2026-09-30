@@ -195,11 +195,6 @@ async function resetOrg(
   }
 
   await tx.execute(sql`
-    DELETE FROM "InventoryMovementFact"
-    WHERE "organizationId" = ${organizationId}
-      AND (id IN (SELECT id FROM _m202_move) OR "buildId" IN (SELECT id FROM _m202_build))
-  `)
-  await tx.execute(sql`
     DELETE FROM "StockMovement"
     WHERE "organizationId" = ${organizationId} AND id IN (SELECT id FROM _m202_move)
   `)

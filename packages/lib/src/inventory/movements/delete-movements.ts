@@ -4,7 +4,6 @@ import type { Transaction } from '@auxx/database'
 import { sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { BadRequestError } from '../../errors'
-import { deleteMovementFacts } from './fact/writes'
 import { guard } from './guard'
 import type { StockMovementTouched } from './types'
 import { touchedBy } from './write-movements'
@@ -74,7 +73,6 @@ export async function deleteMovementsFor(
       `)
       const rows = deleted.rows
       const deletedIds = rows.map((row) => row.id)
-      await deleteMovementFacts(tx, deletedIds)
 
       const all = touchedBy(rows)
       const without = (ids: string[], gone: string[]) => ids.filter((id) => !gone.includes(id))

@@ -3,6 +3,8 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createTestOrganization, getTestDb } from '@auxx/test-utils'
+import { classifyMovement } from '../../classify'
+import { readConsumptionClasses } from '../../reads'
 
 const db = () => getTestDb() as unknown as Database
 
@@ -40,15 +42,29 @@ export async function seedMovementOrg(
   return { organizationId: org.id, ids: rows.map((row) => row.id) }
 }
 
-/** Insert movements as given and return their ids, in order. */
+/** Insert movements as given and return their ids, in order; an unset class is stamped as the writer would. */
 export async function insertMovements(
   organizationId: string,
   rows: MovementFixtureRow[]
 ): Promise<string[]> {
   if (rows.length === 0) return []
+  const reversed = rows.flatMap((row) => row.reversesMovementId ?? [])
+  const originals = await readConsumptionClasses(db(), organizationId, reversed)
   const inserted = await db()
     .insert(schema.StockMovement)
-    .values(rows.map((row) => ({ ...row, organizationId })))
+    .values(
+      rows.map((row) => ({
+        ...row,
+        organizationId,
+        consumptionClass:
+          row.consumptionClass ??
+          classifyMovement(row.type, {
+            reversesClass: row.reversesMovementId ? originals.get(row.reversesMovementId) : null,
+            parentMovementId: row.parentMovementId,
+            isSalvage: !row.reversesMovementId,
+          }),
+      }))
+    )
     .returning({ id: schema.StockMovement.id })
   return inserted.map((row) => row.id)
 }

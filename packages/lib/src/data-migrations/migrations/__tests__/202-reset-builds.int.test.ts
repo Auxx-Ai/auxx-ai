@@ -264,18 +264,6 @@ async function seed() {
         occurredAt: AT,
       })
       .returning()
-    await db()
-      .insert(schema.InventoryMovementFact)
-      .values({
-        id: row!.id,
-        organizationId,
-        partId,
-        type,
-        quantity,
-        occurredAt: AT,
-        consumptionClass: quantity > 0 ? 'supply' : 'consumption',
-        buildId,
-      })
     return row!.id
   }
   const receipt = await movement(pump, 'receive', 10, null)
@@ -391,11 +379,6 @@ describe('migration 202', () => {
 
     expect(await movementIds(s.organizationId)).toEqual([s.receipt])
     expect(await postingIds(s.organizationId)).toEqual([s.receiptPosting])
-    const facts = await db()
-      .select({ id: schema.InventoryMovementFact.id })
-      .from(schema.InventoryMovementFact)
-      .where(eq(schema.InventoryMovementFact.organizationId, s.organizationId))
-    expect(facts.map((row) => row.id)).toEqual([s.receipt])
     const sources = await db()
       .select({ id: schema.GlPostingSource.glPostingId })
       .from(schema.GlPostingSource)
