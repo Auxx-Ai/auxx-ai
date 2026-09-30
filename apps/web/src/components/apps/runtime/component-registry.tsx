@@ -110,7 +110,9 @@ const Separator = ({ __instanceId, __onCallHandler, ...props }: any) => {
  */
 export const componentRegistry = {
   // === Form Components ===
-  Form: FormComponent,
+  // Deferred to render: form-reconstructor imports this registry, and a module-level
+  // reference throws a TDZ error when the bundler evaluates that file first.
+  Form: (props: any) => <FormComponent {...props} />,
   FormField,
   FormSubmit,
   Dialog,
