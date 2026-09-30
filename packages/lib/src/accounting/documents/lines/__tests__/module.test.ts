@@ -43,6 +43,7 @@ vi.mock('@auxx/database', async () => {
 })
 
 vi.mock('../../../../resources/system-records', () => ({
+  systemDefId: async (_db: unknown, _org: string, entityType: string) => entityType,
   systemFields: async (_db: unknown, _org: string, entityType: string, attrs: string[]) => ({
     defId: entityType,
     fields: Object.fromEntries(attrs.map((attr) => [attr, { id: attr }])),
