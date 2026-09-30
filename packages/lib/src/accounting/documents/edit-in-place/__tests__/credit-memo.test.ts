@@ -39,6 +39,8 @@ vi.mock('../../../ledger/setup/book-time-zone', () => ({
   todayInBookTimeZone: async () => '2026-09-18',
 }))
 vi.mock('../../../../cache', () => ({ getCachedEntityDefId: async () => 'def_memo' }))
+vi.mock('../../lines/reads', () => ({ readDocumentLines: async () => [] }))
+vi.mock('../../lines/realtime', () => ({ publishLinesUpdated: vi.fn() }))
 vi.mock('../../../../entity-instances/edit-snapshot', () => ({
   readEditStamp: async () => h.editStamp,
   captureRecordSnapshot: h.captureRecordSnapshot,

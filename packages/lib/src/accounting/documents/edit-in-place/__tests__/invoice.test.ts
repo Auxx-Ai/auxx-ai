@@ -29,6 +29,8 @@ const h = vi.hoisted(() => ({
   ledgerState: { generation: 1 },
   writeDocumentLedgerGeneration: vi.fn(),
   syncInvoicePaymentState: vi.fn(async () => undefined),
+  readDocumentLines: vi.fn(async (): Promise<Array<{ id: string }>> => []),
+  publishLinesUpdated: vi.fn(),
 }))
 
 vi.mock('@auxx/database', async () => {
@@ -46,6 +48,8 @@ vi.mock('../../../ledger/setup/book-time-zone', () => ({
   todayInBookTimeZone: async () => '2026-09-18',
 }))
 vi.mock('../../../../cache', () => ({ getCachedEntityDefId: async () => 'def_invoice' }))
+vi.mock('../../lines/reads', () => ({ readDocumentLines: h.readDocumentLines }))
+vi.mock('../../lines/realtime', () => ({ publishLinesUpdated: h.publishLinesUpdated }))
 vi.mock('../../../../entity-instances/edit-snapshot', () => ({
   readEditStamp: async () => h.editStamp,
   captureRecordSnapshot: h.captureRecordSnapshot,
@@ -224,6 +228,23 @@ describe('cancelDocumentEdit', () => {
         ],
       })
     )
+  })
+  it('announces the restored lines, and the ones it deleted, to open builders', async () => {
+    h.readDocumentLines
+      .mockResolvedValueOnce([{ id: 'kept' }, { id: 'added_during_edit' }])
+      .mockResolvedValueOnce([{ id: 'kept' }, { id: 'recreated' }])
+
+    await cancelDocumentEdit(db, target)
+
+    expect(h.readDocumentLines.mock.invocationCallOrder[1]).toBeGreaterThan(
+      h.restoreRecordSnapshot.mock.invocationCallOrder[0]!
+    )
+    expect(h.publishLinesUpdated).toHaveBeenCalledWith(ORG, {
+      documentType: 'invoice',
+      documentId: INVOICE_ID,
+      upserted: [{ id: 'kept' }, { id: 'recreated' }],
+      deleted: ['added_during_edit'],
+    })
   })
 })
 

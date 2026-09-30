@@ -25,6 +25,7 @@ import { useFieldFileUpload } from '~/components/fields/inputs/hooks/use-field-f
 import { FileSelectDialog } from '~/components/file-select/file-select-dialog'
 import { PhotoTileEditor } from '~/components/pickers/photo-tile-editor'
 import type { RecordId } from '~/components/resources'
+import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 
 export function LinePhotoPopover({
   recordId,
@@ -87,6 +88,8 @@ function LinePhotoGrid({
   field: ResourceField
   readOnly: boolean
 }) {
+  // Rows read `lines.list`, so nothing else loads this line's photos into the field store.
+  useFieldValue(recordId, field.id, { autoFetch: true })
   const fileOptions = parseFileOptions(field.options)
   const {
     displayFiles,
