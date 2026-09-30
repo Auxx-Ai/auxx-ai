@@ -15,14 +15,13 @@ import { err, ok, type Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
 import { chunkArray } from '../../import/utils/chunk-array'
 import type { SubpartRow } from '../../inventory/costing/cost-calculator'
-import { compareFactsToLedger } from '../../inventory/movements/fact/drift-check'
 import {
   readDailyActivity,
   readDailySeries,
   readReceiptsForPoLines,
   readUsageBuckets,
   readWhereUsedShares,
-} from '../../inventory/movements/fact/reads'
+} from '../../inventory/movements/usage-reads'
 import {
   BuildStatus,
   OrderFulfillmentStatus,
@@ -83,8 +82,8 @@ const LINE_ITEM_PICK = pickSystemAttributes(LINE_ITEM_FIELDS, [
   'line_item_fulfilled_qty',
 ] as const)
 
-/** Parts per mirror query: bounds the dense series (parts × days) one statement returns. */
-const MIRROR_PART_CHUNK = 500
+/** Parts per usage query: bounds the dense series (parts × days) one statement returns. */
+const USAGE_PART_CHUNK = 500
 /** Months of history seasonality learns from (02 §6.5). */
 const SEASONAL_HISTORY_MONTHS = 24
 /** PO lines ordered this far back feed the observed lead time (02 §6.2). */
@@ -122,8 +121,6 @@ export interface RunInputs {
   /** Build consumption per component and produced part over the window (7a); direct sales are added by the run. */
   whereUsed: WhereUsedShare[]
   receipts: ReceiptObservation[]
-  /** Parts whose mirror disagrees with the ledger (`compareFactsToLedger`). */
-  driftedPartIds: Set<string>
 }
 
 /** Every read one plan run needs, in as few queries as the system-records API allows. */
@@ -149,14 +146,12 @@ export async function loadRunInputs(
       (e) => planned.has(e.parentPartId) && planned.has(e.childPartId)
     )
 
-    const [vendorParts, pos, builds, openDemand, drift] = await Promise.all([
+    const [vendorParts, pos, builds, openDemand] = await Promise.all([
       readPlannedVendorParts(db, organizationId, partIds),
       readPlannedPurchaseOrders(db, organizationId, planned, { asOf, zone }),
       readOpenBuilds(db, organizationId, planned),
       readOpenDemand(db, organizationId, planned),
-      compareFactsToLedger(db, organizationId),
     ])
-    if (drift.isErr()) return err(drift.error)
 
     const supplierIds = new Set<string>()
     for (const vp of vendorParts) if (vp.supplierId) supplierIds.add(vp.supplierId)
@@ -174,8 +169,8 @@ export async function loadRunInputs(
       part.hasVendorPart = withVendorPart.has(part.id)
     }
 
-    const mirror = await readMirror(db, organizationId, partIds, { asOf, zone, window })
-    if (mirror.isErr()) return err(mirror.error)
+    const usage = await readUsageHistory(db, organizationId, partIds, { asOf, zone, window })
+    if (usage.isErr()) return err(usage.error)
 
     const receiptRows = await readReceiptsForPoLines(
       db,
@@ -201,12 +196,11 @@ export async function loadRunInputs(
       builds,
       openDemand,
       edges: plannedEdges,
-      ...mirror.value,
+      ...usage.value,
       receipts: pos.historyLines.map((line) => ({
         ...line,
         receipts: receiptsByLine.get(line.purchaseOrderLineId) ?? [],
       })),
-      driftedPartIds: new Set(drift.value.map((d) => d.partId)),
     })
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)))
@@ -432,23 +426,23 @@ async function readOpenDemand(
   return demand
 }
 
-type MirrorReads = Pick<RunInputs, 'series' | 'activity' | 'monthly' | 'whereUsed'>
+type UsageReads = Pick<RunInputs, 'series' | 'activity' | 'monthly' | 'whereUsed'>
 
 /** The daily series over the window, activity and monthly buckets over 24 months, where-used over the window. */
-async function readMirror(
+async function readUsageHistory(
   db: Database,
   organizationId: string,
   partIds: string[],
   input: { asOf: DayKey; zone: string; window: RunWindow }
-): Promise<Result<MirrorReads, Error>> {
+): Promise<Result<UsageReads, Error>> {
   const { zone, window } = input
   const monthsTo = endOfMonthDay(addMonthsToDayKey(startOfMonthDay(input.asOf), -1))
   const monthsFrom = addMonthsToDayKey(startOfMonthDay(input.asOf), -SEASONAL_HISTORY_MONTHS)
   const activityFrom = monthsFrom < window.from ? monthsFrom : window.from
-  const out: MirrorReads = { series: [], activity: [], monthly: [], whereUsed: [] }
+  const out: UsageReads = { series: [], activity: [], monthly: [], whereUsed: [] }
   const usage: { partId: string; month: string; consumed: number; stockoutDays: number }[] = []
 
-  for (const chunk of chunkArray(partIds, MIRROR_PART_CHUNK)) {
+  for (const chunk of chunkArray(partIds, USAGE_PART_CHUNK)) {
     const [series, activity, buckets, shares] = await Promise.all([
       readDailySeries(db, organizationId, {
         partIds: chunk,

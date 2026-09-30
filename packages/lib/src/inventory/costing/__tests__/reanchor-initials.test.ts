@@ -1,7 +1,7 @@
 // packages/lib/src/inventory/costing/__tests__/reanchor-initials.test.ts
 //
 // The count anchor (111 Q26): the one movement allowed to move. `planReanchor` is pure; the
-// lane around it is exercised with the reads, the row update and the mirror seam stubbed.
+// lane around it is exercised with the reads and the row update stubbed.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PartInitial } from '../../movements/initial-queries'
@@ -15,7 +15,6 @@ const h = vi.hoisted(() => ({
   earliestExcludes: [] as (readonly string[] | undefined)[],
   /** `partId -> net through that part's count day`. */
   nets: new Map<string, number>(),
-  seam: vi.fn(async () => {}),
 }))
 
 vi.mock('@auxx/database', () => ({
@@ -31,9 +30,6 @@ vi.mock('../../movements/initial-queries', () => ({
   readPartInitials: async (_db: unknown, _org: string, ids: string[]) =>
     new Map(ids.flatMap((id) => (h.initials.has(id) ? [[id, h.initials.get(id)!]] : []))),
 }))
-vi.mock('../../movements/fact/writes', () => ({
-  updateMovementFactAnchor: vi.fn(async () => {}),
-}))
 vi.mock('../dated-reads', () => ({
   readEarliestMovementAt: async (
     _org: string,
@@ -47,7 +43,7 @@ vi.mock('../dated-reads', () => ({
     new Map(ids.map((id) => [id, h.nets.get(id) ?? 0])),
 }))
 
-import { anchorSeam, planReanchor, reanchorInitials } from '../reanchor-initials'
+import { planReanchor, reanchorInitials } from '../reanchor-initials'
 
 const ORG = 'org_1'
 
@@ -129,11 +125,10 @@ describe('planReanchor', () => {
 })
 
 describe('reanchorInitials', () => {
-  it('rewrites the initial row, calls the mirror seam, and reports the move', async () => {
+  it('rewrites the initial row and reports the move', async () => {
     h.initials.set('part_1', anchored())
     h.earliest.set('part_1', new Date('2025-12-20T09:00:00Z'))
     h.nets.set('part_1', 39)
-    const seam = vi.spyOn(anchorSeam, 'onInitialReanchored')
 
     const moved = await reanchorInitials(ORG, ['part_1'])
 
@@ -146,10 +141,6 @@ describe('reanchorInitials', () => {
       },
     ])
     expect(h.updateSpy).toHaveBeenCalledWith({ tx: true }, ORG, 'mv_initial', {
-      occurredAt: new Date('2025-12-19T00:00:00.000Z'),
-      quantity: 875,
-    })
-    expect(seam).toHaveBeenCalledWith({ tx: true }, 'mv_initial', {
       occurredAt: new Date('2025-12-19T00:00:00.000Z'),
       quantity: 875,
     })

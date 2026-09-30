@@ -125,8 +125,6 @@ export * from './inbox-integration'
 export * from './insight-template'
 export * from './integration'
 export * from './integration-tag-label'
-// The StockMovement mirror for planning — plans/mrp/02-data-structures.md §3
-export * from './inventory-movement-fact'
 export * from './invoice'
 export * from './key-value-pair'
 export * from './knowledge-base'

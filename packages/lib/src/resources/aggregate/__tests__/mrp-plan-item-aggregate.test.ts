@@ -148,7 +148,7 @@ describe('mrp_plan_item aggregate source', () => {
   it('groups the flags array by element, labelled from the flag vocabulary', async () => {
     h.rows = [
       { g: 'no_lead_time', value: 2 },
-      { g: 'mirror_drift', value: 1 },
+      { g: 'thin_usage', value: 1 },
     ]
     const result = await runAggregate(stubDb(), ORG, 'u1', {
       ...base,
@@ -165,7 +165,7 @@ describe('mrp_plan_item aggregate source', () => {
     expect(q).toContain('"agg_g"."v" IS NOT NULL')
     expect(result._unsafeUnwrap().groups.map((g) => g.label)).toEqual([
       'No lead time',
-      'Movement history out of sync',
+      'Mostly stocked out',
     ])
   })
 

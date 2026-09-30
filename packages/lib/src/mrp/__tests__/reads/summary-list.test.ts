@@ -36,7 +36,7 @@ describe('shapeSummary', () => {
     expect(counts.bySupplyType).toEqual({ bought: 8, made: 2, unclassified: 0 })
     expect(counts.byOrderMode).toEqual({ when_needed: 0, scheduled: 4 })
     expect(counts.byFlag.no_lead_time).toBe(1)
-    expect(counts.byFlag.mirror_drift).toBe(0)
+    expect(counts.byFlag.thin_usage).toBe(0)
   })
 
   it('reads an empty run as zeros', () => {

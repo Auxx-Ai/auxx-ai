@@ -28,7 +28,7 @@ import { User } from './user'
 
 export const stockMovementType = pgEnum('StockMovementType', StockMovementTypeValues)
 export const stockMovementCostBasis = pgEnum('StockMovementCostBasis', StockMovementCostBasisValues)
-/** Named for the fact table it was created with; the pg type name is kept so no new type is made. */
+/** The pg type name predates this table; kept so no new type is made. */
 export const inventoryConsumptionClass = pgEnum(
   'InventoryConsumptionClass',
   StockMovementConsumptionClassValues

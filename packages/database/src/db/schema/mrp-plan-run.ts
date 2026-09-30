@@ -128,7 +128,7 @@ export const MrpPlanRunItem = pgTable(
     /** The company behind `suggestedVendorPartId`; a dashboard group-by can't hop through the vendor part (07 §5.4). */
     suggestedSupplierId: text(),
 
-    /** Data-quality flags, e.g. relief_gaps, unbuilt_sales, no_lead_time, mirror_drift. */
+    /** Data-quality flags, e.g. relief_gaps, unbuilt_sales, no_lead_time, negative_on_hand. */
     flags: text().array().notNull(),
 
     // denormalised for the Parts dashboard widgets (07 §5.4); never read by the run

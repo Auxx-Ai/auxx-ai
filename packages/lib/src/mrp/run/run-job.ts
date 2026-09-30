@@ -5,9 +5,6 @@ import { createScopedLogger } from '@auxx/logger'
 import { createCredentialLockProvider } from '@auxx/redis'
 import { and, eq, isNull } from 'drizzle-orm'
 import pLimit from 'p-limit'
-import { compareFactsToLedger } from '../../inventory/movements/fact/drift-check'
-import { readFactTotalsByPart } from '../../inventory/movements/fact/reads'
-import { rebuildMovementFacts } from '../../inventory/movements/fact/rebuild'
 import { jobId } from '../../jobs/job-id'
 import { getQueue, Queues } from '../../jobs/queues'
 import type { JobContext } from '../../jobs/types/job-context'
@@ -41,7 +38,7 @@ const runJobId = (organizationId: string) => jobId('mrp-run', organizationId)
 
 export type MrpOrgRunOutcome = 'completed' | 'failed' | 'skipped_locked' | 'skipped_disabled'
 
-/** One org's run under its Redis lock: mirror bootstrap, the plan, then retention (08 §5). */
+/** One org's run under its Redis lock: the plan, then retention (08 §5). */
 export async function runMrpForOrganization(
   db: Database,
   organizationId: string,
@@ -72,7 +69,6 @@ export async function runMrpForOrganization(
     else if (stale.value.failed > 0) log.warn('Failed orphaned MRP runs', stale.value)
 
     // TODO(111 X5): run backflushBuilds(orgId, { from: yesterday, to: yesterday }) here when inventory.backflush is on
-    await bootstrapMirror(db, organizationId)
 
     const run = await runMrpPlan(db, organizationId, { trigger })
     if (run.isErr()) {
@@ -117,18 +113,6 @@ async function seedDashboardOnFirstRun(db: Database, organizationId: string): Pr
       error: error instanceof Error ? error.message : String(error),
     })
   }
-}
-
-/** An org that predates the mirror has ledger rows and no facts: replay it once before planning. */
-async function bootstrapMirror(db: Database, organizationId: string): Promise<void> {
-  const facts = await readFactTotalsByPart(db, organizationId)
-  if (facts.size > 0) return
-  const drift = await compareFactsToLedger(db, organizationId)
-  if (drift.isErr()) throw drift.error
-  if (!drift.value.some((d) => d.ledgerCount > 0)) return
-  logger.info('Movement mirror empty, rebuilding from the ledger', { organizationId })
-  const rebuilt = await rebuildMovementFacts(db, organizationId)
-  if (rebuilt.isErr()) throw rebuilt.error
 }
 
 /** Nightly sweep: every enabled org with MRP, each in its own try (D40). */

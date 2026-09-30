@@ -62,8 +62,6 @@ export {
 export { batchRecalculateQoH } from './qoh'
 // The count anchor (111 Q26): the one movement allowed to move, in front of the QoH SUM.
 export {
-  anchorSeam,
-  onInitialReanchored,
   type ReanchoredInitial,
   reanchorInitials,
 } from './reanchor-initials'

@@ -2892,6 +2892,13 @@
       "when": 1790789247247,
       "tag": "0412_stock_movement_consumption_class",
       "breakpoints": true
+    },
+    {
+      "idx": 413,
+      "version": "7",
+      "when": 1790790175729,
+      "tag": "0413_drop_inventory_movement_fact",
+      "breakpoints": true
     }
   ]
 }

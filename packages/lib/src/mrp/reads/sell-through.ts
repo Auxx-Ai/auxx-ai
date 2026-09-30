@@ -5,7 +5,7 @@ import { addDaysToDayKey, type DayKey, todayInZone } from '@auxx/utils/calendar-
 import type { Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { getOrgCache } from '../../cache'
-import { readDailyActivity, readDailySeries } from '../../inventory/movements/fact/reads'
+import { readDailyActivity, readDailySeries } from '../../inventory/movements/usage-reads'
 import { guard } from './guard'
 import { readPartLabels, readRecordNames } from './labels'
 import { readItems, walkBom } from './part-item'
@@ -41,7 +41,7 @@ export interface SellThrough {
   sold: number
   /** `build_produce` over the window. */
   built: number
-  /** On hand at the start of the window, replayed from the mirror. */
+  /** On hand at the start of the window, replayed from the ledger. */
   opening: number
   /** `sold − built − max(0, opening)`, floored at 0. */
   unbuilt: number

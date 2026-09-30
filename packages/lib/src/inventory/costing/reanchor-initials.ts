@@ -9,11 +9,10 @@
  * The caller (`batchRecalculateQoH`) is the one that re-SUMs.
  */
 
-import { type Database, database, type Transaction } from '@auxx/database'
+import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { dayKeyInZone, previousDayKey, startOfDayInstant } from '@auxx/utils/calendar-day'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
-import { updateMovementFactAnchor } from '../movements/fact/writes'
 import { type PartInitial, readPartInitials } from '../movements/initial-queries'
 import { reanchorInitialMovement } from '../movements/update-movements'
 import { readEarliestMovementAt, readPartNetThrough } from './dated-reads'
@@ -26,18 +25,6 @@ export interface ReanchoredInitial {
   occurredAt: Date
   quantity: number
 }
-
-/** The MRP mirror follows the anchor: the one update it takes (111 §14, Q26). */
-export async function onInitialReanchored(
-  tx: Database | Transaction,
-  movementId: string,
-  anchor: { occurredAt: Date; quantity: number }
-): Promise<void> {
-  await updateMovementFactAnchor(tx, movementId, anchor)
-}
-
-/** The seam as the lane calls it, so a test can observe the call. */
-export const anchorSeam = { onInitialReanchored }
 
 /** The last instant of the count day, for the "through D" replay. */
 function endOfDay(dayKey: string, zone: string): Date {
@@ -139,7 +126,6 @@ async function reanchor(organizationId: string, partIds: string[]): Promise<Rean
   await database.transaction(async (tx) => {
     for (const { initial, plan } of moves) {
       await reanchorInitialMovement(tx, organizationId, initial.movementId, plan)
-      await anchorSeam.onInitialReanchored(tx, initial.movementId, plan)
       moved.push({
         movementId: initial.movementId,
         partInstanceId: initial.partInstanceId,

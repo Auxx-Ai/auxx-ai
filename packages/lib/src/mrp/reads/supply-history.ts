@@ -6,7 +6,10 @@ import { median } from '@auxx/utils/stats'
 import type { Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { NotFoundError } from '../../errors'
-import { type PoLineReceiptRow, readReceiptsForPoLines } from '../../inventory/movements/fact/reads'
+import {
+  type PoLineReceiptRow,
+  readReceiptsForPoLines,
+} from '../../inventory/movements/usage-reads'
 import {
   hasLeadTimeDrift,
   type LineObservation,

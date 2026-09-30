@@ -19,7 +19,6 @@ import { readPartKinds } from '../builds/build-queries'
 import { isServicePartKind } from '../costing/client'
 import { batchRecalculateQoH } from '../costing/qoh'
 import { type ConsumptionClass, classifyMovement } from './classify'
-import { insertMovementFacts, type MovementFactInput } from './fact/writes'
 import { guard } from './guard'
 import { readConsumptionClasses } from './reads'
 import { toStockMovementRow } from './row'
@@ -60,7 +59,7 @@ export async function assertNoServiceParts(
 
 /**
  * Write movements as one batched insert on `ctx.db` (pass the caller's transaction), plus their BOM
- * children and planning facts. Never opens a transaction and never recomputes QoH or roll-ups: the
+ * children. Never opens a transaction and never recomputes QoH or roll-ups: the
  * caller MUST pass `touched` to {@link settleStockMovements} after its commit.
  */
 export async function writeStockMovements(
@@ -95,8 +94,6 @@ export async function writeStockMovements(
             throw error
           })
       }
-
-      await insertMovementFacts(ctx.db, ctx.organizationId, [...rows, ...children].map(rowFact))
 
       const records: WrittenStockMovement[] = rows.map((row, i) => ({
         id: row.id!,
@@ -164,24 +161,6 @@ async function explodeBomRows(
     }
   }
   return children
-}
-
-/** The planning fact of a row about to be written, carrying the row's stamped class. */
-function rowFact(row: CreateStockMovementInput): MovementFactInput {
-  return {
-    id: row.id!,
-    partId: row.partId,
-    type: row.type,
-    quantity: row.quantity,
-    occurredAt: row.occurredAt ?? null,
-    createdAt: row.createdAt!,
-    consumptionClass: row.consumptionClass!,
-    reversesMovementId: row.reversesMovementId ?? null,
-    parentMovementId: row.parentMovementId ?? null,
-    buildId: row.buildId ?? null,
-    fulfillmentLineId: row.fulfillmentLineId ?? null,
-    purchaseOrderLineId: row.purchaseOrderLineId ?? null,
-  }
 }
 
 function emptyTouched(): StockMovementTouched {

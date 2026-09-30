@@ -1,10 +1,10 @@
 // packages/lib/src/inventory/movements/__tests__/write-movements.int.test.ts
-// The StockMovement seam against a real database: insert, facts, the reversal constraint, and
-// the parent delete (plans/mrp/20-stock-movement-table.md §4.2).
+// The StockMovement seam against a real database: insert, the class stamp, the reversal
+// constraint, and the parent delete (plans/mrp/20-stock-movement-table.md §4.2).
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
-import { eq, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 import { ConflictError } from '../../../errors'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
@@ -88,7 +88,7 @@ async function write(o: Org, inputs: StockMovementInput[]) {
 }
 
 describe('writeStockMovements', () => {
-  it('stores rows, facts and exact money, and reports what it touched', async () => {
+  it('stores rows, their class and exact money, and reports what it touched', async () => {
     const o = await seedOrg()
     const written = (
       await write(o, [
@@ -137,14 +137,6 @@ describe('writeStockMovements', () => {
       effectiveAt: AT,
       consumptionClass: 'supply',
     })
-    const facts = await db()
-      .select()
-      .from(schema.InventoryMovementFact)
-      .where(inArray(schema.InventoryMovementFact.id, [sale!.id, receipt!.id]))
-    expect(facts).toHaveLength(2)
-    for (const fact of facts) {
-      expect(fact.consumptionClass).toBe(byId.get(fact.id)!.consumptionClass)
-    }
   }, 120_000)
 
   it('stamps a reversal, and a reversal of it, with the first original’s class', async () => {
@@ -199,7 +191,7 @@ describe('writeStockMovements', () => {
 })
 
 describe('deleteMovementsFor', () => {
-  it('deletes a line’s movements with their reversals and facts, and names surviving parts', async () => {
+  it('deletes a line’s movements with their reversals, and names surviving parts', async () => {
     const o = await seedOrg()
     const [sale] = (
       await write(o, [
@@ -238,10 +230,5 @@ describe('deleteMovementsFor', () => {
     expect(result.deletedIds).toHaveLength(2)
     expect(result.touched).toMatchObject({ partIds: [o.partIds[0]], fulfillmentLineIds: [] })
     expect(await readMovementsByParts(db(), o.organizationId, o.partIds)).toEqual([])
-    const facts = await db()
-      .select()
-      .from(schema.InventoryMovementFact)
-      .where(inArray(schema.InventoryMovementFact.id, result.deletedIds))
-    expect(facts).toEqual([])
   }, 120_000)
 })

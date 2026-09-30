@@ -1,7 +1,7 @@
 // packages/lib/src/mrp/__tests__/reads/product-rollup.test.ts
 
 import { describe, expect, it } from 'vitest'
-import type { DailySeriesRow } from '../../../inventory/movements/fact/reads'
+import type { DailySeriesRow } from '../../../inventory/movements/usage-reads'
 import type { walkBom } from '../../reads/part-item'
 import type { ProjectionWalkPoint } from '../../reads/part-series-projection'
 import {

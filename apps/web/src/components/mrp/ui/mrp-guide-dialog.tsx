@@ -104,7 +104,6 @@ const FLAG_HELP: Record<(typeof MRP_FLAGS)[number], string> = {
   no_lead_time: FLAG_EXPLANATIONS.no_lead_time,
   lead_time_drift: 'Received orders took noticeably longer or shorter than the stated lead time.',
   overdue_receipt: 'A purchase order is past its expected date and still not received.',
-  mirror_drift: 'The movement history the planner reads disagrees with the stock ledger.',
   wont_make_next_arrival: 'The part runs out before the supplier’s next scheduled order lands.',
   draft_po_pending: 'A draft PO exists for it; drafts do not count as on order.',
   unclassified: 'The part is neither bought from a supplier nor built, so nothing is suggested.',

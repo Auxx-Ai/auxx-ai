@@ -464,7 +464,6 @@ export function planItems(inputs: RunInputs, settings: RunSettings): PlanItem[] 
       negativeOnHand: s.usage.negativeDays > 0 || item.onHand < 0,
       thinUsage: s.usage.censorCapped,
       leadTimeDrift: s.stats !== null && hasLeadTimeDrift(item.leadTimeDays, s.stats),
-      mirrorDrift: inputs.driftedPartIds.has(item.partId),
       wontMakeNextArrival: wontMake.has(item.partId),
       poLines: s.poLines,
     })

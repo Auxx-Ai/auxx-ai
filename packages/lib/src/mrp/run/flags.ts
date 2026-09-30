@@ -42,15 +42,6 @@ export function unbuiltSalesPartIds(
   return result
 }
 
-/** The mirror's closing `onHandEod` disagrees with `part_quantity_on_hand` (08 §3.1). */
-export function hasMirrorDrift(
-  closingOnHandEod: number | null,
-  quantityOnHand: number,
-  tolerance = 1e-6
-): boolean {
-  return closingOnHandEod !== null && Math.abs(closingOnHandEod - quantityOnHand) > tolerance
-}
-
 export interface FlagInput {
   asOf: DayKey
   supplyType: MrpSupplyType
@@ -65,8 +56,6 @@ export interface FlagInput {
   /** `UsageStats.censorCapped`. */
   thinUsage: boolean
   leadTimeDrift: boolean
-  /** Mirror drift from the nightly check or {@link hasMirrorDrift}. */
-  mirrorDrift: boolean
   wontMakeNextArrival: boolean
   /** The part's open PO lines, issued and draft. */
   poLines: readonly OpenPoLineInput[]
@@ -90,7 +79,6 @@ export function computeFlags(input: FlagInput): MrpFlag[] {
   ) {
     raised.add('overdue_receipt')
   }
-  if (input.mirrorDrift) raised.add('mirror_drift')
   if (input.wontMakeNextArrival) raised.add('wont_make_next_arrival')
   if (open.some((l) => l.status === 'draft')) raised.add('draft_po_pending')
   if (input.supplyType === 'unclassified') raised.add('unclassified')

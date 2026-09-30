@@ -81,7 +81,7 @@ export interface OpenBuildInput {
   dueDay: DayKey | null
 }
 
-/** One row of the mirror's dense daily series (`readDailySeries`, 02 §6.1). */
+/** One row of the ledger's dense daily series (`readDailySeries`, 02 §6.1). */
 export interface DailySeriesPoint {
   partId: string
   day: DayKey

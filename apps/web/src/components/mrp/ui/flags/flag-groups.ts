@@ -7,7 +7,6 @@ const DATA_QUALITY_FLAGS: readonly MrpFlag[] = [
   'relief_gaps',
   'unbuilt_sales',
   'negative_on_hand',
-  'mirror_drift',
   'thin_usage',
 ]
 
@@ -21,7 +20,6 @@ export const FLAG_GROUP_ORDER: readonly MrpFlag[] = [
 export const FLAG_EXPLANATIONS: Record<MrpFlag, string> = {
   relief_gaps: 'Some sales never relieved stock in the ledger, so usage reads low.',
   unbuilt_sales: 'More was sold than was built plus opening stock, so usage or on hand is off.',
-  mirror_drift: 'The movement history disagrees with on hand.',
   negative_on_hand:
     'On hand went below zero, so builds or receipts are missing and stock and usage are unreliable.',
   thin_usage:

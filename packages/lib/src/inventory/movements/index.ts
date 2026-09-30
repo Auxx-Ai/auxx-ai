@@ -10,26 +10,6 @@ export {
 } from './client'
 export type { DeleteMovementsForInput, DeleteMovementsForResult } from './delete-movements'
 export { deleteMovementsFor } from './delete-movements'
-export type {
-  DailySeriesRow,
-  FactDayRange,
-  MovementFactDrift,
-  MovementFactInput,
-  PoLineReceiptRow,
-  UsageBucketRow,
-  WhereUsedShareRow,
-} from './fact'
-export {
-  compareFactsToLedger,
-  deleteMovementFacts,
-  insertMovementFacts,
-  readDailySeries,
-  readReceiptsForPoLines,
-  readUsageBuckets,
-  readWhereUsedShares,
-  rebuildMovementFacts,
-  updateMovementFactAnchor,
-} from './fact'
 export type { FilledStockMovement, PendingCostFill } from './fill-pending-cost'
 export { FILL_PENDING_COST_REASON, fillPendingCost } from './fill-pending-cost'
 export { type PartInitial, readPartInitials } from './initial-queries'
@@ -79,4 +59,19 @@ export {
   reanchorInitialMovement,
   restampMovementGlRoles,
 } from './update-movements'
+export type {
+  DailyActivityRow,
+  DailySeriesRow,
+  FactDayRange,
+  PoLineReceiptRow,
+  UsageBucketRow,
+  WhereUsedShareRow,
+} from './usage-reads'
+export {
+  readDailyActivity,
+  readDailySeries,
+  readReceiptsForPoLines,
+  readUsageBuckets,
+  readWhereUsedShares,
+} from './usage-reads'
 export { settleStockMovements, writeStockMovements } from './write-movements'
