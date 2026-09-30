@@ -7,7 +7,7 @@ import { type ReactNode, useMemo, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { ConnectionDetailDialog } from '~/components/connections/ui/connection-detail-dialog'
 import type { DetailMethod } from '~/components/connections/ui/connection-detail-method'
-import { appTarget, platformTarget } from '~/components/connections/ui/connection-targets'
+import { reconnectArgsFor } from '~/components/connections/ui/connection-targets'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
 import { api } from '~/trpc/react'
 import { useConnectFlow } from '../hooks/use-connect-flow'
@@ -113,30 +113,10 @@ export function ConnectionPickerPopover({
     onConnected: () => void utils.connections.list.invalidate(listInput),
   })
 
-  // Reconnect re-authorizes (oauth) or re-enters (secret) the existing credential via the flow —
-  // app rows via their installation, platform rows via the provider catalog. Mirrors connections-section.
   const handleReconnect = (row: PickerConnection) => {
-    if (row.kind === 'app') {
-      const inst = appInstallations.find((i) => i.app.id === row.appId)
-      if (!inst) {
-        toastError({
-          title: 'App not installed',
-          description: 'Reconnect this account from the app’s settings instead.',
-        })
-        return
-      }
-      flow.start({ target: appTarget(inst), scope: row.scope, connectionId: row.id })
-      return
-    }
-    const provider = providerByKey.get(row.type)
-    if (!provider) {
-      toastError({
-        title: 'Provider unavailable',
-        description: 'This connection’s provider is no longer registered.',
-      })
-      return
-    }
-    flow.start({ target: platformTarget(provider), scope: row.scope, connectionId: row.id })
+    const resolved = reconnectArgsFor(row, appInstallations, providerByKey)
+    if (resolved.ok) flow.start(resolved.args)
+    else toastError({ title: resolved.title, description: resolved.description })
   }
 
   // Plain connection secrets with no platform definition edit a single API key in

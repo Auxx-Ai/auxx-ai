@@ -1,7 +1,11 @@
 // apps/web/src/components/connections/ui/connection-targets.test.ts
 import { describe, expect, it } from 'vitest'
 import type { ConnectFlowDefinition } from '~/components/apps/hooks/use-connect-flow'
-import { optionalScopesHeld, shouldOpenConnectDialog } from './connection-targets'
+import type { AppInstallation } from '~/components/apps/providers/apps-context'
+import type { RouterOutputs } from '~/trpc/react'
+import { optionalScopesHeld, reconnectArgsFor, shouldOpenConnectDialog } from './connection-targets'
+
+type ListedConnection = RouterOutputs['connections']['list'][number]
 
 /**
  * The two pure decisions behind the optional-scope wiring
@@ -121,5 +125,61 @@ describe('shouldOpenConnectDialog — the fresh-connect trigger', () => {
         ownClientOptional: true,
       })
     ).toBe(false)
+  })
+})
+
+describe('reconnectArgsFor', () => {
+  const method = (id: string, global: boolean) => ({
+    id,
+    global,
+    connectionType: 'oauth2-code',
+    oauth2OptionalScopes: ['read_all_orders'],
+  })
+  const inst = (methods: ReturnType<typeof method>[]) =>
+    ({
+      installationId: 'inst-1',
+      app: { id: 'app-1', slug: 'shopify', title: 'Shopify' },
+      connectionDefinitions: { organization: { connectionType: 'oauth2-code' } },
+      methods,
+    }) as unknown as AppInstallation
+  const row = (over: Record<string, unknown> = {}) =>
+    ({
+      id: 'cred-1',
+      kind: 'app',
+      appId: 'app-1',
+      type: null,
+      scope: 'organization',
+      connectionDefinitionId: 'def-org',
+      ...over,
+    }) as unknown as ListedConnection
+
+  it("pins an app row's own method so the flow resolves its optional scopes", () => {
+    const result = reconnectArgsFor(row(), [inst([method('def-org', true)])], new Map())
+    expect(result.ok && result.args).toMatchObject({
+      scope: 'organization',
+      connectionId: 'cred-1',
+      definitionId: 'def-org',
+    })
+  })
+
+  it("falls back to the scope's sole method for rows without a definition id", () => {
+    const result = reconnectArgsFor(
+      row({ connectionDefinitionId: null }),
+      [inst([method('def-user', false), method('def-org', true)])],
+      new Map()
+    )
+    expect(result.ok && result.args.definitionId).toBe('def-org')
+  })
+
+  it('refuses an app row whose app is not installed', () => {
+    expect(reconnectArgsFor(row(), [], new Map())).toMatchObject({
+      ok: false,
+      title: 'App not installed',
+    })
+  })
+
+  it('refuses a platform row whose provider is gone', () => {
+    const result = reconnectArgsFor(row({ kind: 'connection', type: 'gone' }), [], new Map())
+    expect(result).toMatchObject({ ok: false, title: 'Provider unavailable' })
   })
 })
