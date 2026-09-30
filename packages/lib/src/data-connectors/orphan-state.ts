@@ -71,7 +71,8 @@ export async function takeArchiveCapOverride(
     })
     .where(and(eq(T.id, dataConnectorId), sql`jsonb_exists(${T.state}, 'archiveCapOverride')`))
     .returning({
-      override: sql<ArchiveCapOverride | null>`(select o.state -> 'archiveCapOverride' from ${T} o where o.id = ${T.id})`,
+      // Drizzle renders `${T.id}` bare here, which would bind to `o.id` inside the sub-select.
+      override: sql<ArchiveCapOverride | null>`(select o.state -> 'archiveCapOverride' from ${T} o where o.id = "DataConnector"."id")`,
     })
   return row?.override ?? null
 }
