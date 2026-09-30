@@ -3,7 +3,7 @@
 
 import type { Line, LineKind } from '@auxx/lib/accounting/documents/lines/client'
 import { toastError } from '@auxx/ui/components/toast'
-import { type RefObject, useCallback, useRef } from 'react'
+import { type RefObject, useCallback, useRef, useState } from 'react'
 import type { DraftLine } from './line-rows'
 import { diffLineValues, draftCreateInput, type LinePatch, toLinePatch } from './line-values'
 import type { useLineWrites } from './lines-cache'
@@ -48,9 +48,21 @@ export function useDraftCommits({
 }: DraftCommitsOptions) {
   // Ref-guarded so a synchronous double-commit never races two creates for one draft.
   const creatingDraftIdsRef = useRef<Set<string>>(new Set())
-  // draftId -> the line its create produced. The swap unmounts the draft row, and a cell's
-  // blur on that removal (or a prefill) can still commit to the draft id afterwards.
+  // draftId -> the line its create produced. A commit wired before the swap (a prefill, a
+  // callback captured by the draft's render) still reaches the line through it.
   const draftLineIdsRef = useRef<Map<string, string>>(new Map())
+  // lineId -> draftId, the row key a created line keeps so its row stays mounted. Set in the
+  // same batch as the draft's removal, so no render shows the line under another key.
+  const [rowKeys, setRowKeys] = useState<ReadonlyMap<string, string>>(new Map())
+
+  const linkCreated = useCallback((created: Array<{ lineId: string; draftId: string }>) => {
+    for (const { draftId, lineId } of created) draftLineIdsRef.current.set(draftId, lineId)
+    setRowKeys((prev) => {
+      const next = new Map(prev)
+      for (const { draftId, lineId } of created) next.set(lineId, draftId)
+      return next
+    })
+  }, [])
 
   /** Draft delete (trash icon) — local splice, no network. */
   const deleteDraft = useCallback(
@@ -129,7 +141,7 @@ export function useDraftCommits({
 
       const updates = draftEditsSince([{ lineId: created.id, snapshot, draftId }])
       creatingDraftIdsRef.current.delete(draftId)
-      draftLineIdsRef.current.set(draftId, created.id)
+      linkCreated([{ lineId: created.id, draftId }])
       mutateDrafts((prev) => prev.filter((d) => d.draftId !== draftId))
       if (updates.length > 0) {
         await writes.updateMany(updates).catch((error: unknown) =>
@@ -140,7 +152,17 @@ export function useDraftCommits({
         )
       }
     },
-    [enabled, kind, visitId, mutateDrafts, writes, draftEditsSince, draftsRef, initialDraftIdsRef]
+    [
+      enabled,
+      kind,
+      visitId,
+      mutateDrafts,
+      writes,
+      draftEditsSince,
+      draftsRef,
+      initialDraftIdsRef,
+      linkCreated,
+    ]
   )
 
   /**
@@ -216,7 +238,7 @@ export function useDraftCommits({
         }
       } catch (error) {
         const done = new Set(created.map((entry) => entry.draftId))
-        for (const entry of created) draftLineIdsRef.current.set(entry.draftId, entry.lineId)
+        linkCreated(created)
         for (const draftId of draftIds) creatingDraftIdsRef.current.delete(draftId)
         mutateDrafts((prev) =>
           prev
@@ -231,7 +253,7 @@ export function useDraftCommits({
       }
 
       const updates = draftEditsSince(created)
-      for (const entry of created) draftLineIdsRef.current.set(entry.draftId, entry.lineId)
+      linkCreated(created)
       for (const draftId of draftIds) creatingDraftIdsRef.current.delete(draftId)
       mutateDrafts((prev) => prev.filter((d) => !draftIds.has(d.draftId)))
       if (updates.length > 0) {
@@ -252,8 +274,9 @@ export function useDraftCommits({
       draftEditsSince,
       initialDraftIdsRef,
       displayIdsRef,
+      linkCreated,
     ]
   )
 
-  return { createDraft, createDrafts, applyPrefillPatch, deleteDraft }
+  return { createDraft, createDrafts, applyPrefillPatch, deleteDraft, rowKeys }
 }
