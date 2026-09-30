@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.241](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.240...auxx-v0.1.241) (2026-09-30)
+
+
+### Features
+
+* **inventory:** build becomes a plain Build table (mrp 23) ([#2455](https://github.com/Auxx-Ai/auxx-ai/issues/2455)) ([6b5e3ef](https://github.com/Auxx-Ai/auxx-ai/commit/6b5e3ef9a86c3684d48beb4309fc76639780e4ee))
+* **lines:** lines module, router and builder on it; sink writer seam (domain-tables L0 + L1) ([#2461](https://github.com/Auxx-Ai/auxx-ai/issues/2461)) ([63c2bd0](https://github.com/Auxx-Ai/auxx-ai/commit/63c2bd048c325c760b20b4dc5d09728a04604594))
+* **mrp:** read planner usage from StockMovement, drop InventoryMovementFact (mrp 21 §1) ([#2459](https://github.com/Auxx-Ai/auxx-ai/issues/2459)) ([75222dd](https://github.com/Auxx-Ai/auxx-ai/commit/75222dd65d69131d66ce408e8f2e2a0cdb4636a3))
+
+
+### Bug Fixes
+
+* **apps:** match app fields by entity, key and connection when reconciling ([#2466](https://github.com/Auxx-Ai/auxx-ai/issues/2466)) ([583c51d](https://github.com/Auxx-Ai/auxx-ai/commit/583c51db78fe3982a11265c90971347ca8954f20))
+* **connections:** reconnect opens the dialog everywhere; refresh-token rejection flags reauth ([#2462](https://github.com/Auxx-Ai/auxx-ai/issues/2462)) ([29c5f0f](https://github.com/Auxx-Ai/auxx-ai/commit/29c5f0f9875d96e7e2089236fcb87feef57629cc))
+* **field-values:** resolve alias record ids at the write entry, throw on unknown defs ([#2465](https://github.com/Auxx-Ai/auxx-ai/issues/2465)) ([5c50435](https://github.com/Auxx-Ai/auxx-ai/commit/5c50435dd91727885ad46b7cf3e410e5548ca1f1))
+* **inventory:** build dates, sheet ledger refresh and variance account (mrp 25) ([#2460](https://github.com/Auxx-Ai/auxx-ai/issues/2460)) ([2d7c20b](https://github.com/Auxx-Ai/auxx-ai/commit/2d7c20be3230cd4579b67adf9d1f3ccae219e3d6))
+* **inventory:** build sheet fixes after the Build table move (mrp 23) ([#2457](https://github.com/Auxx-Ai/auxx-ai/issues/2457)) ([952272b](https://github.com/Auxx-Ai/auxx-ai/commit/952272bbf16342c5d9eac7a02407dd49323667eb))
+* **line-builder:** cancel publishes restored lines; photo popover loads existing photos ([#2467](https://github.com/Auxx-Ai/auxx-ai/issues/2467)) ([5586427](https://github.com/Auxx-Ai/auxx-ai/commit/55864273ce8e7d9325627410c63fc1632c9862e7))
+* **line-builder:** keep the draft row mounted when it becomes a line ([#2464](https://github.com/Auxx-Ai/auxx-ai/issues/2464)) ([63150a1](https://github.com/Auxx-Ai/auxx-ai/commit/63150a156a2d41bfab8a03fbe4c167e6df35f999))
+* **lines:** line writes run field hooks again; draft commits after create reach the line ([#2463](https://github.com/Auxx-Ai/auxx-ai/issues/2463)) ([da93ceb](https://github.com/Auxx-Ai/auxx-ai/commit/da93ceb8e7115b0e3d1fd8221ca7a8e50d1e2213))
+
 ## [0.1.240](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.239...auxx-v0.1.240) (2026-09-30)
 
 
