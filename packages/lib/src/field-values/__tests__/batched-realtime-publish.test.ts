@@ -242,7 +242,11 @@ describe('setValuesForEntity realtime batching', () => {
         ['field-tags', FIELD_TAGS],
       ])
     )
-    mockedGetCachedResource.mockResolvedValue(undefined)
+    mockedGetCachedResource.mockImplementation(async (_orgId: string, id: string) => ({
+      id,
+      apiSlug: `${id}s`,
+      display: { primaryDisplayField: null, secondaryDisplayField: null, avatarField: null },
+    }))
     // Real `publishFieldValueUpdates` returns a Promise (the source calls
     // `.catch(() => {})` on it) — the mock must too.
     mockedPublish.mockResolvedValue(undefined)

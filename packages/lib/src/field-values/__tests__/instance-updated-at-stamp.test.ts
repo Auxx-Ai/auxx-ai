@@ -186,7 +186,11 @@ function stampWrites(state: ReturnType<typeof makeFakeDb>['state']) {
 beforeEach(() => {
   vi.clearAllMocks()
   mockedPublish.mockResolvedValue(undefined)
-  mockedGetCachedResource.mockResolvedValue(undefined)
+  mockedGetCachedResource.mockImplementation(async (_orgId: string, id: string) => ({
+    id,
+    apiSlug: `${id}s`,
+    display: { primaryDisplayField: null, secondaryDisplayField: null, avatarField: null },
+  }))
   mockedGetCachedFieldMap.mockResolvedValue(
     new Map([
       [FIELD_A.id, FIELD_A],

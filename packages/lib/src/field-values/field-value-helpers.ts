@@ -42,7 +42,7 @@ import { isAtPrecision, minorUnitExponent } from '@auxx/utils/currency'
 import { and, eq, inArray } from 'drizzle-orm'
 import { findCachedResource, getCachedEntityDefId, getCachedResource, getOrgCache } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
-import { BadRequestError } from '../errors'
+import { BadRequestError, UnprocessableEntityError } from '../errors'
 import type { CapabilityView } from '../permissions/capabilities/capability-view'
 import { getRealtimeService, rooms } from '../realtime'
 import {
@@ -53,6 +53,7 @@ import {
 import { isCoveredQuiet, type WriteSession } from '../resources/crud/write-origin'
 import { getAmbientWriteDb, getAmbientWriteSession } from '../resources/crud/write-session-als'
 import type { ResourceRegistryService } from '../resources/registry/resource-registry-service'
+import type { Resource } from '../resources/registry/types'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
@@ -336,6 +337,58 @@ export async function canonicalizeRelationshipRecordId(
     resolved = looked
   }
   return toRecordId(resolved, entityInstanceId)
+}
+
+/**
+ * Canonicalize the RecordId a write targets (`quote:<id>` → `<defId>:<id>`) and
+ * resolve its resource. Throws when the definition part matches no resource,
+ * because hooks and `FieldValue.entityDefinitionId` both key off the result.
+ */
+export async function resolveWriteTarget(
+  ctx: FieldValueContext,
+  recordId: RecordId
+): Promise<{
+  recordId: RecordId
+  entityDefinitionId: string
+  entityInstanceId: string
+  resource: Resource
+}> {
+  const canonical = await canonicalizeRelationshipRecordId(ctx, recordId)
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(canonical)
+  const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
+  if (!resource) {
+    throw new UnprocessableEntityError(
+      `Cannot write to ${recordId}: "${entityDefinitionId}" is not an entity definition in this organization`
+    )
+  }
+  return { recordId: canonical, entityDefinitionId, entityInstanceId, resource }
+}
+
+/** {@link resolveWriteTarget} for a bulk write; every RecordId must name the same definition. */
+export async function resolveBulkWriteTarget(
+  ctx: FieldValueContext,
+  recordIds: RecordId[],
+  operation: string
+): Promise<{
+  recordIds: RecordId[]
+  entityDefinitionId: string
+  entityInstanceIds: string[]
+  resource: Resource
+}> {
+  const { entityDefinitionId, resource } = await resolveWriteTarget(ctx, recordIds[0]!)
+  const parsed = await Promise.all(
+    recordIds.map(async (rid) => parseRecordId(await canonicalizeRelationshipRecordId(ctx, rid)))
+  )
+  if (parsed.some((p) => p.entityDefinitionId !== entityDefinitionId)) {
+    throw new BadRequestError(`${operation}: all recordIds must share one entityDefinitionId`)
+  }
+  const entityInstanceIds = parsed.map((p) => p.entityInstanceId)
+  return {
+    recordIds: entityInstanceIds.map((id) => toRecordId(entityDefinitionId, id)),
+    entityDefinitionId,
+    entityInstanceIds,
+    resource,
+  }
 }
 
 /**

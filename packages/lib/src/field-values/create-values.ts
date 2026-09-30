@@ -72,6 +72,7 @@ import {
   preBatchValidateRelationships,
   recomposeNameDisplayFromParts,
   resolveFieldIds,
+  resolveWriteTarget,
   rowToTypedValue,
   validateAndConvertValue,
 } from './field-value-helpers'
@@ -126,10 +127,10 @@ export async function createValuesForEntity(
 
 async function createValuesForEntityUnguarded(
   ctx: FieldValueContext,
-  params: SetValuesForEntityInput
+  rawParams: SetValuesForEntityInput
 ): Promise<WriteValuesForEntityResult> {
-  const { recordId } = params
-  const { entityInstanceId } = parseRecordId(recordId)
+  const { recordId, entityInstanceId } = await resolveWriteTarget(ctx, rawParams.recordId)
+  const params = { ...rawParams, recordId }
 
   const requestedPublish = params.publishEvents ?? !isDeclaredSilent(ctx.session)
   const bufferedScope = requestedPublish ? getAmbientTxWriteScope(ctx.session) : undefined

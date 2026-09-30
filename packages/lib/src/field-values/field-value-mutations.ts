@@ -98,7 +98,9 @@ import {
   maybeUpdateDisplayValue,
   preBatchValidateRelationships,
   recomposeNameDisplayFromParts,
+  resolveBulkWriteTarget,
   resolveFieldIds,
+  resolveWriteTarget,
   rowToTypedValue,
   stampEntityInstancesUpdatedAt,
   stampEntityInstanceUpdatedAt,
@@ -312,10 +314,8 @@ export function captureSyncFieldWrite(args: {
  * Shared by `setBulkValues` and the single-field write path
  * (`setValueWithBuiltIn`, directly and via `setValuesForEntity`'s collector)
  * so every caller emits identical entry shapes for the same field type.
- * `publishRecordId` must already reflect the per-field alias guard (server
- * callers may pass alias-form record ids; the key is built from the field's
- * real EntityDefinition id) — this helper only shapes the value, it does not
- * resolve the alias.
+ * `publishRecordId` is keyed by the field's EntityDefinition id; this helper
+ * only shapes the value.
  */
 export function buildPublishEntry(args: {
   publishRecordId: RecordId
@@ -543,7 +543,8 @@ async function setValueUnguarded(
   ctx: FieldValueContext,
   params: SetValueInput
 ): Promise<TypedFieldValue[]> {
-  const { recordId, fieldId, value } = params
+  const { fieldId, value } = params
+  const { recordId } = await resolveWriteTarget(ctx, params.recordId)
 
   // 1. Get field definition (cached)
   const field = await getField(ctx, fieldId)
@@ -2399,8 +2400,8 @@ async function addValuesBulkUnguarded(
     values: unknown[]
   }
 ): Promise<{ inserted: number; skipped: number }> {
-  const { recordIds, fieldId, values } = params
-  if (recordIds.length === 0 || values.length === 0) {
+  const { fieldId, values } = params
+  if (params.recordIds.length === 0 || values.length === 0) {
     return { inserted: 0, skipped: 0 }
   }
 
@@ -2437,12 +2438,12 @@ async function addValuesBulkUnguarded(
   const column = matches[0]!.column
 
   // Parse + sort source record ids for deterministic lock order.
-  const parsed = recordIds.map((rid) => parseRecordId(rid))
-  const entityIds = parsed.map((p) => p.entityInstanceId)
-  const entityDefinitionId = parsed[0]!.entityDefinitionId
-  if (parsed.some((p) => p.entityDefinitionId !== entityDefinitionId)) {
-    throw new BadRequestError('addValuesBulk: all recordIds must share one entityDefinitionId')
-  }
+  const {
+    recordIds,
+    entityDefinitionId,
+    entityInstanceIds: entityIds,
+    resource,
+  } = await resolveBulkWriteTarget(ctx, params.recordIds, 'addValuesBulk')
 
   let insertedCount = 0
   let skippedCount = 0
@@ -2576,7 +2577,7 @@ async function addValuesBulkUnguarded(
   const bulkAddCollector = syncCollectorOf(ctx.session)
   if (bulkAddCollector && insertedTypedByEntity.size > 0) {
     const key = field.systemAttribute ?? fieldId
-    const ridByInstance = new Map(parsed.map((p, i) => [p.entityInstanceId, recordIds[i]!]))
+    const ridByInstance = new Map(entityIds.map((id, i) => [id, recordIds[i]!]))
     for (const entityId of insertedTypedByEntity.keys()) {
       const rid = ridByInstance.get(entityId)
       if (rid) bulkAddCollector.recordTouched(rid, [key])
@@ -2587,15 +2588,13 @@ async function addValuesBulkUnguarded(
   // Old display = pre-write rows; new display = pre-write rows + inserts.
   // Bulk renderer surfaces this as an "added" diff.
   if (insertedTypedByEntity.size > 0 && ctx.userId !== undefined) {
-    const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
-    const entitySlug = resource?.apiSlug ?? ''
     await dispatchAddRemoveFieldChangeEvents({
       ctx,
       field,
       fieldType,
       entityDefinitionId,
-      entitySlug,
-      entityType: resource?.entityType ?? null,
+      entitySlug: resource.apiSlug,
+      entityType: resource.entityType ?? null,
       recordIds,
       entityIds,
       oldRowsByEntity,
@@ -2636,8 +2635,8 @@ async function removeValuesBulkUnguarded(
     values: unknown[]
   }
 ): Promise<{ removed: number }> {
-  const { recordIds, fieldId, values } = params
-  if (recordIds.length === 0 || values.length === 0) return { removed: 0 }
+  const { fieldId, values } = params
+  if (params.recordIds.length === 0 || values.length === 0) return { removed: 0 }
 
   const field = await getField(ctx, fieldId)
   const fieldType = field.type as FieldType
@@ -2666,15 +2665,17 @@ async function removeValuesBulkUnguarded(
   const column = matches[0]!.column
   const matchValues = matches.map((m) => m.value)
 
-  const parsed = recordIds.map((rid) => parseRecordId(rid))
-  const entityIds = parsed.map((p) => p.entityInstanceId)
-  const entityDefinitionId = parsed[0]!.entityDefinitionId
+  const {
+    recordIds,
+    entityDefinitionId,
+    entityInstanceIds: entityIds,
+    resource,
+  } = await resolveBulkWriteTarget(ctx, params.recordIds, 'removeValuesBulk')
 
   // Pre-fetch existing rows so we can derive each entity's new (post-delete)
   // value list in memory, without a second SELECT after the delete. Gated on
   // listener presence so silent paths skip the read entirely.
-  const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
-  const entitySlug = resource?.apiSlug ?? ''
+  const entitySlug = resource.apiSlug
   const willDispatchFieldChange = ctx.userId !== undefined
 
   const oldRowsByEntity = new Map<string, FieldValueRow[]>()
@@ -2726,7 +2727,7 @@ async function removeValuesBulkUnguarded(
   const bulkRemoveCollector = syncCollectorOf(ctx.session)
   if (bulkRemoveCollector && deleted.length > 0) {
     const key = field.systemAttribute ?? fieldId
-    const ridByInstance = new Map(parsed.map((p, i) => [p.entityInstanceId, recordIds[i]!]))
+    const ridByInstance = new Map(entityIds.map((id, i) => [id, recordIds[i]!]))
     for (const entityId of new Set(deleted.map((row) => row.entityId))) {
       const rid = ridByInstance.get(entityId)
       if (rid) bulkRemoveCollector.recordTouched(rid, [key])
@@ -2747,7 +2748,7 @@ async function removeValuesBulkUnguarded(
       fieldType,
       entityDefinitionId,
       entitySlug,
-      entityType: resource?.entityType ?? null,
+      entityType: resource.entityType ?? null,
       recordIds,
       entityIds,
       oldRowsByEntity,
@@ -2872,7 +2873,6 @@ async function setValueWithBuiltInUnguarded(
   }
 
   const {
-    recordId,
     fieldId: rawFieldId,
     value,
     skipInverseSync = false,
@@ -2883,6 +2883,10 @@ async function setValueWithBuiltInUnguarded(
     isCreate = false,
     collectFieldChanges,
   } = params
+  const { recordId, entityDefinitionId, entityInstanceId, resource } = await resolveWriteTarget(
+    ctx,
+    params.recordId
+  )
 
   // Plan 04 §6.2. An explicit `publishEvents: false` is the C3 escape hatch —
   // "an aggregator one frame up announces this" — and stays absolute: it
@@ -2904,10 +2908,6 @@ async function setValueWithBuiltInUnguarded(
   const txScope =
     bufferedScope && !isTxWriteCreated(bufferedScope, recordId) ? bufferedScope : undefined
 
-  // Parse RecordId to get both parts
-  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
-
-  // Derive modelType from entityDefinitionId
   const modelType = getModelType(entityDefinitionId)
 
   // 1. Check if built-in field
@@ -3124,21 +3124,14 @@ async function setValueWithBuiltInUnguarded(
     }
   }
 
-  // Client store keys are always cuid-form (`<defId>:<inst>:<defId>:<fieldId>`),
-  // but server-side callers (money totals hooks, lifecycle paths) pass alias-form
-  // record ids ('quote:<inst>') — published verbatim, those frames land in the
-  // store as orphan keys no cell subscribes to. Publish under the field's real
-  // EntityDefinition id; table-backed system resources (no entityDefinitionId on
-  // the CustomField row) keep the caller's recordId.
+  // Client store keys use the field's EntityDefinition id, which differs from the
+  // RecordId for table-backed resources that also carry a def row (`thread`).
   const publishRecordId = field.entityDefinitionId
     ? toRecordId(field.entityDefinitionId, entityInstanceId)
     : recordId
 
-  // Resolve entity metadata once — shared by pre-hook, oldValue gate, and
-  // post-hook so we hit the resource cache a single time per write.
-  const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
-  const entitySlug = resource?.apiSlug ?? ''
-  const entityType = resource?.entityType ?? null
+  const entitySlug = resource.apiSlug
+  const entityType = resource.entityType ?? null
 
   // Prime the batch relationship validator for this write's ids
   // (query-reduction Phase 3): a multi-value RELATIONSHIP write otherwise
@@ -3573,7 +3566,6 @@ async function writeValuesForEntityUnguarded(
   params: SetValuesForEntityInput
 ): Promise<WriteValuesForEntityResult> {
   const {
-    recordId,
     values,
     // See `setValueWithBuiltIn` — a declared-silent session is the default here
     // too, so a C4/C5 leaf declares its reason once instead of passing a bare
@@ -3587,8 +3579,11 @@ async function writeValuesForEntityUnguarded(
     collectFieldChanges,
   } = params
 
-  // Parse RecordId to get both parts and derive modelType
-  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+  // Outside the per-field try/catch below, so an unresolvable record throws to the caller.
+  const { recordId, entityDefinitionId, entityInstanceId, resource } = await resolveWriteTarget(
+    ctx,
+    params.recordId
+  )
   const modelType = getModelType(entityDefinitionId)
 
   // Filter out undefined values and resolve any systemAttribute strings to real fieldIds
@@ -3669,16 +3664,12 @@ async function writeValuesForEntityUnguarded(
   if (customs.length > 0) {
     // Load all fields for this entity definition in one cache read
     const fieldMap = await getCachedFieldMap(ctx.organizationId, entityDefinitionId)
-    const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
-
-    const entityDefinition = resource
-      ? {
-          id: resource.entityDefinitionId ?? resource.id,
-          primaryDisplayFieldId: resource.display.primaryDisplayField?.id ?? null,
-          secondaryDisplayFieldId: resource.display.secondaryDisplayField?.id ?? null,
-          avatarFieldId: resource.display.avatarField?.id ?? null,
-        }
-      : null
+    const entityDefinition = {
+      id: resource.entityDefinitionId ?? resource.id,
+      primaryDisplayFieldId: resource.display.primaryDisplayField?.id ?? null,
+      secondaryDisplayFieldId: resource.display.secondaryDisplayField?.id ?? null,
+      avatarFieldId: resource.display.avatarField?.id ?? null,
+    }
 
     // Warm ctx.fieldCache for all custom fields in one pass
     for (const v of customs) {
@@ -3906,9 +3897,9 @@ async function setBulkValuesUnguarded(
   ctx: FieldValueContext,
   params: SetBulkValuesInput
 ): Promise<{ count: number }> {
-  const { recordIds, values } = params
+  const { values } = params
 
-  if (recordIds.length === 0 || values.length === 0) {
+  if (params.recordIds.length === 0 || values.length === 0) {
     return { count: 0 }
   }
 
@@ -3918,7 +3909,7 @@ async function setBulkValuesUnguarded(
   // abort siblings (Promise.allSettled semantics, matching the normal
   // bulk-write path).
   if (params.ai === true) {
-    const pairs = recordIds.flatMap((recordId) =>
+    const pairs = params.recordIds.flatMap((recordId) =>
       values.map((v) => ({ recordId, fieldId: v.fieldId }))
     )
     const results = await Promise.allSettled(
@@ -3935,10 +3926,9 @@ async function setBulkValuesUnguarded(
     return { count }
   }
 
-  // Parse RecordIds and derive modelType from first one (all should be same type in bulk)
-  const parsedResources = recordIds.map((rid) => parseRecordId(rid))
-  const entityInstanceIds = parsedResources.map((p) => p.entityInstanceId)
-  const modelType = getModelType(parsedResources[0]!.entityDefinitionId)
+  const { recordIds, entityDefinitionId, entityInstanceIds, resource } =
+    await resolveBulkWriteTarget(ctx, params.recordIds, 'setBulkValues')
+  const modelType = getModelType(entityDefinitionId)
 
   // Filter out undefined values and resolve any systemAttribute strings to real fieldIds
   const validValues = await resolveFieldIds(
@@ -3950,18 +3940,13 @@ async function setBulkValuesUnguarded(
   }
 
   // Load all fields for this entity definition in one cache read
-  const entityDefinitionId = parsedResources[0]!.entityDefinitionId
   const fieldMap = await getCachedFieldMap(ctx.organizationId, entityDefinitionId)
-  const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
-
-  const entityDefinition = resource
-    ? {
-        id: resource.entityDefinitionId ?? resource.id,
-        primaryDisplayFieldId: resource.display.primaryDisplayField?.id ?? null,
-        secondaryDisplayFieldId: resource.display.secondaryDisplayField?.id ?? null,
-        avatarFieldId: resource.display.avatarField?.id ?? null,
-      }
-    : null
+  const entityDefinition = {
+    id: resource.entityDefinitionId ?? resource.id,
+    primaryDisplayFieldId: resource.display.primaryDisplayField?.id ?? null,
+    secondaryDisplayFieldId: resource.display.secondaryDisplayField?.id ?? null,
+    avatarFieldId: resource.display.avatarField?.id ?? null,
+  }
 
   // Warm ctx.fieldCache for all custom fields in one pass
   const customFieldIds = validValues
@@ -4031,8 +4016,8 @@ async function setBulkValuesUnguarded(
   // emitted event carries an accurate `oldValue`/`oldDisplay`. Gated on
   // listener presence — entities without registered field-change hooks pay
   // nothing here.
-  const entitySlug = resource?.apiSlug ?? ''
-  const entityType = resource?.entityType ?? null
+  const entitySlug = resource.apiSlug
+  const entityType = resource.entityType ?? null
   // Bulk `setBulkValues` can touch several different custom fields (of different fieldTypes) in
   // one call, so the type-keyed half of the probe checks every field being written, not just one
   // — `field-type-keyed handlers dispatch per-field inside dispatchBulkFieldChangeEvents below.
@@ -4200,10 +4185,7 @@ async function setBulkValuesUnguarded(
     for (const fieldResult of result.value) {
       if (fieldResult.state !== 'complete') continue
       const cachedField = ctx.fieldCache.get(fieldResult.fieldId)
-      // Same alias-form guard as setValueWithBuiltIn's publishRecordId — bulk
-      // server-side callers (e.g. money invoice-lifecycle unstamp) pass
-      // 'line_item:<inst>' ids; publish under the field's real EntityDefinition
-      // id so the keys match client store subscriptions.
+      // Same keying as setValueWithBuiltIn's publishRecordId.
       const publishRecordId = cachedField?.entityDefinitionId
         ? toRecordId(cachedField.entityDefinitionId, entityInstanceIds[i]!)
         : recordId

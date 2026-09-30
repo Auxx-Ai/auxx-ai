@@ -29,6 +29,7 @@ vi.mock('../../cache', () => ({
   findCachedResource: vi.fn(async () => undefined),
   getCachedFieldMap: vi.fn(),
   getCachedResource: vi.fn(),
+  getCachedEntityDefId: vi.fn(async () => undefined),
   getOrgCache: vi.fn(),
   getAllCachedCustomFields: vi.fn(async () => []),
   getCachedRecordRules: vi.fn(async () => []),
@@ -68,12 +69,13 @@ vi.mock('../timeline-snapshot', () => ({
   resolveFieldChangeSnapshotsBulk: vi.fn(async () => new Map()),
 }))
 
-import { getCachedResource, getOrgCache } from '../../cache'
+import { getCachedEntityDefId, getCachedResource, getOrgCache } from '../../cache'
+import { UnprocessableEntityError } from '../../errors'
 import { collectTriggeredFields } from '../../field-hooks/collect-triggers'
 import { getEntityFieldChangeHooks } from '../../field-hooks/registry'
 import { publishFieldValueUpdates } from '../../realtime/publish-helpers'
 import { createFieldValueContext, type FieldValueContext } from '../field-value-helpers'
-import { setValueWithBuiltIn } from '../field-value-mutations'
+import { setValuesForEntity, setValueWithBuiltIn } from '../field-value-mutations'
 
 const mockedGetCachedResource = getCachedResource as unknown as ReturnType<typeof vi.fn>
 const mockedGetOrgCache = getOrgCache as unknown as ReturnType<typeof vi.fn>
@@ -210,7 +212,11 @@ const hookSpy = vi.fn(async (_event: unknown) => {})
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockedGetCachedResource.mockResolvedValue(undefined)
+  mockedGetCachedResource.mockImplementation(async (_orgId: string, id: string) => ({
+    id,
+    apiSlug: `${id}s`,
+    display: { primaryDisplayField: null, secondaryDisplayField: null, avatarField: null },
+  }))
   mockedPublish.mockResolvedValue(undefined)
   mockedCollectTriggers.mockResolvedValue([])
   mockedGetEntityHooks.mockReturnValue([hookSpy])
@@ -479,5 +485,65 @@ describe('null/clear set (B-14)', () => {
     expect(mockedPublish).toHaveBeenCalledTimes(1)
     const [, , entries] = mockedPublish.mock.calls[0]! as any[]
     expect(entries[0]).toMatchObject({ value: null, aiStatus: null })
+  })
+})
+
+// =============================================================================
+// Write target resolution — an alias RecordId resolves, an unknown one throws
+// =============================================================================
+
+describe('write target resolution', () => {
+  const quoteResource = {
+    id: 'def-quote',
+    apiSlug: 'quotes',
+    entityType: 'quote',
+    display: { primaryDisplayField: null, secondaryDisplayField: null, avatarField: null },
+  }
+
+  beforeEach(() => {
+    vi.mocked(getCachedEntityDefId).mockImplementation(async (_org, type) =>
+      type === 'quote' ? 'def-quote' : undefined
+    )
+    mockedGetCachedResource.mockImplementation(async (_org: string, id: string) =>
+      id === 'def-quote' ? quoteResource : null
+    )
+  })
+
+  it('an alias-form RecordId writes under the canonical def id and fires the entity hooks', async () => {
+    const { db, state } = makeFakeDb([])
+    const ctx = makeCtx(db, [FIELD_TEXT])
+
+    await setValueWithBuiltIn(ctx, {
+      recordId: toRecordId('quote', 'inst-1'),
+      fieldId: 'field-text',
+      value: 'hello',
+    })
+
+    expect(state.insertedRows[0]).toMatchObject({ entityDefinitionId: 'def-quote' })
+    expect(mockedGetEntityHooks).toHaveBeenCalledWith('quotes')
+    expect(hookSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ recordId: toRecordId('def-quote', 'inst-1') })
+    )
+  })
+
+  it('an unresolvable definition throws before any write', async () => {
+    const { db, state } = makeFakeDb([])
+    const ctx = makeCtx(db, [FIELD_TEXT])
+
+    await expect(
+      setValueWithBuiltIn(ctx, { recordId, fieldId: 'field-text', value: 'hello' })
+    ).rejects.toBeInstanceOf(UnprocessableEntityError)
+    expect(state.insertCalls + state.updateCalls + state.deleteCalls).toBe(0)
+    expect(hookSpy).not.toHaveBeenCalled()
+  })
+
+  it('setValuesForEntity throws instead of swallowing it into a failed field result', async () => {
+    const { db, state } = makeFakeDb([])
+    const ctx = makeCtx(db, [FIELD_TEXT])
+
+    await expect(
+      setValuesForEntity(ctx, { recordId, values: [{ fieldId: 'field-text', value: 'hello' }] })
+    ).rejects.toBeInstanceOf(UnprocessableEntityError)
+    expect(state.insertCalls + state.updateCalls).toBe(0)
   })
 })
