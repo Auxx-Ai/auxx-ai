@@ -15,6 +15,7 @@ import { getBuild, readBuildMovements } from './build-queries'
 import { publishBuildsChanged } from './build-realtime'
 import { updateBuild } from './build-writes'
 import { summarizeBuildCompletion } from './client'
+import type { BuildRecord } from './types'
 
 const logger = createScopedLogger('builds:price')
 
@@ -22,6 +23,8 @@ export interface FinishPricedBuildResult {
   /** `false` when a leg is still pending: nothing was stamped or posted. */
   finished: boolean
   post: PostResult | null
+  /** The stamped build when finished, for a caller that publishes a batch itself. */
+  build: BuildRecord | null
 }
 
 /**
@@ -32,11 +35,13 @@ export interface FinishPricedBuildResult {
 export async function finishPricedBuild(
   db: Database,
   organizationId: string,
-  buildId: string
+  buildId: string,
+  /** `publish: false` leaves the `build:changed` frame to a caller finishing many builds. */
+  options: { publish?: boolean } = {}
 ): Promise<FinishPricedBuildResult> {
   const legs = await readBuildMovements(db, organizationId, buildId)
   if (legs.length === 0 || legs.some((leg) => leg.extendedCost == null)) {
-    return { finished: false, post: null }
+    return { finished: false, post: null, build: null }
   }
   const build = await getBuild(db, organizationId, buildId)
   if (build.isErr()) throw build.error
@@ -74,7 +79,7 @@ export async function finishPricedBuild(
       varianceAmount: summary.varianceAmount,
     })
   )
-  await publishBuildsChanged(organizationId, [priced])
+  if (options.publish !== false) await publishBuildsChanged(organizationId, [priced])
 
   // The poster reads the build back, so the stamps above are what its `absorbed` carries.
   const post = await postInventoryDocument(
@@ -98,5 +103,5 @@ export async function finishPricedBuild(
     varianceAmount: summary.varianceAmount,
     posted: post?.status ?? null,
   })
-  return { finished: true, post }
+  return { finished: true, post, build: priced }
 }

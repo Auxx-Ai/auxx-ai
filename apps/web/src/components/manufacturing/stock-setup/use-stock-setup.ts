@@ -1,13 +1,15 @@
 // apps/web/src/components/manufacturing/stock-setup/use-stock-setup.ts
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { useQueryState } from 'nuqs'
 import { useCallback, useMemo } from 'react'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api, type RouterOutputs } from '~/trpc/react'
 import type { StockSetupStep } from './stock-setup-href'
 
 export type StockSetupStatus = RouterOutputs['purchasing']['stockSetupStatus']
-export type StockSetupStepState = 'todo' | 'done' | 'skipped' | 'empty'
+export type StockSetupStepState = 'todo' | 'done' | 'skipped' | 'empty' | 'unavailable'
 
 export const STOCK_SETUP_STEPS: { id: StockSetupStep; name: string }[] = [
   { id: 'kinds', name: 'Check parts' },
@@ -22,9 +24,19 @@ function isStep(value: string | null): value is StockSetupStep {
 
 /**
  * Step states for a status; `skipped` only when a step is done by skipping it, `empty` when
- * there is nothing for it to act on yet (no parts, or no part that moved).
+ * there is nothing for it to act on yet (no parts, or no part that moved). Without
+ * `canRecordBuilds` (`mrp.manage`, what the backflush procedures assert) an open builds step is
+ * `unavailable`.
  */
 export function resolveStepStates(
+  status: StockSetupStatus | undefined,
+  { canRecordBuilds = true }: { canRecordBuilds?: boolean } = {}
+): Record<StockSetupStep, StockSetupStepState> {
+  const states = orgStepStates(status)
+  return canRecordBuilds || states.builds !== 'todo' ? states : { ...states, builds: 'unavailable' }
+}
+
+function orgStepStates(
   status: StockSetupStatus | undefined
 ): Record<StockSetupStep, StockSetupStepState> {
   if (!status) return { kinds: 'todo', costs: 'todo', builds: 'todo', count: 'todo' }
@@ -67,7 +79,11 @@ export function useStockSetup() {
     refetchOnWindowFocus: false,
   })
 
-  const states = useMemo(() => resolveStepStates(status.data), [status.data])
+  const canRecordBuilds = useAccess().can(PermissionKey.mrpManage)
+  const states = useMemo(
+    () => resolveStepStates(status.data, { canRecordBuilds }),
+    [status.data, canRecordBuilds]
+  )
   const selected: StockSetupStep = isStep(stepParam) ? stepParam : firstOpenStep(states)
 
   const selectStep = useCallback((step: StockSetupStep) => void setStepParam(step), [setStepParam])

@@ -12,6 +12,7 @@ import { formatCurrency } from '@auxx/utils/currency'
 import { ArrowDownLeft, ArrowUpRight, History, Package } from 'lucide-react'
 import { useState } from 'react'
 import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
+import { useCanOpenBuilds } from '~/components/manufacturing/builds/build-badge'
 import { openBuildSheet } from '~/components/manufacturing/builds/build-sheet-store'
 import { PartStockActions } from '~/components/manufacturing/parts/part-stock-actions'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
@@ -123,6 +124,7 @@ export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps
   const partId = entityInstanceId
   const { values, isLoading } = useSystemValues(recordId, [...PART_ATTRIBUTES], { autoFetch: true })
   const [isOpen, setIsOpen] = useState(false)
+  const canOpenBuilds = useCanOpenBuilds()
 
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
@@ -191,7 +193,7 @@ export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps
                 <StockMovementTreeRow
                   movement={movement}
                   currencyCode={currencyCode}
-                  onOpen={buildId ? () => openBuildSheet(buildId) : undefined}
+                  onOpen={buildId && canOpenBuilds ? () => openBuildSheet(buildId) : undefined}
                 />
               )
             }}

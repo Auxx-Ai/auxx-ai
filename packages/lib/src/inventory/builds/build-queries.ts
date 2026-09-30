@@ -26,9 +26,10 @@ import { loadDirectSubparts } from '../bom/subpart-graph'
 import { loadStandardCostFields, readStandardCost } from '../costing/standard-cost-queries'
 import type { AbsorptionRates, PartStandardCost } from '../costing/types'
 import { computeExtendedCost, resolveInventoryRoleForPartKind } from '../movements/client'
-import { readMovementsByBuilds } from '../movements/reads'
+import { readMovementsByBuilds, type StockMovementRow } from '../movements/reads'
 import { toBuildRecord } from './build-row'
 import { type BuildStatusValue, componentConsumption, unitsStarted } from './client'
+import { readBuildDrift } from './drift-queries'
 import { guard } from './guard'
 import type {
   BuildComponentLine,
@@ -55,6 +56,46 @@ export async function getBuild(
   return guard(
     async () => (await readBuild(db, organizationId, buildId)) ?? null,
     'Failed to read build',
+    { organizationId, buildId }
+  )
+}
+
+/** One build with its drift verdict, the reversal link both ways, and the legs it wrote. */
+export interface BuildDetail {
+  build: BuildRecord
+  drifted: boolean
+  reversedBy: BuildRecord | null
+  reversalOf: BuildRecord | null
+  movements: StockMovementRow[]
+}
+
+/** The build sheet's read, or `null` when the build does not exist or is another org's. */
+export async function getBuildDetail(
+  db: Database,
+  organizationId: string,
+  buildId: string
+): Promise<Result<BuildDetail | null, Error>> {
+  return guard(
+    async () => {
+      const build = await readBuild(db, organizationId, buildId)
+      if (!build) return null
+      const [drift, reversedBy, reversalOf, movements] = await Promise.all([
+        readBuildDrift(db, organizationId, [build]),
+        readBuildReversal(db, organizationId, build.buildId),
+        build.reversalOfBuildId
+          ? readBuild(db, organizationId, build.reversalOfBuildId)
+          : Promise.resolve(undefined),
+        readMovementsByBuilds(db, organizationId, [build.buildId]),
+      ])
+      return {
+        build,
+        drifted: drift.get(build.buildId)?.drifted ?? false,
+        reversedBy: reversedBy ?? null,
+        reversalOf: reversalOf ?? null,
+        movements,
+      }
+    },
+    'Failed to read build detail',
     { organizationId, buildId }
   )
 }

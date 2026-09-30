@@ -1,6 +1,7 @@
 // apps/web/src/components/drawers/tabs/part-inventory-tab.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { parseRecordId, StockMovementType } from '@auxx/lib/resources/client'
 import type { Variant } from '@auxx/ui/components/badge'
 import { Badge } from '@auxx/ui/components/badge'
@@ -83,8 +84,10 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
   // its `autoFetch` re-pulls the recalculated on-hand quantity.
   const invalidateResource = useFieldValueStore((s) => s.invalidateResource)
   const partDefId = useResourceProperty('part', 'id')
-  const { canEditEntity } = useAccess()
+  const { can, canEditEntity } = useAccess()
   const canAdjustStock = !!partDefId && canEditEntity(partDefId)
+  // The backflush behind *Record past builds* is `mrp.manage` on the server.
+  const canRecordPastBuilds = canAdjustStock && can(PermissionKey.mrpManage)
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
   // Set by a ledger `StockMovementBadge`: the row to mark once it is loaded.
@@ -97,7 +100,7 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
   // A made part links to *Record past builds* (plans/mrp/17 §7); the preflight says whether it has a BOM.
   const preflight = api.purchasing.setCountPreflight.useQuery(
     { partIds: [partId] },
-    { enabled: !!partId && canAdjustStock }
+    { enabled: !!partId && canRecordPastBuilds }
   )
   const flight = preflight.data?.[0]
 
@@ -163,7 +166,7 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
                   Adjust Stock
                 </Button>
               </StockAdjustmentPopover>
-              {flight?.hasBom && (
+              {canRecordPastBuilds && flight?.hasBom && (
                 <Button variant='ghost' size='xs' asChild>
                   <Link href={stockSetupHref('builds')}>
                     <Factory />
@@ -313,7 +316,10 @@ function MovementRow({
       <TableCell className='text-right'>
         <ConfirmDialog />
         {movement.buildId ? (
-          <BuildBadge build={{ buildId: movement.buildId }} size='sm' />
+          <BuildBadge
+            build={{ buildId: movement.buildId, number: movement.buildNumber }}
+            size='sm'
+          />
         ) : canReverseThis ? (
           <Button
             variant='ghost'

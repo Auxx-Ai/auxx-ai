@@ -1,9 +1,11 @@
 // apps/web/src/components/manufacturing/stock-setup/fix-accounts-card.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { fixAccountsCopy } from './fix-accounts-copy'
 
@@ -11,14 +13,17 @@ import { fixAccountsCopy } from './fix-accounts-copy'
 export function FixAccountsCard() {
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
+  // The read needs view on `part`, the fix `mrp.manage`: without the fix there is nothing to offer.
+  const canFix = useAccess().can(PermissionKey.mrpManage)
   const drift = api.builds.movementAccountDrift.useQuery(undefined, {
+    enabled: canFix,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   })
   const fix = api.builds.fixMovementAccounts.useMutation()
 
   const data = drift.data
-  if (!data || data.parts.length === 0) return null
+  if (!canFix || !data || data.parts.length === 0) return null
   const copy = fixAccountsCopy(data)
 
   const handleFix = async () => {

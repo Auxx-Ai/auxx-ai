@@ -48,6 +48,7 @@ export function BatchRunSummary({
       utils.builds.list.invalidate(),
       utils.builds.getBatchRun.invalidate(),
       utils.purchasing.listMovements.invalidate(),
+      utils.mrp.partItem.invalidate(),
     ])
   }
 

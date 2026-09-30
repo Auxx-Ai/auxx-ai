@@ -821,9 +821,12 @@ completeBuild()  —— ONE transaction ——▶  −20  400Lbs Motor Assembly 
 table since plans/mrp/23: not an `EntityInstance`, not a registered resource, no `FieldValue`s,
 no custom fields, no records page. Same reasons as the ledger (§6): it grows with sales (the order
 trigger, backfill and backflush raise most builds), every column but `notes` has one code writer,
-and the double-reversal guard needs a constraint `FieldValue` cannot carry. A build opens as a
-sheet from where it is used: the part's stock tab, the order, the batch-run card, the ledger's
-source link. The field-chain guards (`build-status-guard`, `build-delete-guard`, `build-hooks`)
+and the double-reversal guard needs a constraint `FieldValue` cannot carry. A build opens in the
+build sheet (`openBuildSheet`, `components/manufacturing/builds/build-sheet*`) from where it is
+used: the part's stock tab and inventory card, the part's Build pane, the order's builds card, the
+MRP supply section, the ledger's blocked panel, posting links and posting frame. A batch run is a
+frame inside the same sheet; the backflush run panel opens it there. Every entry point is plain
+text for a member without `mrp.view`. The field-chain guards (`build-status-guard`, `build-delete-guard`, `build-hooks`)
 and the quiet write lane (`write-lane.ts`) went with the entity.
 
 - **Only the builds module writes it.** `build-writes.ts` (`insertBuilds`, `updateBuild`) is the
@@ -864,7 +867,13 @@ and the quiet write lane (`write-lane.ts`) went with the entity.
 - **Realtime is `build:changed`** on the org channel (`build-realtime.ts`): ids only, builds,
   parts, orders and runs, 500 builds per frame. The parts' QoH frames still come from the settle.
 - **Permissions** are the MRP area: `mrp.view` to read (list, get, the sheet), `mrp.manage` for
-  every build action; the cost operations keep `assertEditEntity(part)`. The module checks nothing.
+  every build action, including backfill, backflush and its undo, and `fixMovementAccounts`; the
+  cost operations keep `assertEditEntity(part)`. The module checks nothing. Both keys carry
+  `featureKey: FeatureKey.mrp` (`permissions/capabilities/registry.ts`), so an org whose plan lacks
+  the MRP feature has neither, admins included. The `mrp` area ships closed: it is not in the
+  member baseline, so a member without an explicit grant can neither see nor act on a build.
+  The web gates match: without `mrp.manage` the Stock setup "Record past builds" step reads
+  unavailable and fires none of its queries.
 
 ### 8.1 An order-raised build tracks its order
 

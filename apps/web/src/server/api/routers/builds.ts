@@ -7,6 +7,7 @@ import { instantForBookDay } from '@auxx/lib/accounting/ledger'
 import { getCachedEntityDefId, getOrgCache } from '@auxx/lib/cache'
 import { BadRequestError, NotFoundError } from '@auxx/lib/errors'
 import {
+  amendPlannedBuildQuantity,
   type BuildRecord,
   buildNow,
   cancelBuild,
@@ -17,6 +18,7 @@ import {
   executeBackfill,
   explodeBuildComponents,
   fixMovementAccounts,
+  getBuildDetail,
   hasStandingBackflushBuilds,
   listBuilds,
   loadAutoBuildSettings,
@@ -25,9 +27,7 @@ import {
   readBackfillPlanReads,
   readBackflushRunRow,
   readBatchRun,
-  readBuild,
   readBuildDrift,
-  readBuildReversal,
   readKindConflictFacts,
   readKindConflicts,
   readMovementAccountDrift,
@@ -58,7 +58,6 @@ import {
   setStandardCost,
   setStandardCosts,
 } from '@auxx/lib/inventory/costing'
-import { readMovementsByBuilds } from '@auxx/lib/inventory/movements'
 import { bulkSetPartKind } from '@auxx/lib/inventory/receiving'
 import { enqueueBackflushRun, enqueueUndoBackflushRun } from '@auxx/lib/jobs'
 import { PermissionKey } from '@auxx/lib/permissions'
@@ -66,6 +65,7 @@ import { getOrganizationSetting } from '@auxx/lib/settings'
 import { dayKeyInZone, previousDayKey, startOfDayInstant } from '@auxx/utils/calendar-day'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
+import { compareBuildLegs } from '~/server/api/build-legs'
 import { calendarDaySchema } from '~/server/api/calendar-day-schema'
 import { capabilityProcedure, createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
@@ -199,7 +199,7 @@ const completionShape = {
  * | `previewRoll`, `roll`, `setStandardCost(s)`, `confirmStandardCosts`, `canRestateStandardCost`, `confirmKindConflicts` | edit on `part` |
  * | `standardCostWorklist`, `kindConflicts`, `kindConflictFacts`, `movementAccountDrift` | view on `part` |
  * | `list`, `get`, `getBatchRun`           | `mrp.view`                                |
- * | every other procedure (create, start, cancel, complete, reverse, notes, backfill, backflush and its undo, `fixMovementAccounts`) | `mrp.manage` |
+ * | every other procedure (create, start, cancel, complete, reverse, notes, `amendQuantity`, backfill, backflush and its undo, `fixMovementAccounts`) | `mrp.manage` |
  *
  * Previews (`previewCompletion`, `previewBackfill`, `previewBackflush`) are gated as the
  * write they are the first half of: they disclose the standard costs that write freezes.
@@ -448,7 +448,12 @@ export const buildsRouter = createTRPCRouter({
         offset,
       })
       if (result.isErr()) throw result.error
-      const items = result.value
+      // Two queries for the whole page, not one per build.
+      const drift = await readBuildDrift(ctx.db, ctx.session.organizationId, result.value)
+      const items = result.value.map((build) => ({
+        ...build,
+        drifted: drift.get(build.buildId)?.drifted ?? false,
+      }))
       return { items, nextCursor: items.length === limit ? offset + limit : null }
     }),
 
@@ -464,17 +469,11 @@ export const buildsRouter = createTRPCRouter({
     .input(z.object({ buildId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const build = await readBuild(ctx.db, organizationId, input.buildId)
-      if (!build) return null
+      const result = await getBuildDetail(ctx.db, organizationId, input.buildId)
+      if (result.isErr()) throw result.error
+      if (!result.value) return null
+      const { build, drifted, reversedBy, reversalOf, movements } = result.value
 
-      const [drift, reversedBy, reversalOf, movements] = await Promise.all([
-        readBuildDrift(ctx.db, organizationId, [build]),
-        readBuildReversal(ctx.db, organizationId, build.buildId),
-        build.reversalOfBuildId
-          ? readBuild(ctx.db, organizationId, build.reversalOfBuildId)
-          : Promise.resolve(undefined),
-        readMovementsByBuilds(ctx.db, organizationId, [build.buildId]),
-      ])
       const names = await readEntityNames(ctx.db, organizationId, [
         build.partId,
         ...(build.orderId ? [build.orderId] : []),
@@ -483,7 +482,7 @@ export const buildsRouter = createTRPCRouter({
 
       return {
         ...build,
-        drifted: drift.get(build.buildId)?.drifted ?? false,
+        drifted,
         partName: names[build.partId] ?? null,
         orderName: build.orderId ? (names[build.orderId] ?? null) : null,
         reversedBy: buildLink(reversedBy),
@@ -502,12 +501,7 @@ export const buildsRouter = createTRPCRouter({
             costBasis: movement.costBasis,
             effectiveAt: movement.effectiveAt,
           }))
-          // Produce leg first, then the consumed components by name.
-          .sort(
-            (a, b) =>
-              Number(b.quantity > 0) - Number(a.quantity > 0) ||
-              (a.partName ?? '').localeCompare(b.partName ?? '')
-          ),
+          .sort(compareBuildLegs),
       }
     }),
 
@@ -520,6 +514,19 @@ export const buildsRouter = createTRPCRouter({
         buildId: input.buildId,
         notes,
       })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Change a `planned` build's quantity. On an order-raised build the next order change converges
+   * it back to the order (plans/products/13 Q3); the sheet says so beside the field.
+   */
+  amendQuantity: permissionProcedure(PermissionKey.mrpManage)
+    .input(z.object({ buildId: z.string().min(1), quantityPlanned: runQuantity }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const result = await amendPlannedBuildQuantity(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
       return result.value
     }),
@@ -1100,7 +1107,7 @@ async function readEntityNames(
 }
 
 /** A build as the other end of a reversal link. */
-function buildLink(build: BuildRecord | undefined): { buildId: string; number: string } | null {
+function buildLink(build: BuildRecord | null): { buildId: string; number: string } | null {
   return build ? { buildId: build.buildId, number: build.number } : null
 }
 

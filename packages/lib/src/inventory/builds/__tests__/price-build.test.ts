@@ -95,7 +95,7 @@ describe('finishPricedBuild', () => {
 
     const result = await finishPricedBuild(db, ORG, 'build_1')
 
-    expect(result).toEqual({ finished: false, post: null })
+    expect(result).toEqual({ finished: false, post: null, build: null })
     expect(h.update).not.toHaveBeenCalled()
     expect(h.postDocument).not.toHaveBeenCalled()
   })
@@ -130,6 +130,14 @@ describe('finishPricedBuild', () => {
     expect(h.update.mock.invocationCallOrder[0]!).toBeLessThan(
       h.postDocument.mock.invocationCallOrder[0]!
     )
+  })
+
+  it('leaves the frame to the caller with publish: false, and hands back the stamped build', async () => {
+    const result = await finishPricedBuild(db, ORG, 'build_1', { publish: false })
+
+    expect(result.build).toMatchObject({ buildId: 'build_1', materialCost: 2_500 })
+    expect(h.publish).not.toHaveBeenCalled()
+    expect(h.postDocument).toHaveBeenCalledTimes(1)
   })
 
   it('absorbs from the rates when completion stamped no explicit figure', async () => {

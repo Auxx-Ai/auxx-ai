@@ -112,6 +112,18 @@ describe('resolveStepStates', () => {
       )
     ).toBe('count')
   })
+
+  it('marks an open builds step unavailable without mrp.manage, and opens past it', () => {
+    const open = status({
+      unbuiltPartCount: 2,
+      steps: { kinds: true, costs: true, builds: false, count: false },
+    })
+    const states = resolveStepStates(open, { canRecordBuilds: false })
+    expect(states.builds).toBe('unavailable')
+    expect(firstOpenStep(states)).toBe('count')
+    // A step already done or skipped still says so.
+    expect(resolveStepStates(status(), { canRecordBuilds: false }).builds).toBe('done')
+  })
 })
 
 describe('booksStartDate', () => {

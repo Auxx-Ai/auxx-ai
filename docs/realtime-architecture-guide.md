@@ -172,7 +172,7 @@ Every helper:
 | `publishEvalCaseChanged` | orgPresence | `eval:case-changed` | `realtimeSync` |
 | `publishExportBatchChanged` | orgPresence | `exportBatch:changed` | none (no flag exists in code today) |
 | `publishBackflushRunEvent` | orgPresence | `backflush:run` | none; throttled per run by `inventory/builds/backflush-run-realtime.ts` |
-| `publishBuildChangedEvent` | orgPresence | `build:changed` | none; ids only (builds, parts, orders, runs), 500 builds per frame, via `publishBuildsChanged` in `inventory/builds/build-realtime.ts` after the writer commits. Builds are a table, not records, so this replaces `records:changed` for them |
+| `publishBuildChangedEvent` | orgPresence | `build:changed` | none; ids only (builds, parts, orders, runs), 500 builds per frame, via `publishBuildsChanged` in `inventory/builds/build-realtime.ts` after the writer commits. Builds are a table, not records, so this replaces `records:changed` for them. Subscriber: `useBuildsRealtime`, mounted once by `BuildSheetRoot`; it invalidates every mounted `builds.get`, `builds.list`, `builds.getBatchRun` and `mrp.partItem`, once per 500 ms window however many frames arrive |
 
 Record lifecycle events (`record:created/updated/deleted/archived`) are published
 inline from the entity CRUD layer
