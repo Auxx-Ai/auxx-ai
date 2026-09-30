@@ -220,7 +220,11 @@ const hookSpy = vi.fn(async (_event: unknown) => {})
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockedGetCachedResource.mockResolvedValue(undefined)
+  mockedGetCachedResource.mockImplementation(async (_orgId: string, id: string) => ({
+    id,
+    apiSlug: `${id}s`,
+    display: { primaryDisplayField: null, secondaryDisplayField: null, avatarField: null },
+  }))
   mockedPublish.mockResolvedValue(undefined)
   mockedGetEntityHooks.mockReturnValue([hookSpy])
   mockedIsBuiltIn.mockReturnValue(false)

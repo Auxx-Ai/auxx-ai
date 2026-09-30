@@ -229,7 +229,11 @@ function writes(state: { insertedRows: any[] }): Array<{ fieldId: string; value:
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockedGetCachedResource.mockResolvedValue(undefined)
+  mockedGetCachedResource.mockImplementation(async (_orgId: string, id: string) => ({
+    id,
+    apiSlug: `${id}s`,
+    display: { primaryDisplayField: null, secondaryDisplayField: null, avatarField: null },
+  }))
   mockedPublish.mockResolvedValue(undefined)
   mockedGetCachedFieldMap.mockResolvedValue(new Map(ALL_FIELDS.map((f) => [f.id, f])))
   // resolveFieldIds needs `.from(orgId, 'customFields').all()`; getField's
