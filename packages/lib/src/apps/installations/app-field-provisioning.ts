@@ -240,6 +240,7 @@ export type ExistingAppFieldRow = Pick<
   | 'id'
   | 'appFieldKey'
   | 'connectionId'
+  | 'entityDefinitionId'
   | 'type'
   | 'name'
   | 'description'
@@ -281,6 +282,8 @@ export interface AppFieldReconcileAction {
   appFieldKey: string
   /** null for installation-scope; the owning connection for connection-scope. */
   connectionId: string | null
+  /** create: the resolved target def (undefined when `targetEntity` is unresolvable). */
+  entityDefinitionId?: string
   /** create/update source field. */
   field?: CatalogAppField
   /** update/orphan target row. */
@@ -382,36 +385,74 @@ function diffFieldColumns(
   return changes
 }
 
-const cellKey = (appFieldKey: string, connectionId: string | null): string =>
-  `${appFieldKey} ${connectionId ?? ''}`
+/** Resolves a catalog field to its target `EntityDefinition.id`; undefined when unresolvable. */
+export type AppFieldEntityResolver = (field: CatalogAppField) => string | undefined
+
+// An app may declare the same key on several entities (Shopify `shipmentCount` on order + line_item).
+const defKey = (entityDefinitionId: string | null, appFieldKey: string): string =>
+  `${entityDefinitionId ?? ''} ${appFieldKey}`
+
+const cellKey = (
+  entityDefinitionId: string | null,
+  appFieldKey: string,
+  connectionId: string | null
+): string => `${defKey(entityDefinitionId, appFieldKey)} ${connectionId ?? ''}`
+
+/**
+ * Rows whose `(entityDefinitionId, appFieldKey)` the catalog no longer declares. A row whose key
+ * is also declared on an unresolvable target is kept, so a transient resolve miss never retires it.
+ */
+export function findOrphanAppFieldRows(
+  catalogFields: CatalogAppField[],
+  existingRows: ExistingAppFieldRow[],
+  resolveEntityDefId: AppFieldEntityResolver
+): ExistingAppFieldRow[] {
+  const declared = new Set<string>()
+  const unresolvedKeys = new Set<string>()
+  for (const field of catalogFields) {
+    const defId = resolveEntityDefId(field)
+    if (defId) declared.add(defKey(defId, field.key))
+    else unresolvedKeys.add(field.key)
+  }
+  return existingRows.filter(
+    (row) =>
+      row.appFieldKey != null &&
+      !unresolvedKeys.has(row.appFieldKey) &&
+      !declared.has(defKey(row.entityDefinitionId ?? null, row.appFieldKey))
+  )
+}
 
 /**
  * Pure diff (DB-free, unit-testable) — the desired cells (each declared field ×
  * its scope's slots) vs the existing rows. Emits create/update actions and drift
- * `errors` (a type change parks the sync), plus orphan-handling for rows whose
- * `appFieldKey` no longer appears in the catalog.
+ * `errors` (a type change parks the sync), plus orphan-handling for rows the
+ * catalog no longer declares (see {@link findOrphanAppFieldRows}).
  *
- * A *cell* is one `(appFieldKey, connectionId)` slot: installation-scope fields
- * take `connectionId: null`; connection-scope fields take one slot per entry in
- * `connectionIds`.
+ * A *cell* is one `(entityDefinitionId, appFieldKey, connectionId)` slot:
+ * installation-scope fields take `connectionId: null`; connection-scope fields take
+ * one slot per entry in `connectionIds`.
  */
 export function computeAppFieldReconcileActions(params: {
   catalogFields: CatalogAppField[]
   existingRows: ExistingAppFieldRow[]
   connectionIds: string[]
+  resolveEntityDefId: AppFieldEntityResolver
   /** Pre-computed by the executor — does a candidate-orphan field id have any values? */
   hasValues: (fieldId: string) => boolean
   appSlug: string
 }): { actions: AppFieldReconcileAction[]; errors: AppFieldReconcileError[] } {
-  const { catalogFields, existingRows, connectionIds, hasValues, appSlug } = params
+  const { catalogFields, existingRows, connectionIds, resolveEntityDefId, hasValues, appSlug } =
+    params
   const actions: AppFieldReconcileAction[] = []
   const errors: AppFieldReconcileError[] = []
 
-  const catalogKeys = new Set(catalogFields.map((f) => f.key))
   const rowByCell = new Map<string, ExistingAppFieldRow>()
   for (const row of existingRows) {
     if (!row.appFieldKey) continue
-    rowByCell.set(cellKey(row.appFieldKey, row.connectionId ?? null), row)
+    rowByCell.set(
+      cellKey(row.entityDefinitionId ?? null, row.appFieldKey, row.connectionId ?? null),
+      row
+    )
   }
 
   for (const field of catalogFields) {
@@ -421,11 +462,21 @@ export function computeAppFieldReconcileActions(params: {
     // isManifestAppFieldRow).
     const cellConnectionIds: (string | null)[] =
       field.scope === 'connection' ? connectionIds : [null]
+    const entityDefinitionId = resolveEntityDefId(field)
 
     for (const connectionId of cellConnectionIds) {
-      const existing = rowByCell.get(cellKey(field.key, connectionId))
+      const existing = entityDefinitionId
+        ? rowByCell.get(cellKey(entityDefinitionId, field.key, connectionId))
+        : undefined
       if (!existing) {
-        actions.push({ kind: 'create', appFieldKey: field.key, connectionId, field })
+        // An unresolvable target still emits a create — `provisionAppField` logs and skips it.
+        actions.push({
+          kind: 'create',
+          appFieldKey: field.key,
+          connectionId,
+          entityDefinitionId,
+          field,
+        })
         continue
       }
       if (existing.type !== field.type) {
@@ -448,13 +499,10 @@ export function computeAppFieldReconcileActions(params: {
     }
   }
 
-  // Orphans — rows whose `appFieldKey` no longer appears in the catalog. v1 rule
-  // (see plan §1a.5): only orphan by missing key; leave connectionId-mismatch rows
-  // alone (connection deletion already cascades them). Hide rows that hold values
-  // (reversible, no name-collision), delete empty ones. The keyless-row skip is
-  // defensive — post-`isManifestAppFieldRow` nothing keyless should reach this diff.
-  for (const row of existingRows) {
-    if (!row.appFieldKey || catalogKeys.has(row.appFieldKey)) continue
+  // Orphans (plan §1a.5): connectionId-mismatch rows are left alone — connection
+  // deletion already cascades them. Hide rows that hold values, delete empty ones.
+  for (const row of findOrphanAppFieldRows(catalogFields, existingRows, resolveEntityDefId)) {
+    if (!row.appFieldKey) continue
     if (hasValues(row.id)) {
       if (row.isHidden) continue // already at rest
       actions.push({
@@ -474,6 +522,33 @@ export function computeAppFieldReconcileActions(params: {
   }
 
   return { actions, errors }
+}
+
+/** Resolve each distinct manifest `targetEntity` kind to the org's def once, via the org cache. */
+export async function buildManifestEntityResolver(
+  organizationId: string,
+  catalogFields: CatalogAppField[]
+): Promise<AppFieldEntityResolver> {
+  const defIdByTarget = new Map<string, string | undefined>()
+  for (const target of new Set(catalogFields.map((f) => f.targetEntity))) {
+    defIdByTarget.set(target, await getCachedEntityDefId(organizationId, target))
+  }
+  return (field) => defIdByTarget.get(field.targetEntity)
+}
+
+/** Which of `fieldIds` hold at least one value — decides orphan hide vs delete. */
+async function loadFieldsWithValues(
+  db: Database | Transaction,
+  fieldIds: string[]
+): Promise<Set<string>> {
+  const withValues = new Set<string>()
+  if (fieldIds.length === 0) return withValues
+  const valueRows = await db
+    .selectDistinct({ fieldId: schema.FieldValue.fieldId })
+    .from(schema.FieldValue)
+    .where(inArray(schema.FieldValue.fieldId, fieldIds))
+  for (const v of valueRows) withValues.add(v.fieldId)
+  return withValues
 }
 
 export interface ReconcileResult {
@@ -566,25 +641,17 @@ export async function reconcileAppFields(
   })
   const connectionIds = connections.map((c) => c.id)
 
-  // Pre-compute `hasValues` for candidate-orphan fields (missing from the catalog)
-  // so the pure diff can decide hide-vs-delete without a DB call.
-  const catalogKeys = new Set(catalogFields.map((f) => f.key))
-  const candidateOrphanIds = existingRows
-    .filter((r) => r.appFieldKey && !catalogKeys.has(r.appFieldKey))
-    .map((r) => r.id)
-  const fieldsWithValues = new Set<string>()
-  if (candidateOrphanIds.length > 0) {
-    const valueRows = await db
-      .selectDistinct({ fieldId: schema.FieldValue.fieldId })
-      .from(schema.FieldValue)
-      .where(inArray(schema.FieldValue.fieldId, candidateOrphanIds))
-    for (const v of valueRows) fieldsWithValues.add(v.fieldId)
-  }
+  const resolveEntityDefId = await buildManifestEntityResolver(ctx.organizationId, catalogFields)
+  const fieldsWithValues = await loadFieldsWithValues(
+    db,
+    findOrphanAppFieldRows(catalogFields, existingRows, resolveEntityDefId).map((r) => r.id)
+  )
 
   const { actions, errors } = computeAppFieldReconcileActions({
     catalogFields,
     existingRows,
     connectionIds,
+    resolveEntityDefId,
     hasValues: (id) => fieldsWithValues.has(id),
     appSlug: ctx.appSlug,
   })
@@ -605,7 +672,8 @@ export async function reconcileAppFields(
             connectionId: action.connectionId ?? undefined,
             appSlug: ctx.appSlug,
           },
-          tx
+          tx,
+          action.entityDefinitionId
         )
         if (outcome === 'created') created++
       } else if (action.kind === 'update' && action.existingFieldId) {
@@ -695,6 +763,7 @@ export async function reconcileAppEntityFields(
       id: true,
       appFieldKey: true,
       connectionId: true,
+      entityDefinitionId: true,
       type: true,
       name: true,
       description: true,
@@ -717,18 +786,11 @@ export async function reconcileAppEntityFields(
     return { created: 0, updated: 0, orphaned: 0, errors: [] }
   }
 
-  const catalogKeys = new Set(catalogFields.map((f) => f.key))
-  const candidateOrphanIds = existingRows
-    .filter((r) => r.appFieldKey && !catalogKeys.has(r.appFieldKey))
-    .map((r) => r.id)
-  const fieldsWithValues = new Set<string>()
-  if (candidateOrphanIds.length > 0) {
-    const valueRows = await db
-      .selectDistinct({ fieldId: schema.FieldValue.fieldId })
-      .from(schema.FieldValue)
-      .where(inArray(schema.FieldValue.fieldId, candidateOrphanIds))
-    for (const v of valueRows) fieldsWithValues.add(v.fieldId)
-  }
+  const resolveEntityDefId: AppFieldEntityResolver = () => existingDef.id
+  const fieldsWithValues = await loadFieldsWithValues(
+    db,
+    findOrphanAppFieldRows(catalogFields, existingRows, resolveEntityDefId).map((r) => r.id)
+  )
 
   const { actions, errors } = computeAppFieldReconcileActions({
     catalogFields,
@@ -736,6 +798,7 @@ export async function reconcileAppEntityFields(
     // Entity-owned fields have no connection-scope concept (that's a manifest
     // `defineFields` feature) — every cell is installation-scoped.
     connectionIds: [],
+    resolveEntityDefId,
     hasValues: (id) => fieldsWithValues.has(id),
     appSlug: ctx.appSlug,
   })

@@ -42,6 +42,7 @@ function row(overrides: Partial<ExistingAppFieldRow> = {}): ExistingAppFieldRow 
     id: 'cf_1',
     appFieldKey: 'customerId',
     connectionId: null,
+    entityDefinitionId: 'def_contact',
     type: 'TEXT',
     name: 'Customer ID',
     description: null,
@@ -68,11 +69,13 @@ function run(params: {
   existingRows?: ExistingAppFieldRow[]
   connectionIds?: string[]
   hasValues?: (id: string) => boolean
+  resolveEntityDefId?: (f: CatalogAppField) => string | undefined
 }) {
   return computeAppFieldReconcileActions({
     catalogFields: params.catalogFields,
     existingRows: params.existingRows ?? [],
     connectionIds: params.connectionIds ?? [],
+    resolveEntityDefId: params.resolveEntityDefId ?? ((f) => `def_${f.targetEntity}`),
     hasValues: params.hasValues ?? NO_VALUES,
     appSlug: APP_SLUG,
   })
@@ -262,6 +265,114 @@ describe('computeAppFieldReconcileActions', () => {
     })
     expect(actions).toHaveLength(1)
     expect(actions[0]).toMatchObject({ kind: 'orphan-delete', existingFieldId: 'cf_old' })
+  })
+})
+
+// Shopify declares `shipmentCount` on both order and line_item — identity is
+// (entity def, appFieldKey, connection), never the key alone.
+describe('computeAppFieldReconcileActions — same key on two entities', () => {
+  const orderField = field({
+    key: 'shipmentCount',
+    type: 'NUMBER',
+    scope: 'connection',
+    targetEntity: 'order',
+    name: 'Shipments',
+  })
+  const lineField = field({
+    key: 'shipmentCount',
+    type: 'NUMBER',
+    scope: 'connection',
+    targetEntity: 'line_item',
+    name: 'Line Shipments',
+  })
+  const orderRow = row({
+    id: 'cf_order',
+    appFieldKey: 'shipmentCount',
+    type: 'NUMBER',
+    connectionId: 'conn_1',
+    entityDefinitionId: 'def_order',
+    name: 'Shipments',
+  })
+  const lineRow = row({
+    id: 'cf_line',
+    appFieldKey: 'shipmentCount',
+    type: 'NUMBER',
+    connectionId: 'conn_1',
+    entityDefinitionId: 'def_line_item',
+    name: 'Line Shipments',
+  })
+
+  it('provisions both fields separately, each on its own def', () => {
+    const { actions, errors } = run({
+      catalogFields: [orderField, lineField],
+      connectionIds: ['conn_1'],
+    })
+    expect(errors).toEqual([])
+    expect(actions.map((a) => [a.kind, a.entityDefinitionId, a.field?.name])).toEqual([
+      ['create', 'def_order', 'Shipments'],
+      ['create', 'def_line_item', 'Line Shipments'],
+    ])
+  })
+
+  it('emits nothing when both rows match their own declarations', () => {
+    const { actions } = run({
+      catalogFields: [orderField, lineField],
+      existingRows: [orderRow, lineRow],
+      connectionIds: ['conn_1'],
+    })
+    expect(actions).toEqual([])
+  })
+
+  it('renaming one declaration updates only its own row', () => {
+    const { actions } = run({
+      catalogFields: [{ ...orderField, name: 'Shipment Count' }, lineField],
+      existingRows: [orderRow, lineRow],
+      connectionIds: ['conn_1'],
+    })
+    expect(actions).toEqual([
+      expect.objectContaining({
+        kind: 'update',
+        existingFieldId: 'cf_order',
+        changes: { name: 'Shipment Count' },
+      }),
+    ])
+  })
+
+  it('restores a line row that was overwritten with the order name', () => {
+    const { actions } = run({
+      catalogFields: [orderField, lineField],
+      existingRows: [orderRow, { ...lineRow, name: 'Shipments' }],
+      connectionIds: ['conn_1'],
+    })
+    expect(actions).toEqual([
+      expect.objectContaining({
+        kind: 'update',
+        existingFieldId: 'cf_line',
+        changes: { name: 'Line Shipments' },
+      }),
+    ])
+  })
+
+  it('removing one declaration retires only that row', () => {
+    const { actions } = run({
+      catalogFields: [orderField],
+      existingRows: [orderRow, lineRow],
+      connectionIds: ['conn_1'],
+      hasValues: HAS_VALUES,
+    })
+    expect(actions).toEqual([
+      expect.objectContaining({ kind: 'orphan-hide', existingFieldId: 'cf_line' }),
+    ])
+  })
+
+  it('does not retire a row whose key is declared on an unresolvable target', () => {
+    const { actions } = run({
+      catalogFields: [orderField, lineField],
+      existingRows: [orderRow, lineRow],
+      connectionIds: ['conn_1'],
+      resolveEntityDefId: (f) => (f.targetEntity === 'order' ? 'def_order' : undefined),
+    })
+    expect(actions.filter((a) => a.kind !== 'create')).toEqual([])
   })
 })
 
