@@ -88,6 +88,12 @@ describe('takeArchiveCapOverride', () => {
     expect(await stateOf(id)).toEqual(CURSOR)
   })
 
+  it('reads only its own row when other connectors exist', async () => {
+    await newConnector({ archiveCapOverride: { ...OVERRIDE, byUserId: 'user-2' } })
+    const id = await newConnector({ ...CURSOR, archiveCapOverride: OVERRIDE })
+    expect(await takeArchiveCapOverride(testDb(), id)).toEqual(OVERRIDE)
+  })
+
   it('returns null when nothing is pending, without touching the row', async () => {
     const id = await newConnector()
     expect(await takeArchiveCapOverride(testDb(), id)).toBeNull()
