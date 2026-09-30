@@ -10,6 +10,7 @@ const STATE_LABEL: Record<StockSetupStepState, string> = {
   todo: 'To do',
   done: 'Done',
   skipped: 'Skipped',
+  empty: 'Nothing yet',
 }
 
 interface StockSetupStepsProps {

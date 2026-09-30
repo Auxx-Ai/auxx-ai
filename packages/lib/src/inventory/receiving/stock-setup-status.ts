@@ -33,6 +33,8 @@ export interface StockSetupStatus {
   costsSkipped: boolean
   buildsSkipped: boolean
   countingDone: boolean
+  /** Live, non-service parts; with none, no step is done. */
+  stockedPartCount: number
   /** Stocked parts with any movement: the set step 3's "N of M counted" is out of. */
   movedPartCount: number
   /** Of those, the parts with a first count (an `initial`). */
@@ -97,6 +99,8 @@ export async function readStockSetupStatus(
       const countedPartCount = movedParts.filter((p) => initials.has(p.partId)).length
 
       const kindConflictCount = conflictIds.size
+      const hasStockedMovements = movedParts.length > 0
+      // A step with nothing to act on is not done: an empty org would otherwise read as set up.
       return {
         kindConflictCount,
         unconfirmedKindCount,
@@ -105,14 +109,15 @@ export async function readStockSetupStatus(
         costsSkipped,
         buildsSkipped,
         countingDone,
+        stockedPartCount: parts.length,
         movedPartCount: movedParts.length,
         countedPartCount,
         uncostedPartCount,
-        hasStockedMovements: movedParts.length > 0,
+        hasStockedMovements,
         steps: {
-          kinds: kindConflictCount === 0 && unconfirmedKindCount === 0,
-          costs: neededUncostedCount === 0 || costsSkipped,
-          builds: unbuiltPartCount === 0 || buildsSkipped,
+          kinds: parts.length > 0 && kindConflictCount === 0 && unconfirmedKindCount === 0,
+          costs: hasStockedMovements && (neededUncostedCount === 0 || costsSkipped),
+          builds: hasStockedMovements && (unbuiltPartCount === 0 || buildsSkipped),
           count: countingDone,
         },
       }

@@ -102,7 +102,9 @@ import { getOrgCache } from '../src/cache'
 import { onCacheEvent } from '../src/cache/invalidate'
 import { wipedStreamState } from '../src/data-connectors/slice-orchestrator'
 import { deleteEntityInstances } from '../src/entity-instances'
+import { SETTINGS_CATALOG, type SettingKey } from '../src/settings/catalog'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
+import type { SettingValue } from '../src/settings/types'
 
 const ORG_ARG = process.argv[2] ?? ''
 const args = process.argv.slice(3)
@@ -324,10 +326,25 @@ const SETTING_RESETS = [
   },
   // Every movement is wiped, so the first count is no longer done.
   { key: 'inventory.stockSetup.countingDone' as const, value: false },
+  // A standing skip keeps its step done once parts re-sync (plans/mrp/22 F1).
+  { key: 'inventory.stockSetup.costsSkipped' as const, value: false },
+  { key: 'inventory.stockSetup.buildsSkipped' as const, value: false },
   {
     key: 'onboarding.stockGettingStarted' as const,
     value: { dismissedAt: null, manualCompletions: [] },
   },
+  // The wizard's export and fiscal-year answers and the MRP tuning, back to the defaults.
+  ...(Object.keys(SETTINGS_CATALOG) as SettingKey[])
+    .filter(
+      (key) =>
+        key.startsWith('mrp.') ||
+        key.startsWith('accounting.autoSend.') ||
+        key.startsWith('accounting.summaryGrain.') ||
+        key === 'accounting.exportMode' ||
+        key === 'accounting.exportModeCutover' ||
+        key === 'accounting.fiscalYearStartMonth'
+    )
+    .map((key) => ({ key, value: SETTINGS_CATALOG[key].defaultValue as SettingValue })),
 ]
 
 const QUICKBOOKS_APP_SLUG = 'quickbooks'

@@ -31,9 +31,11 @@ export function useStockSetupProgress() {
   const canManageStock = useCanManageStock()
   const states = resolveStepStates(status.data)
   const total = STOCK_SETUP_STEPS.length
-  const done = STOCK_SETUP_STEPS.filter((step) => states[step.id] !== 'todo').length
+  const done = STOCK_SETUP_STEPS.filter(
+    (step) => states[step.id] === 'done' || states[step.id] === 'skipped'
+  ).length
   const firstOpen: StockSetupStep | undefined = STOCK_SETUP_STEPS.find(
-    (step) => states[step.id] === 'todo'
+    (step) => states[step.id] === 'todo' || states[step.id] === 'empty'
   )?.id
   return {
     status: status.data,

@@ -19,6 +19,7 @@ function status(overrides: Partial<StockSetupStatus> = {}): StockSetupStatus {
     costsSkipped: false,
     buildsSkipped: false,
     countingDone: false,
+    stockedPartCount: 10,
     movedPartCount: 0,
     countedPartCount: 0,
     uncostedPartCount: 0,
@@ -50,6 +51,28 @@ describe('resolveStepStates', () => {
       })
     )
     expect(states).toEqual({ kinds: 'done', costs: 'skipped', builds: 'skipped', count: 'todo' })
+  })
+
+  it('reads an org with nothing to set up as empty, not done', () => {
+    const noParts = resolveStepStates(
+      status({
+        stockedPartCount: 0,
+        hasStockedMovements: false,
+        steps: { kinds: false, costs: false, builds: false, count: false },
+      })
+    )
+    expect(noParts).toEqual({ kinds: 'empty', costs: 'empty', builds: 'empty', count: 'todo' })
+    expect(firstOpenStep(noParts)).toBe('kinds')
+
+    const notMoved = resolveStepStates(
+      status({
+        hasStockedMovements: false,
+        costsSkipped: true,
+        steps: { kinds: true, costs: false, builds: false, count: false },
+      })
+    )
+    expect(notMoved).toEqual({ kinds: 'done', costs: 'empty', builds: 'empty', count: 'todo' })
+    expect(firstOpenStep(notMoved)).toBe('costs')
   })
 
   it('opens on the first step still to do, costs before builds (22 F1)', () => {
