@@ -7,7 +7,7 @@ import { api, type RouterOutputs } from '~/trpc/react'
 import type { StockSetupStep } from './stock-setup-href'
 
 export type StockSetupStatus = RouterOutputs['purchasing']['stockSetupStatus']
-export type StockSetupStepState = 'todo' | 'done' | 'skipped'
+export type StockSetupStepState = 'todo' | 'done' | 'skipped' | 'empty'
 
 export const STOCK_SETUP_STEPS: { id: StockSetupStep; name: string }[] = [
   { id: 'kinds', name: 'Check parts' },
@@ -20,22 +20,41 @@ function isStep(value: string | null): value is StockSetupStep {
   return STOCK_SETUP_STEPS.some((step) => step.id === value)
 }
 
-/** Step states for a status; `skipped` only when a step is done by skipping it. */
+/**
+ * Step states for a status; `skipped` only when a step is done by skipping it, `empty` when
+ * there is nothing for it to act on yet (no parts, or no part that moved).
+ */
 export function resolveStepStates(
   status: StockSetupStatus | undefined
 ): Record<StockSetupStep, StockSetupStepState> {
   if (!status) return { kinds: 'todo', costs: 'todo', builds: 'todo', count: 'todo' }
+  const moved = status.hasStockedMovements
   return {
-    kinds: status.steps.kinds ? 'done' : 'todo',
-    costs: status.neededUncostedCount === 0 ? 'done' : status.costsSkipped ? 'skipped' : 'todo',
-    builds: status.unbuiltPartCount === 0 ? 'done' : status.buildsSkipped ? 'skipped' : 'todo',
+    kinds: status.stockedPartCount === 0 ? 'empty' : status.steps.kinds ? 'done' : 'todo',
+    costs: !moved
+      ? 'empty'
+      : status.neededUncostedCount === 0
+        ? 'done'
+        : status.costsSkipped
+          ? 'skipped'
+          : 'todo',
+    builds: !moved
+      ? 'empty'
+      : status.unbuiltPartCount === 0
+        ? 'done'
+        : status.buildsSkipped
+          ? 'skipped'
+          : 'todo',
     count: status.steps.count ? 'done' : 'todo',
   }
 }
 
-/** The page opens on the first step still to do; with all done, on counting. */
+/** The page opens on the first step not yet done or skipped; with all done, on counting. */
 export function firstOpenStep(states: Record<StockSetupStep, StockSetupStepState>): StockSetupStep {
-  return STOCK_SETUP_STEPS.find((step) => states[step.id] === 'todo')?.id ?? 'count'
+  return (
+    STOCK_SETUP_STEPS.find((step) => states[step.id] === 'todo' || states[step.id] === 'empty')
+      ?.id ?? 'count'
+  )
 }
 
 /** The page's status read, step states and the `?step=` selection (plans/mrp/17 §5). */
