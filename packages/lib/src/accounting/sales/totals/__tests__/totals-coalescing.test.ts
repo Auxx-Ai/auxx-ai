@@ -5,7 +5,7 @@
 // The post-write hook chain is dispatched per `(record, field)`, so before this
 // a 20-line paste recomputed the same quote 40 times. Nothing in the money suite
 // could see that: every totals assertion passes identically at 40 recomputes and
-// at one. `listFiltered` is the witness — `recomputeDocumentTotals` calls it
+// at one. `readLinesForTotals` is the witness — `recomputeDocumentTotals` calls it
 // exactly once per document rebuild, so counting it counts rebuilds.
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -15,7 +15,7 @@ import { runWithDirtyParents } from '../../../../reconcilers/dirty-parents'
 const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   getFieldValues: vi.fn(),
-  listFiltered: vi.fn(),
+  readLinesForTotals: vi.fn(),
   setValuesForEntity: vi.fn(),
   syncInvoicePaymentState: vi.fn(),
   /** `select()` with no projection — the LINE VALUE read in `totals-hooks`. */
@@ -34,9 +34,9 @@ vi.mock('../../../../cache', () => ({
 vi.mock('../../../../resources/crud', () => ({
   UnifiedCrudHandler: class {
     getFieldValues = h.getFieldValues
-    listFiltered = h.listFiltered
   },
 }))
+vi.mock('../../../documents/lines/reads', () => ({ readLinesForTotals: h.readLinesForTotals }))
 vi.mock('../../../../field-values/field-value-service', () => ({
   FieldValueService: class {
     setValuesForEntity = h.setValuesForEntity
@@ -101,7 +101,7 @@ function lineEvent(lineInstanceId: string, systemAttribute: string): EntityField
 }
 
 /** How many times a whole document was rebuilt. */
-const rebuilds = () => h.listFiltered.mock.calls.length
+const rebuilds = () => h.readLinesForTotals.mock.calls.length
 
 beforeAll(() => {
   registerMoneyTotalsReconcilers()
@@ -114,7 +114,7 @@ beforeEach(() => {
   )
   h.setValuesForEntity.mockResolvedValue(undefined)
   h.syncInvoicePaymentState.mockResolvedValue(undefined)
-  h.listFiltered.mockResolvedValue({ ids: [] })
+  h.readLinesForTotals.mockResolvedValue([])
   h.getFieldValues.mockResolvedValue(new Map())
   h.fieldValueRows.mockResolvedValue([])
   h.relationRows.mockResolvedValue([])
@@ -187,13 +187,10 @@ describe('the parent ladder is preserved when batched', () => {
       await recomputeOnLineChange(lineEvent('li-1', 'line_item_taxable'))
     })
 
-    expect(
-      (
-        h.listFiltered.mock.calls[0]![0] as {
-          filters: Array<{ conditions: Array<{ value: string }> }>
-        }
-      ).filters[0]!.conditions[0]!.value
-    ).toBe('quote:q-1')
+    expect(h.readLinesForTotals.mock.calls[0]![2]).toEqual({
+      documentType: 'quote',
+      documentId: 'q-1',
+    })
   })
 
   it('refuses the invoice when the line carries a work order — a WO copy must not count twice', async () => {
@@ -218,13 +215,10 @@ describe('the parent ladder is preserved when batched', () => {
       await recomputeOnLineChange(lineEvent('li-1', 'line_item_taxable'))
     })
 
-    expect(
-      (
-        h.listFiltered.mock.calls[0]![0] as {
-          filters: Array<{ conditions: Array<{ value: string }> }>
-        }
-      ).filters[0]!.conditions[0]!.value
-    ).toBe('order:ord-1')
+    expect(h.readLinesForTotals.mock.calls[0]![2]).toEqual({
+      documentType: 'order',
+      documentId: 'ord-1',
+    })
   })
 
   it('rebuilds nothing for an orphaned line', async () => {
@@ -259,9 +253,9 @@ describe('the parent ladder is preserved when batched', () => {
     })
 
     expect(rebuilds()).toBe(1)
-    expect(
-      (h.listFiltered.mock.calls[0]![0] as { entityDefinitionId: string }).entityDefinitionId
-    ).toBe('purchase_order_line')
+    expect(h.readLinesForTotals.mock.calls[0]![2]).toMatchObject({
+      documentType: 'purchase_order',
+    })
   })
 })
 

@@ -17,6 +17,7 @@ import type {
   DataExportJobEvent,
   ExportBatchChangedEvent,
   FieldValueUpdateEntry,
+  LinesUpdatedEvent,
   MailSyncEvent,
   MessageMeta,
   ParticipantMeta,
@@ -40,13 +41,13 @@ const MAX_FRAME_BYTES = 90_000
  * Pack entries into frames of at most `CHUNK_SIZE` entries and `MAX_FRAME_BYTES`;
  * an entry too large to fit any frame on its own is returned in `oversized`.
  */
-function packFrames(entries: FieldValueUpdateEntry[]): {
-  frames: FieldValueUpdateEntry[][]
-  oversized: FieldValueUpdateEntry[]
+function packFrames<T>(entries: T[]): {
+  frames: T[][]
+  oversized: T[]
 } {
-  const frames: FieldValueUpdateEntry[][] = []
-  const oversized: FieldValueUpdateEntry[] = []
-  let current: FieldValueUpdateEntry[] = []
+  const frames: T[][] = []
+  const oversized: T[] = []
+  let current: T[] = []
   let currentBytes = 0
   for (const entry of entries) {
     const bytes = Buffer.byteLength(JSON.stringify(entry)) + 1
@@ -132,6 +133,49 @@ export async function publishFieldValueUpdates(
     }
   }
 
+  await Promise.allSettled(promises)
+}
+
+/**
+ * Publish `lines:updated` on the parent def's record room, `upserted` packed like
+ * {@link publishFieldValueUpdates}; `deleted` rides the first frame. A line too large for any
+ * frame falls back to `records:invalidated` on the parent def. Fire-and-forget.
+ */
+export async function publishLinesUpdatedEvent(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  parentDefId: string,
+  data: Omit<LinesUpdatedEvent['data'], 'chunk'>,
+  options?: { excludeSocketId?: string }
+) {
+  if (data.upserted.length === 0 && data.deleted.length === 0) return
+  const roomKey = rooms.orgRecords(organizationId, parentDefId)
+  const { frames, oversized } = packFrames(data.upserted)
+  if (frames.length === 0) frames.push([])
+  const promises: Promise<boolean>[] = frames.map((upserted, index) =>
+    realtimeService.publish(
+      roomKey,
+      'lines:updated',
+      {
+        documentType: data.documentType,
+        documentId: data.documentId,
+        upserted,
+        deleted: index === 0 ? data.deleted : [],
+        ...(frames.length > 1 ? { chunk: { index, total: frames.length } } : {}),
+      },
+      options
+    )
+  )
+  if (oversized.length > 0) {
+    promises.push(
+      realtimeService.publish(
+        roomKey,
+        'records:invalidated',
+        { entityDefinitionId: parentDefId },
+        options
+      )
+    )
+  }
   await Promise.allSettled(promises)
 }
 

@@ -1,7 +1,7 @@
 // apps/web/src/components/money/ui/line-builder/use-line-hotkeys.ts
 
+import type { LineKind } from '@auxx/lib/accounting/documents/lines/client'
 import { useLineRowActions } from '~/components/line-grid/hooks/use-line-row-actions'
-import type { LineSchema } from './line-values'
 
 /** Row-level action a shortcut triggers on the focused line row. */
 export type LineRowAction =
@@ -17,15 +17,8 @@ export type LineRowAction =
 type UseLineHotkeysOptions = {
   /** The rows container - the same element `useLineNav` listens on. */
   containerRef: React.RefObject<HTMLDivElement | null>
-  /**
-   * The document's descriptor, which is what each shortcut is gated on.
-   *
-   * ⚠️ Was a bare `isQuote: boolean` - a leftover the capability refactor never
-   * reached, standing in for "supports optional lines". Two more shortcuts would
-   * have meant two more booleans threaded through, which is the shape
-   * `LINE_SCHEMAS` exists to retire.
-   */
-  schema: LineSchema
+  /** The document's line kind, which each shortcut is gated on. */
+  kind: LineKind
   readOnly: boolean
 }
 
@@ -56,7 +49,7 @@ type UseLineHotkeysOptions = {
  * lives in the `line-grid` kit; this hook only supplies money's eight
  * bindings and their gates.
  */
-export function useLineHotkeys({ containerRef, schema, readOnly }: UseLineHotkeysOptions) {
+export function useLineHotkeys({ containerRef, kind, readOnly }: UseLineHotkeysOptions) {
   useLineRowActions<LineRowAction>({
     containerRef,
     readOnly,
@@ -64,18 +57,15 @@ export function useLineHotkeys({ containerRef, schema, readOnly }: UseLineHotkey
       { hotkey: 'Mod+Shift+D', action: 'description' },
       { hotkey: 'Mod+Shift+L', action: 'category' },
       { hotkey: 'Mod+Shift+P', action: 'photos' },
-      { hotkey: 'Mod+Shift+O', action: 'optional', enabled: schema.capabilities.optional },
+      { hotkey: 'Mod+Shift+O', action: 'optional', enabled: kind.capabilities.optional },
       { hotkey: 'Mod+Shift+X', action: 'taxable' },
-      // Gated on the ATTRIBUTE rather than a capability flag: a document whose
-      // line entity has no match-key relation has nothing for the shortcut to
-      // open, and the attribute is the same thing the cell renders the item
-      // from.
+      // Gated on the kind carrying the key, the same thing the cell renders the item from.
       {
         hotkey: 'Mod+Shift+K',
         action: 'matchKey',
-        enabled: schema.attrs.purchaseOrderLineRecordId !== null,
+        enabled: kind.fields.includes('purchaseOrderLineId'),
       },
-      { hotkey: 'Mod+Shift+G', action: 'glAccount', enabled: schema.attrs.glAccount !== null },
+      { hotkey: 'Mod+Shift+G', action: 'glAccount', enabled: kind.fields.includes('glAccountId') },
       { hotkey: 'Mod+Backspace', action: 'delete' },
     ],
   })

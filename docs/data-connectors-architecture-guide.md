@@ -309,6 +309,23 @@ There is no page transaction: each create is its own transaction, so a crash mid
 
 Acquisition metadata (`ACQUISITION_METADATA_ATTRIBUTES` in `resources/registry/resources/financial-source-fields.ts`: the scan id, its start time, the page) is written but left out of the content hash (`contentHashOf`), so a re-fetch of unchanged processor balance, payout or transaction evidence is a skip.
 
+### Writer-backed definitions
+
+A definition whose fields live in its own table (the line tables, `plans/entity/domain-tables/`) registers a `SinkWriter` (`sinks/writers.ts`: `registerSinkWriter`, `sinkWriterFor`, `sinkWriterForDef`). **A writer owns refs, not fields**: its `keys` are registry-shaped (`line_item:qty`), a mapping ref `<defId>:qty` resolves to one by its field part, and the catalog (`buildContributingFieldBindings`) resolves a `target` to a writer key before a registry field (`line_item_qty` by the `<entityType>_<field>` convention). Everything keyed on the instance is untouched; the field-shaped pieces take a writer arm:
+
+| Sink piece | Without a writer | With a writer |
+| --- | --- | --- |
+| Identity, `DataConnectorItem`, content-hash skip, orphan archive, refresh | on the instance | unchanged (child sets read `DataConnectorItem.parentExternalId`, not the stored inverse) |
+| Projected-field write | crud write by field | `apply` for its keys (mints the instance when unbound); the ordinary write for the rest (`@app:`, custom) on the returned instance |
+| Relationship pass | writes the relationship field | `apply` with `parents`; the "already correct" skip asks `readChildren` |
+| Child fan-out (has_many side-flip) | inverse field id | the writer key, when the writer owns the inverse; when the parent's has_many field no longer resolves, `parentKeys[<parent entityType>]` (the catalog keeps a `system:` key whose field is gone for the same reason) |
+| Stamp | `FieldValue.managedByConnectorId` | `apply` writes `connectorMarks` for the value keys it writes |
+| Drift / refresh compare | `LEFT JOIN FieldValue` | `readMarks` over the open page's items of the mapping (else the one record): drifted when a mark is foreign, or absent on a managed key; pinned keys never drift |
+| Unmapped-field clear | null the marker | `clearMarks` for keys no mapping writes, 1,000 instances per call |
+| Connector delete / teardown | FK `set null` | `sweepConnector` on every registered writer, in `finalizeConnectorTeardown` |
+
+With nothing registered, `sinkWriterForDef` reads no cache and every piece runs as before. Writer keys follow `buildWriteSet`'s rules: `ignore` and `manual_review` are not handed over, a key in `pinnedFields` (by its writer key) is skipped but stays managed, and `fill_blank`, identity keys and a `connector_owned_only` key the item does not manage go in `apply`'s `fillBlank` (write only over a blank row value). Only keys the writer reports in `changed` enter `managedFields` from a `fillBlank` write. The seam is proven on the test-only `__sink_fixture` (`__tests__/support/sink-fixture-writer.ts`, `__tests__/sink-writer-parity.test.ts`).
+
 Measuring: `data-connectors/__tests__/sink-page-profile.int.test.ts` sinks a Shopify-shaped page twice on a test org and prints statements and ms per record by mapping; `packages/lib/scripts/drive-backfill-14a.ts` drives a full backfill of one connector on an isolated database and Redis and prints the run's timing and per-mapping counters.
 
 ---

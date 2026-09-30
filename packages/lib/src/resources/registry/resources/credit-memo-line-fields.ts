@@ -346,7 +346,7 @@ export const CREDIT_MEMO_LINE_FIELDS = defineResourceFields({
       'remainder line has none',
   },
 
-  // What `LINE_SCHEMAS` sorts on, like `line_item_sort_order`.
+  // What the lines module sorts on, like `line_item_sort_order`.
   sortOrder: {
     id: toFieldId('sortOrder'),
     key: 'sortOrder',

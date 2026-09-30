@@ -6,9 +6,9 @@
 // This WAS a 723-line bespoke editor with a modal line dialog, written because
 // §4.4 said not to reuse `LineBuilder`. That decision was reversed and the
 // builder generalized instead — see plans/purchasing/03-line-builder-reuse.md.
-// The reversal is a descriptor, not a fifth arm on a union: `LINE_SCHEMAS` in
-// `line-values.ts` now carries the line entity's slug, its attribute vocabulary
-// and its capabilities, so a PO gets drag reorder, spreadsheet keyboard nav,
+// The reversal is a descriptor, not a fifth arm on a union: `LINE_KINDS` in the
+// lines module (`accounting/documents/lines/client.ts`) carries the kind's
+// vocabulary and capabilities, so a PO gets drag reorder, spreadsheet keyboard nav,
 // phantom-draft rows and one-round-trip creates for free — every one of which
 // the bespoke dialog either reimplemented or simply did not have.
 //

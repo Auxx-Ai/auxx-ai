@@ -39,6 +39,7 @@ import { countOutcome } from './run-counters'
 import type { DecodedMapping, PendingRelation } from './service'
 import { closeSinkPage, entitySink, openSinkPage } from './sinks/entity-sink'
 import type { PageWrite, ProjectedRecord, SyncCtx } from './sinks/types'
+import { sinkWriterForDef, writerKeyOf, writerParentKey } from './sinks/writers'
 
 const logger = createScopedLogger('data-connector-sink-source')
 
@@ -108,6 +109,22 @@ async function resolveEdge(
     }
   }
 
+  // The parent's has_many is gone (the child moved to a writer's table): its parent key holds the edge.
+  if (!field) {
+    const writer = await sinkWriterForDef(ctx.orgId, rel.relatedDef)
+    const parentKey = writer && (await writerParentKey(ctx.orgId, writer, parentDef))
+    if (parentKey) {
+      return {
+        instanceKey: instanceKey(rel.childMappingId, rel.childExternalId),
+        pending: {
+          fieldKey: parentKey,
+          targetDef: parentDef,
+          targetExternalId: rel.parentExternalId,
+        },
+      }
+    }
+  }
+
   const config = field?.relationship as RelationshipConfig | undefined
   const cardinality = config?.relationshipType
 
@@ -121,10 +138,12 @@ async function resolveEdge(
       })
       return null
     }
+    // A child def with a writer takes the flipped key as a writer parent key.
+    const writer = await sinkWriterForDef(ctx.orgId, rel.relatedDef)
     return {
       instanceKey: instanceKey(rel.childMappingId, rel.childExternalId),
       pending: {
-        fieldKey: getFieldId(inverse),
+        fieldKey: (writer && writerKeyOf(writer, inverse)) || getFieldId(inverse),
         targetDef: parentDef,
         targetExternalId: rel.parentExternalId,
       },

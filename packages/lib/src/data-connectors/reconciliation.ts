@@ -39,7 +39,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { and, eq, gte, notInArray } from 'drizzle-orm'
+import { and, eq, gte, isNotNull, notInArray } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../agents/bindings/resolve'
 import { connectorFor } from './connectors'
 import { buildWriteKeyToFieldId } from './field-id-resolver'
@@ -52,6 +52,7 @@ import {
 import { type DecodedMapping, findItem, type StreamWithMappings } from './service'
 import { entitySink } from './sinks/entity-sink'
 import type { EntitySink, SyncCtx } from './sinks/types'
+import { type SinkWriter, sinkWriterForDef, writerKeyOf } from './sinks/writers'
 import { isUnboundedQuery } from './stream-query'
 import type { ConnectorQuery, ConnectorStreamState, OrphanBehavior, SyncMode } from './types'
 
@@ -431,7 +432,10 @@ export async function reconcileManagedMarkers(
   const connectionId = ctx.connector.credentialId ?? undefined
   // Per target def: the concrete CustomField.id set this connector currently
   // writes, plus whether every currently-mapped ref resolved this run.
-  const byDef = new Map<string, { keep: Set<string>; complete: boolean }>()
+  const byDef = new Map<
+    string,
+    { keep: Set<string>; complete: boolean; writer?: SinkWriter; writerKeep: Set<string> }
+  >()
 
   for (const { mappings } of streams) {
     for (const mapping of mappings) {
@@ -441,10 +445,17 @@ export async function reconcileManagedMarkers(
       const entry = byDef.get(mapping.entityDefinitionId) ?? {
         keep: new Set<string>(),
         complete: true,
+        writer: await sinkWriterForDef(ctx.orgId, mapping.entityDefinitionId),
+        writerKeep: new Set<string>(),
       }
 
       for (const fm of mapping.fieldMappings) {
         if (fm.targetFieldRef == null) continue // unassigned draft — not a managed field
+        const writerKey = entry.writer && writerKeyOf(entry.writer, fm.targetFieldRef)
+        if (writerKey) {
+          entry.writerKeep.add(writerKey)
+          continue
+        }
         const resolved = await resolveConnectorFieldRef(
           fm.targetFieldRef as ResourceFieldId,
           ctx.orgId,
@@ -460,7 +471,8 @@ export async function reconcileManagedMarkers(
     }
   }
 
-  for (const [defId, { keep, complete }] of byDef) {
+  for (const [defId, { keep, complete, writer, writerKeep }] of byDef) {
+    if (writer) await clearUnmappedWriterMarks(ctx, defId, writer, writerKeep)
     if (!complete) {
       logger.info('skipping managed-marker un-manage — incomplete field resolution', {
         connectorId: ctx.connector.id,
@@ -481,6 +493,35 @@ export async function reconcileManagedMarkers(
           keepIds.length > 0 ? notInArray(schema.FieldValue.fieldId, keepIds) : undefined
         )
       )
+  }
+}
+
+const CLEAR_MARKS_CHUNK = 1000
+
+/** `reconcileManagedMarkers` for a writer's keys: drop this connector's marks on keys no mapping writes. */
+async function clearUnmappedWriterMarks(
+  ctx: SyncCtx,
+  defId: string,
+  writer: SinkWriter,
+  keep: Set<string>
+): Promise<void> {
+  const keys = [...writer.keys].filter((k) => !keep.has(k))
+  if (keys.length === 0) return
+  const I = schema.DataConnectorItem
+  const rows = await ctx.db
+    .selectDistinct({ id: I.entityInstanceId })
+    .from(I)
+    .where(
+      and(
+        eq(I.dataConnectorId, ctx.connector.id),
+        eq(I.entityDefinitionId, defId),
+        isNotNull(I.entityInstanceId)
+      )
+    )
+  const ids = rows.map((r) => r.id).filter((id): id is string => id != null)
+  for (let i = 0; i < ids.length; i += CLEAR_MARKS_CHUNK) {
+    const chunk = ids.slice(i, i + CLEAR_MARKS_CHUNK)
+    await writer.clearMarks(ctx.db, ctx.orgId, chunk, keys, ctx.connector.id)
   }
 }
 

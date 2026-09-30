@@ -24,6 +24,7 @@ import { toAppFieldRef, toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
 import { BadRequestError } from '../errors'
 import { inferJsonSchema, STRUCT_FIELD_TYPE_KEYWORD } from '../json-schema'
+import { type SinkWriter, writerKeyField, writerKeyForTarget } from './sinks/writers'
 import type { FieldMapping, FieldMergeStrategy, IdentityNormalize } from './types'
 
 /** A catalog source field's declared type → the JSON-schema scalar type it carries. */
@@ -241,7 +242,7 @@ export function buildContributingMatchBindings(
     if (!target) continue
     assertContributingTargetWritable(field.target, target)
     bindings.push(
-      bindSourceToTarget(entityDefinitionId, field.sourcePath, target, field.mergeStrategy, {
+      bindSourceToTarget(entityDefinitionId, field.sourcePath, target.id, field.mergeStrategy, {
         kind: 'match',
         normalize: deriveNormalizeFromType(target.type),
         // `match: 'exclusive'` (SDK): a second hit is a collision, skipped by the
@@ -267,10 +268,16 @@ export function buildContributingFieldBindings(
   entityDefinitionId: string,
   appSlug: string,
   fields: readonly CatalogConnectorContributingMappingField[],
-  defFields: ContributingTargetField[]
+  defFields: ContributingTargetField[],
+  writer?: SinkWriter
 ): FieldMapping[] {
   const fieldByKey = buildTargetFieldIndex(defFields)
   const bindings: FieldMapping[] = []
+  // Decision 3 (plans/entity/domain-tables): a target resolves to a writer key before a field.
+  const writerRef = (target: string | undefined) => {
+    const key = writer && target ? writerKeyForTarget(writer, target) : undefined
+    return key ? writerKeyField(key) : undefined
+  }
   for (const field of fields) {
     if (field.match) continue // handled by buildContributingMatchBindings
 
@@ -279,11 +286,18 @@ export function buildContributingFieldBindings(
     // which a constant field does not have.
     if (field.constant !== undefined) {
       if (!field.target) continue // extract-time validation rejects this; skip defensively
+      const owned = writerRef(field.target)
+      if (owned) {
+        bindings.push(
+          bindConstantToTarget(entityDefinitionId, field.constant, owned, field.mergeStrategy)
+        )
+        continue
+      }
       const target = fieldByKey.get(field.target) ?? fieldByKey.get(normalizeFieldKey(field.target))
       if (!target) continue
       assertContributingTargetWritable(field.target, target)
       bindings.push(
-        bindConstantToTarget(entityDefinitionId, field.constant, target, field.mergeStrategy)
+        bindConstantToTarget(entityDefinitionId, field.constant, target.id, field.mergeStrategy)
       )
       continue
     }
@@ -325,10 +339,19 @@ export function buildContributingFieldBindings(
     }
 
     if (field.target) {
+      const owned = writerRef(field.target)
+      if (owned) {
+        bindings.push(
+          bindSourceToTarget(entityDefinitionId, sourcePath, owned, field.mergeStrategy)
+        )
+        continue
+      }
       const target = fieldByKey.get(field.target) ?? fieldByKey.get(normalizeFieldKey(field.target))
       if (!target) continue
       assertContributingTargetWritable(field.target, target)
-      bindings.push(bindSourceToTarget(entityDefinitionId, sourcePath, target, field.mergeStrategy))
+      bindings.push(
+        bindSourceToTarget(entityDefinitionId, sourcePath, target.id, field.mergeStrategy)
+      )
     }
 
     // A source-only field (no `target`/`appField`) is projection-only — Layer A schema
@@ -429,7 +452,7 @@ export function buildContributingAutoBindings(
   for (const candidates of byTarget.values()) {
     if (candidates.length !== 1) continue // ambiguous → skip
     const { sourcePath, target } = candidates[0]!
-    bindings.push(bindSourceToTarget(entityDefinitionId, sourcePath, target))
+    bindings.push(bindSourceToTarget(entityDefinitionId, sourcePath, target.id))
   }
   return bindings
 }
@@ -459,13 +482,13 @@ function buildTargetFieldIndex(
 function bindSourceToTarget(
   entityDefinitionId: string,
   sourcePath: string,
-  target: ContributingTargetField,
+  targetId: string,
   mergeStrategy?: FieldMergeStrategy,
   identityRole?: FieldMapping['identityRole']
 ): FieldMapping {
   return {
     id: generateId(),
-    targetFieldRef: toResourceFieldId(entityDefinitionId, target.id),
+    targetFieldRef: toResourceFieldId(entityDefinitionId, targetId),
     expression: `{${sourcePath}}`,
     sourceFields: { [sourcePath]: sourcePath },
     ...(identityRole ? { identityRole } : {}),
@@ -487,12 +510,12 @@ function bindSourceToTarget(
 function bindConstantToTarget(
   entityDefinitionId: string,
   constant: string | number | boolean,
-  target: ContributingTargetField,
+  targetId: string,
   mergeStrategy?: FieldMergeStrategy
 ): FieldMapping {
   return {
     id: generateId(),
-    targetFieldRef: toResourceFieldId(entityDefinitionId, target.id),
+    targetFieldRef: toResourceFieldId(entityDefinitionId, targetId),
     expression: JSON.stringify(constant),
     sourceFields: {},
     ...(mergeStrategy ? { mergeStrategy } : {}),

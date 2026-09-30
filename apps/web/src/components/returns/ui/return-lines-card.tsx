@@ -13,10 +13,8 @@
 //
 // Rows are `return_line` records filtered on `return_line:return = this
 // return`, sorted `createdAt` ascending, preloaded once through
-// `useFieldValueSyncer`, the same "one fetch for the whole displayed
-// matrix, each row a passive subscription" shape `LineBuilder` uses
-// (`documentLineFilters`, `LINE_PAGE_SIZE`, `useFieldValueSyncer` in
-// money/ui/line-builder/line-builder.tsx). Inline edits write through
+// `useFieldValueSyncer`: one fetch for the whole displayed matrix, each row a
+// passive subscription. Inline edits write through
 // `useSaveFieldValue` (§4.3), never `return.updateLine`, which stays the
 // programmatic door.
 //
@@ -100,10 +98,7 @@ export function ReturnLinesCard({ recordId, entityInstanceId }: DrawerTabProps) 
   })
   const orderName = orderRecords[0]?.displayName ?? null
 
-  // The baseline filter: this return's own lines, via the belongs_to rel,
-  // the `documentLineFilters` idiom (money/ui/line-builder/line-values.ts),
-  // reproduced here rather than imported since it is money's own construction
-  // site and this card is deliberately standalone (plan §1).
+  // The baseline filter: this return's own lines, via the belongs_to rel.
   const filters = useMemo<ConditionGroup[]>(
     () => [
       {

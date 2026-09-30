@@ -15,15 +15,10 @@ import type { EntityFieldChangeEvent } from '../../../../field-hooks/types'
 const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   getFieldValues: vi.fn(),
-  listFiltered: vi.fn(),
+  readLinesForTotals: vi.fn(),
   setValuesForEntity: vi.fn(),
   syncInvoicePaymentState: vi.fn(),
-  /**
-   * The LINE read. It is a set-based select over `FieldValue` rather than a
-   * `getFieldValues` per line — one query per 200 ids instead of one per line
-   * (`plans/events/08-derived-parent-reconciler-plan.md` §1), so the line half of
-   * these fixtures is raw rows while the HEADER half stays `getFieldValues`.
-   */
+  /** Any raw select; the line read itself is `readLinesForTotals`. */
   fieldValueRows: vi.fn(),
 }))
 
@@ -44,9 +39,9 @@ vi.mock('../../../../cache', () => ({
 vi.mock('../../../../resources/crud', () => ({
   UnifiedCrudHandler: class {
     getFieldValues = h.getFieldValues
-    listFiltered = h.listFiltered
   },
 }))
+vi.mock('../../../documents/lines/reads', () => ({ readLinesForTotals: h.readLinesForTotals }))
 vi.mock('../../../../field-values/field-value-service', () => ({
   FieldValueService: class {
     setValuesForEntity = h.setValuesForEntity
@@ -59,6 +54,7 @@ import {
   recomputeOnPurchaseOrderBillingChange,
   recomputeTotals,
 } from '../totals-hooks'
+import { totalsRow } from './support/totals-rows'
 
 /** Field row ids, one per systemAttribute the engine may ask for. */
 const FIELDS: Record<string, { id: string; type: string }> = {
@@ -96,17 +92,10 @@ beforeEach(() => {
     Object.fromEntries(attrs.filter((a) => FIELDS[a]).map((a) => [a, FIELDS[a]]))
   )
   h.setValuesForEntity.mockResolvedValue(undefined)
-  h.listFiltered.mockResolvedValue({ ids: [] })
+  h.readLinesForTotals.mockResolvedValue([])
   h.getFieldValues.mockResolvedValue(new Map())
   h.fieldValueRows.mockResolvedValue([])
 })
-
-/** One `FieldValue` row as the set-based line read sees it. */
-function row(entityId: string, fieldId: string, value: number | boolean) {
-  return typeof value === 'boolean'
-    ? { entityId, fieldId, valueBoolean: value }
-    : { entityId, fieldId, valueNumber: value }
-}
 
 describe('purchase order totals', () => {
   it('sums PURCHASE ORDER LINES, not line_items', async () => {
@@ -117,13 +106,10 @@ describe('purchase order totals', () => {
       documentInstanceId: 'po-1',
     })
 
-    const listArg = h.listFiltered.mock.calls[0]![0] as {
-      entityDefinitionId: string
-      filters: Array<{ conditions: Array<{ fieldId: string; value: string }> }>
-    }
-    expect(listArg.entityDefinitionId).toBe('purchase_order_line')
-    expect(listArg.filters[0]!.conditions[0]!.fieldId).toBe('purchase_order_line:purchaseOrder')
-    expect(listArg.filters[0]!.conditions[0]!.value).toBe('purchase_order:po-1')
+    expect(h.readLinesForTotals.mock.calls[0]![2]).toEqual({
+      documentType: 'purchase_order',
+      documentId: 'po-1',
+    })
   })
 
   it('never reads a quote field — the header attrs are looked up, not prefixed', async () => {
@@ -145,7 +131,6 @@ describe('purchase order totals', () => {
 
   it('adds the STATED shipping and tax on top and subtracts the flat discount', async () => {
     // Two lines at $50.00 and $30.00; $10.00 discount, $5.00 freight, $6.40 stated tax.
-    h.listFiltered.mockResolvedValue({ ids: ['pol-1', 'pol-2'] })
     h.getFieldValues.mockResolvedValue(
       new Map<string, unknown>([
         ['f-po-discount', { type: 'number', value: 1000 }],
@@ -153,9 +138,9 @@ describe('purchase order totals', () => {
         ['f-po-tax', { type: 'number', value: 640 }],
       ])
     )
-    h.fieldValueRows.mockResolvedValue([
-      row('pol-1', 'f-pol-total', 5000),
-      row('pol-2', 'f-pol-total', 3000),
+    h.readLinesForTotals.mockResolvedValue([
+      totalsRow('pol-1', { lineTotal: 5000 }),
+      totalsRow('pol-2', { lineTotal: 3000 }),
     ])
 
     await recomputeTotals({
@@ -182,12 +167,11 @@ describe('purchase order totals', () => {
   })
 
   it('treats the flat discount as an AMOUNT with no discount-type field to read', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['pol-1'] })
     // A `percent` reading of 25 would give 7500, not 9975.
     h.getFieldValues.mockResolvedValue(
       new Map<string, unknown>([['f-po-discount', { type: 'number', value: 25 }]])
     )
-    h.fieldValueRows.mockResolvedValue([row('pol-1', 'f-pol-total', 10000)])
+    h.readLinesForTotals.mockResolvedValue([totalsRow('pol-1', { lineTotal: 10000 })])
 
     await recomputeTotals({
       organizationId: 'org_1',
@@ -202,7 +186,6 @@ describe('purchase order totals', () => {
 
 describe('the sell side is byte-for-byte unchanged', () => {
   it('still sums line_items and still writes all three quote mirrors', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['li-1'] })
     h.getFieldValues.mockResolvedValue(
       new Map<string, unknown>([
         ['f-q-dtype', { type: 'option', optionId: 'percent' }],
@@ -210,10 +193,7 @@ describe('the sell side is byte-for-byte unchanged', () => {
         ['f-q-rate', { type: 'number', value: 10 }],
       ])
     )
-    h.fieldValueRows.mockResolvedValue([
-      row('li-1', 'f-li-total', 10000),
-      row('li-1', 'f-li-taxable', true),
-    ])
+    h.readLinesForTotals.mockResolvedValue([totalsRow('li-1', { lineTotal: 10000, taxable: true })])
 
     await recomputeTotals({
       organizationId: 'org_1',
@@ -222,9 +202,10 @@ describe('the sell side is byte-for-byte unchanged', () => {
       documentInstanceId: 'q-1',
     })
 
-    expect(
-      (h.listFiltered.mock.calls[0]![0] as { entityDefinitionId: string }).entityDefinitionId
-    ).toBe('line_item')
+    expect(h.readLinesForTotals.mock.calls[0]![2]).toEqual({
+      documentType: 'quote',
+      documentId: 'q-1',
+    })
     expect(writtenFieldIds().sort()).toEqual(['quote_subtotal', 'quote_tax_total', 'quote_total'])
     expect(writtenValue('quote_subtotal')).toBe(10000)
     expect(writtenValue('quote_tax_total')).toBe(900) // 10% of the discounted 9000

@@ -32,6 +32,7 @@ import { getInstanceId, toRecordId } from '../../resources/resource-id'
 import { buildWriteKeyToFieldId } from '../field-id-resolver'
 import { countOutcome } from '../run-counters'
 import {
+  type DataConnectorItemRow,
   type DecodedMapping,
   findItem,
   findItemByDef,
@@ -60,6 +61,7 @@ import {
   type SinkPage,
 } from './sink-page'
 import type { EntitySink, PageWrite, ProjectedRecord, SyncCtx } from './types'
+import { type SinkWriter, sinkWriterForDef, writerKeyOf } from './writers'
 
 const logger = createScopedLogger('data-connector-entity-sink')
 
@@ -793,6 +795,93 @@ async function buildWriteSet(
   return { writeSet, rowWrites, managedFields, clearedFields, identityFieldKeys, pendingImages }
 }
 
+/** The record's refs a writer owns (ref → writer key), and the record without them. */
+function splitWriterFields(
+  writer: SinkWriter,
+  record: ProjectedRecord
+): { owned: Map<string, string>; rest: ProjectedRecord } {
+  const owned = new Map<string, string>()
+  const fields: Record<string, unknown> = {}
+  for (const [ref, value] of Object.entries(record.fields)) {
+    const key = writerKeyOf(writer, ref)
+    if (key) owned.set(ref, key)
+    else fields[ref] = value
+  }
+  return { owned, rest: { ...record, fields } }
+}
+
+/**
+ * Hand a writer its keys of one record, with `buildWriteSet`'s strategy and pin rules: a
+ * pinned key is skipped but stays managed, `connector_owned_only` writes over a key the item
+ * manages and else fills a blank, identity keys only fill. Null when the write failed, counted.
+ */
+async function applyWriterValues(
+  ctx: SyncCtx,
+  mapping: DecodedMapping,
+  writer: SinkWriter,
+  record: ProjectedRecord,
+  owned: Map<string, string>,
+  instanceId: string | null,
+  bound: { managedFields?: string[] | null; pinnedFields?: string[] | null } | null | undefined
+): Promise<{ instanceId: string; managed: string[]; cleared: string[] } | null> {
+  const strategies = new Map<string, FieldMergeStrategy>()
+  for (const fm of mapping.fieldMappings) {
+    if (fm.targetFieldRef == null) continue
+    const identity = fm.identityRole?.kind === 'externalId'
+    strategies.set(fm.targetFieldRef, identity ? 'fill_blank' : (fm.mergeStrategy ?? 'overwrite'))
+  }
+  const values: Record<string, unknown> = {}
+  const fillBlank: string[] = []
+  const managed: string[] = []
+  const cleared: string[] = []
+  for (const [ref, key] of owned) {
+    const strategy = strategies.get(ref) ?? 'overwrite'
+    const value = record.fields[ref]
+    if (strategy === 'ignore') continue
+    if (bound?.pinnedFields?.includes(key)) {
+      if (!isBlank(value)) managed.push(ref)
+      continue
+    }
+    if (strategy === 'manual_review') continue
+    const ownsKey = !bound || (bound.managedFields ?? []).includes(ref)
+    if (strategy === 'fill_blank' || (strategy === 'connector_owned_only' && !ownsKey)) {
+      fillBlank.push(key)
+    }
+    values[key] = value
+  }
+  const applied = await writer.apply(ctx.db, ctx.orgId, {
+    instanceId,
+    connectorId: ctx.connector.id,
+    values,
+    parents: {},
+    ...(fillBlank.length > 0 ? { fillBlank } : {}),
+  })
+  if (applied.isOk()) {
+    const wrote = new Set(applied.value.changed)
+    for (const [ref, key] of owned) {
+      if (!(key in values) || (fillBlank.includes(key) && !wrote.has(key))) continue
+      ;(isBlank(values[key]) ? cleared : managed).push(ref)
+    }
+    return { instanceId: applied.value.instanceId, managed, cleared }
+  }
+
+  const message = applied.error.message
+  countOutcome(ctx.counters, mapping.row.id, 'failed')
+  if (ctx.counters.errorSample.length < 50) {
+    ctx.counters.errorSample.push({
+      externalId: record.externalId,
+      error: message,
+      tier: 'rejected',
+    })
+  }
+  logger.warn('sink writer apply failed', {
+    mappingId: mapping.row.id,
+    externalId: record.externalId,
+    error: message,
+  })
+  return null
+}
+
 /**
  * Stamp the per-cell contributing provenance marker (`FieldValue.managedByConnectorId`)
  * on the values this connector just wrote. Contributing-mode only — owned writes
@@ -914,23 +1003,30 @@ async function mirrorIdentityWrites(
  * detect. A mapping with no `overwrite` field (all conservative strategies) pays
  * nothing — it short-circuits to an empty set before querying.
  */
-function driftedInstances(ctx: SyncCtx, mapping: DecodedMapping): Promise<Set<string>> {
+function driftedInstances(
+  ctx: SyncCtx,
+  mapping: DecodedMapping,
+  writer?: SinkWriter
+): Promise<Set<string>> {
   const memo = (ctx.driftByMapping ??= new Map())
   let pending = memo.get(mapping.row.id)
   if (!pending) {
     // The query reads items and cell markers, so a page's deferred writes land first.
     const page = ctx.sinkPage
     pending = page
-      ? page.flush().then(() => computeDriftedInstances(ctx, mapping))
-      : computeDriftedInstances(ctx, mapping)
+      ? page.flush().then(() => computeDriftedInstances(ctx, mapping, writer))
+      : computeDriftedInstances(ctx, mapping, writer)
     memo.set(mapping.row.id, pending)
   }
   return pending
 }
 
+type HealingBinding = DecodedMapping['fieldMappings'][number] & { targetFieldRef: ResourceFieldId }
+
 async function computeDriftedInstances(
   ctx: SyncCtx,
-  mapping: DecodedMapping
+  mapping: DecodedMapping,
+  writer?: SinkWriter
 ): Promise<Set<string>> {
   if (mapping.targetMode !== 'contributing') return new Set()
 
@@ -943,11 +1039,87 @@ async function computeDriftedInstances(
   // field-less call here is the strategy and identity half; a mapping with no
   // healing binding pays nothing and short-circuits before querying.
   const healingBindings = mapping.fieldMappings.filter(
-    (fm): fm is typeof fm & { targetFieldRef: ResourceFieldId } =>
-      fm.targetFieldRef != null && wouldHealField(fm, null)
+    (fm): fm is HealingBinding => fm.targetFieldRef != null && wouldHealField(fm, null)
   )
   if (healingBindings.length === 0) return new Set()
+  if (!writer) return fieldValueDrift(ctx, mapping, healingBindings)
+  const rest = healingBindings.filter((fm) => !writerKeyOf(writer, fm.targetFieldRef))
+  return rest.length > 0 ? fieldValueDrift(ctx, mapping, rest) : new Set()
+}
 
+type DriftItem = Pick<
+  DataConnectorItemRow,
+  'mappingId' | 'entityInstanceId' | 'archivedAt' | 'managedFields' | 'pinnedFields'
+>
+
+/** Writer drift per open page, so one `readMarks` covers the page's bound items of a mapping. */
+const writerDriftByPage = new WeakMap<SinkPage, Map<string, Promise<Set<string>>>>()
+
+/**
+ * Whether a writer key of `bound` drifted: its mark is another connector's, or absent while
+ * the item manages it. Pinned keys never drift. Reads the open page's items, else `bound` alone.
+ */
+async function writerDrifted(
+  ctx: SyncCtx,
+  mapping: DecodedMapping,
+  writer: SinkWriter,
+  bound: DriftItem
+): Promise<boolean> {
+  if (mapping.targetMode !== 'contributing' || !bound.entityInstanceId) return false
+  const bindings = mapping.fieldMappings.filter(
+    (fm): fm is HealingBinding =>
+      fm.targetFieldRef != null &&
+      wouldHealField(fm, null) &&
+      writerKeyOf(writer, fm.targetFieldRef) !== undefined
+  )
+  if (bindings.length === 0) return false
+  const page = ctx.sinkPage
+  if (!page) return (await writerDrift(ctx, writer, bindings, [bound])).has(bound.entityInstanceId)
+
+  const memo = writerDriftByPage.get(page) ?? new Map<string, Promise<Set<string>>>()
+  writerDriftByPage.set(page, memo)
+  let pending = memo.get(mapping.row.id)
+  if (!pending) {
+    pending = writerDrift(ctx, writer, bindings, page.itemsOf(mapping.row.id))
+    memo.set(mapping.row.id, pending)
+  }
+  return (await pending).has(bound.entityInstanceId)
+}
+
+async function writerDrift(
+  ctx: SyncCtx,
+  writer: SinkWriter,
+  bindings: HealingBinding[],
+  candidates: DriftItem[]
+): Promise<Set<string>> {
+  const items = candidates.filter((i) => i.archivedAt == null && i.entityInstanceId != null)
+  if (items.length === 0) return new Set()
+  const marksById = await writer.readMarks(
+    ctx.db,
+    ctx.orgId,
+    items.map((i) => i.entityInstanceId!)
+  )
+  const drifted = new Set<string>()
+  for (const item of items) {
+    const marks = marksById.get(item.entityInstanceId!) ?? {}
+    const managed = item.managedFields ?? []
+    const pinned = item.pinnedFields ?? []
+    const off = bindings.some((fm) => {
+      const key = writerKeyOf(writer, fm.targetFieldRef)!
+      if (pinned.includes(key)) return false
+      const mark = marks[key]
+      return mark === undefined ? managed.includes(fm.targetFieldRef) : mark !== ctx.connector.id
+    })
+    if (off) drifted.add(item.entityInstanceId!)
+  }
+  return drifted
+}
+
+async function fieldValueDrift(
+  ctx: SyncCtx,
+  mapping: DecodedMapping,
+  healingBindings: HealingBinding[]
+): Promise<Set<string>> {
   // Resolve each ref to the concrete CustomField uuid `FieldValue.fieldId` carries
   // (refs may be the late-bound `@app:` form; system fields key by systemAttribute).
   const connectionId = ctx.connector.credentialId ?? undefined
@@ -1148,9 +1320,14 @@ export const entitySink: EntitySink = {
     // exactly like any other mapped field from here on.
     record = injectConnectionAppFields(ctx, mapping, record)
 
+    // A writer-backed def: its keys go to `writer.apply`, the rest take the ordinary write.
+    const writer = await sinkWriterForDef(ctx.orgId, mapping.entityDefinitionId)
+    const split = writer ? splitWriterFields(writer, record) : null
+    const ordinary = split?.rest ?? record
+
     // Resolve every mapped `targetFieldRef` to a concrete field id once — both the
     // identity lookup and the write set key off this table (§3.3).
-    const refToConcrete = await resolveFieldRefs(ctx, record)
+    const refToConcrete = await resolveFieldRefs(ctx, ordinary)
 
     const items = io(ctx)
     // 1. Resolve identity — exact bind, else strategy bootstrap.
@@ -1309,8 +1486,10 @@ export const entitySink: EntitySink = {
       // Source is unchanged — skip, unless an overwrite cell drifted (hand-edited),
       // in which case fall through to re-assert the source value. Drift is only
       // queried here, when we'd otherwise skip, so a create-only backfill pays nothing.
-      const drifted = await driftedInstances(ctx, mapping)
-      if (!drifted.has(bound.entityInstanceId)) {
+      const drifted =
+        (await driftedInstances(ctx, mapping, writer)).has(bound.entityInstanceId) ||
+        (writer ? await writerDrifted(ctx, mapping, writer, bound) : false)
+      if (!drifted) {
         // Advance the version high-watermark even on a no-op content update so a
         // later genuinely-older event is still caught by the §9 Q7 guard above.
         const newerStamp =
@@ -1375,7 +1554,7 @@ export const entitySink: EntitySink = {
       await buildWriteSet(
         ctx,
         mapping,
-        record,
+        ordinary,
         instanceId,
         refToConcrete,
         bound?.pinnedFields ?? [],
@@ -1406,7 +1585,38 @@ export const entitySink: EntitySink = {
     // the sync stays green instead of the whole record retrying forever.
     const maxConflictDrops = Object.keys(writeSet).length
     const droppedKeys = new Set<string>()
+
+    // 4-. The writer mints or updates first; the ordinary write then lands on its instance.
+    let writerManaged: string[] = []
+    let unhashed = false
+    let writerCleared: string[] = []
+    if (writer && split) {
+      const applied = await applyWriterValues(
+        ctx,
+        mapping,
+        writer,
+        record,
+        split.owned,
+        instanceId,
+        bound
+      )
+      if (!applied) return
+      ;({ managed: writerManaged, cleared: writerCleared } = applied)
+      if (instanceId) {
+        countOutcome(ctx.counters, mapping.row.id, 'updated')
+      } else {
+        instanceId = applied.instanceId
+        justCreated = true
+        countOutcome(ctx.counters, mapping.row.id, 'created')
+        ;(ctx.sliceWriteWinners ??= new Map()).set(
+          `${mapping.row.id}::${instanceId}`,
+          record.externalId
+        )
+      }
+    }
+
     for (let conflictDrops = 0; ; ) {
+      if (writer && instanceId && Object.keys(writeSet).length === 0) break
       try {
         if (instanceId) {
           const recordId = toRecordId(mapping.entityDefinitionId, instanceId)
@@ -1418,7 +1628,7 @@ export const entitySink: EntitySink = {
           // Event suppression comes from the handler's silent `sync` session
           // (plan 03 §3.4), not a per-call flag.
           await handler.update(recordId, { ...writeSet })
-          countOutcome(ctx.counters, mapping.row.id, 'updated')
+          if (!writer) countOutcome(ctx.counters, mapping.row.id, 'updated')
         } else {
           const created = await handler.create(mapping.entityDefinitionId, { ...writeSet })
           instanceId = created.instance.id
@@ -1473,7 +1683,7 @@ export const entitySink: EntitySink = {
             } = await buildWriteSet(
               ctx,
               mapping,
-              record,
+              ordinary,
               instanceId,
               refToConcrete,
               bound?.pinnedFields ?? [],
@@ -1522,7 +1732,11 @@ export const entitySink: EntitySink = {
           externalId: record.externalId,
           error: message,
         })
-        return
+        if (!(writer && justCreated && instanceId)) return
+        // The writer already minted the instance: bind it unhashed, so the next sync retries.
+        ignoredRevision = true
+        unhashed = true
+        break
       }
     }
 
@@ -1572,13 +1786,15 @@ export const entitySink: EntitySink = {
 
     // 5. Upsert the binding — merge any new managed fields with prior ones
     //    (contributing records are co-owned field-by-field across connectors).
-    const cleared = new Set(ignoredRevision ? [] : clearedFields)
+    const cleared = new Set(ignoredRevision ? [] : [...clearedFields, ...writerCleared])
     const written = ignoredRevision
       ? []
-      : managedFields.filter((ref) => {
-          const concrete = refToConcrete.get(ref)
-          return !concrete || !droppedKeys.has(getFieldId(concrete))
-        })
+      : managedFields
+          .filter((ref) => {
+            const concrete = refToConcrete.get(ref)
+            return !concrete || !droppedKeys.has(getFieldId(concrete))
+          })
+          .concat(writerManaged)
     const mergedManaged = Array.from(new Set([...(bound?.managedFields ?? []), ...written])).filter(
       (ref) => !cleared.has(ref)
     )
@@ -1589,7 +1805,7 @@ export const entitySink: EntitySink = {
       externalId: record.externalId,
       entityDefinitionId: mapping.entityDefinitionId,
       entityInstanceId: instanceId,
-      contentHash,
+      contentHash: unhashed ? '' : contentHash,
       managedFields: mergedManaged,
       pendingRelations: mergePending(
         bound?.pendingRelations ?? [],

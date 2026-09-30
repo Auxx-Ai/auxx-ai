@@ -14,7 +14,7 @@
 // bill gains drag reorder, spreadsheet keyboard nav, phantom-draft rows and
 // one-round-trip creates, none of which the dialog had.
 //
-// Three things about a bill line that the descriptor (`LINE_SCHEMAS.vendor_bill`)
+// Three things about a bill line that the descriptor (`LINE_KINDS.vendor_bill`)
 // encodes, and that are the whole reason the cutover needed the builder changed
 // rather than just pointed at:
 //
@@ -61,7 +61,7 @@ const BILL_ORDER_ATTRS = ['vendor_bill_purchase_order', 'vendor_bill_status'] as
 export function VendorBillLinesCard({ recordId }: DrawerTabProps) {
   const lineDefId = useResourceProperty('vendor_bill_line', 'id')
   const billDefId = useResourceProperty('vendor_bill', 'id')
-  // The bill's own order — the same attribute `LineSchema.matchScopeAttr` names,
+  // The bill's own order — the same attribute `LineKind.matchScopeAttr` names,
   // read here for the header action. Read twice rather than threaded through the
   // builder: the action is a sibling of the builder, not a part of it, and the
   // second read is a cache hit on the value the builder already fetched.

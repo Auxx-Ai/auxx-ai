@@ -106,7 +106,7 @@ export function IntakeReviewPage({ draftId }: { draftId: string }) {
   )
 
   // The document's vendor is bound here, the way `LineBuilder` binds it from
-  // `LineSchema.vendorAttr` — so the lookup never runs for a draft with no vendor.
+  // `LineKind.vendorAttr` — so the lookup never runs for a draft with no vendor.
   const vendorRecordId = payload?.vendorRecordId ?? null
   const resolvePartPrefill = useMemo(
     () =>

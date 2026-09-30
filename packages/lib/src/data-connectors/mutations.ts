@@ -64,6 +64,7 @@ import {
   loadConnector,
   stampResyncPending,
 } from './service'
+import { registeredSinkWriters } from './sinks/writers'
 import type { CellSyncInfo } from './sync-state'
 import type {
   ConnectorTemplate,
@@ -1435,6 +1436,10 @@ export async function finalizeConnectorTeardown(
     .from(schema.DataConnector)
     .where(eq(schema.DataConnector.id, id))
 
+  // Writer marks are jsonb, so no FK nulls them with the connector row.
+  for (const writer of registeredSinkWriters()) {
+    await writer.sweepConnector(db, organizationId, id)
+  }
   await db.delete(schema.DataConnector).where(eq(schema.DataConnector.id, id))
 
   if (owner?.appInstallationId) {

@@ -17,9 +17,10 @@ import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { useEffect, useMemo } from 'react'
-import { LINE_PAGE_SIZE } from '~/components/money/ui/line-builder/line-values'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
+
+const LINE_PAGE_SIZE = 100
 
 /** Everything one bill line carries. */
 export const VENDOR_BILL_LINE_ATTRIBUTES = [
@@ -113,7 +114,7 @@ export function useVendorBillLines(billRecordId: RecordId) {
       enabled: !!billId && !!lineDefId,
     })
 
-  // Every page, eagerly — the same call the builder makes for the same rows.
+  // Every page, eagerly.
   // On the old un-drained default of 50 a bill with more lines than that fed
   // the match card a SHORT line set, which reads as "the bill does not claim
   // these order lines" and offers them for import a second time.

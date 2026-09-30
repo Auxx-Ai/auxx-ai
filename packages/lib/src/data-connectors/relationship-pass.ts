@@ -23,6 +23,7 @@ import {
   setItemRelationState,
 } from './service'
 import type { SyncCtx } from './sinks/types'
+import { type SinkWriter, sinkWriterForDef, writerKeyOf } from './sinks/writers'
 
 const logger = createScopedLogger('data-connector-relationship-pass')
 
@@ -52,6 +53,15 @@ export async function resolveRelationships(
   const { currentTargets, concreteFieldIds } = await readCurrentEdges(ctx, items)
   const summary: RelationshipPassSummary = { resolved: 0, stillPending: 0 }
   const completed: string[] = []
+  const writers = new Map<string, Promise<SinkWriter | undefined>>()
+  const writerOf = (defId: string) => {
+    let w = writers.get(defId)
+    if (!w) {
+      w = sinkWriterForDef(ctx.orgId, defId)
+      writers.set(defId, w)
+    }
+    return w
+  }
 
   // A long pass can outlive the 5-minute stale-run sweep (110 §9a).
   const stopHeartbeat = startRunHeartbeat(ctx.db, ctx.runId)
@@ -66,8 +76,38 @@ export async function resolveRelationships(
       let linkedChanged = false
 
       const parentRecordId = toRecordId(item.entityDefinitionId, item.entityInstanceId)
+      const writer = await writerOf(item.entityDefinitionId)
 
       for (const rel of pending) {
+        // A parent key a writer owns is a column on its row, not a relationship field.
+        const writerKey = writer ? writerKeyOf(writer, rel.fieldKey) : undefined
+        if (writer && writerKey) {
+          const outcome = await applyWriterEdge(
+            ctx,
+            writer,
+            writerKey,
+            {
+              entityDefinitionId: item.entityDefinitionId,
+              entityInstanceId: item.entityInstanceId,
+            },
+            rel
+          )
+          if (outcome === 'pending') {
+            stillPending.push(rel)
+            continue
+          }
+          if (outcome === 'cleared') {
+            if (linked.delete(rel.fieldKey)) linkedChanged = true
+            continue
+          }
+          linkedTargets.push(outcome.targetId)
+          if (!linked.has(rel.fieldKey)) {
+            linked.add(rel.fieldKey)
+            linkedChanged = true
+          }
+          continue
+        }
+
         // PAUSED on this record (plan 40 D4): the user pinned the relationship field
         // (a product link they re-pointed by hand), so neither a set nor a clear may
         // touch it. The edge stays pending, untouched, until the field is unpinned;
@@ -190,6 +230,51 @@ export async function resolveRelationships(
     completed: completed.length,
   })
   return summary
+}
+
+/**
+ * One edge onto a writer's parent key: `apply` with `parents` in place of a field write. An
+ * edge `readChildren` already shows is left alone. `pending` keeps it for a later pass.
+ */
+async function applyWriterEdge(
+  ctx: SyncCtx,
+  writer: SinkWriter,
+  key: string,
+  item: { entityDefinitionId: string; entityInstanceId: string },
+  rel: PendingRelation
+): Promise<'pending' | 'cleared' | { targetId: string }> {
+  const instanceId = item.entityInstanceId
+  let targetId: string | null = null
+  if (rel.targetExternalId !== null) {
+    const target = rel.targetDef
+      ? await findItemByDef(ctx.db, ctx.connector.id, rel.targetDef, rel.targetExternalId)
+      : null
+    if (!target?.entityInstanceId) {
+      ctx.counters.relationshipWarnings += 1
+      return 'pending'
+    }
+    targetId = target.entityInstanceId
+    const children = await writer.readChildren(ctx.db, ctx.orgId, [targetId])
+    if (children.get(targetId)?.includes(instanceId)) return { targetId }
+  }
+
+  const applied = await writer.apply(ctx.db, ctx.orgId, {
+    instanceId,
+    connectorId: ctx.connector.id,
+    values: {},
+    parents: { [key]: targetId },
+  })
+  if (applied.isErr()) {
+    ctx.counters.relationshipWarnings += 1
+    logger.warn('writer parent write failed — keeping pending', {
+      instanceId,
+      fieldKey: rel.fieldKey,
+      error: applied.error.message,
+    })
+    return 'pending'
+  }
+  ctx.touchedDefs.add(item.entityDefinitionId)
+  return targetId ? { targetId } : 'cleared'
 }
 
 /**

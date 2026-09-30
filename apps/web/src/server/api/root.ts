@@ -64,6 +64,7 @@ import { labelRouter } from './routers/label'
 import { ledgerRouter } from './routers/ledger'
 import { ledgerOpeningRouter } from './routers/ledger-opening'
 import { ledgerReportsRouter } from './routers/ledger-reports'
+import { linesRouter } from './routers/lines'
 import { mailClassificationRouter } from './routers/mail-classification'
 import { mailFiltersRouter } from './routers/mail-filters'
 import { mailSuggestionsRouter } from './routers/mail-suggestions'
@@ -179,6 +180,7 @@ export const appRouter = createTRPCRouter({
   ledger: ledgerRouter,
   ledgerOpening: ledgerOpeningRouter,
   ledgerReports: ledgerReportsRouter,
+  lines: linesRouter,
   banking: bankingRouter,
   bankingReview: bankingReviewRouter,
   bankingRules: bankingRulesRouter,
