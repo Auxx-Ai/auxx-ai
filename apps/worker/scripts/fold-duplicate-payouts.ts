@@ -1,7 +1,7 @@
 // apps/worker/scripts/fold-duplicate-payouts.ts
 /**
  * LOCAL DEV repair (brief 114 P4, "keep the twin"): folds each legacy lib-sync payout record into
- * its connector twin. See plans/accounting/tasks/114-one-payout-one-record.md §2 P4.
+ * its connector twin. See plans/accounting/tasks/done/114-one-payout-one-record.md §2 P4.
  *
  * Per pair, in one transaction under the accounting commit lock:
  *   1. re-point the legacy record's `GlPostingSource` rows (and the frozen `GlPosting.built.sources`
