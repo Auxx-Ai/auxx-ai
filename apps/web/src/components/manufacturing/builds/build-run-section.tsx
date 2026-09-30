@@ -2,6 +2,7 @@
 'use client'
 
 import {
+  BUILD_VARIANCE_ACCOUNT,
   canCancelBuild,
   canCompleteBuild,
   canReverseBuild,
@@ -216,7 +217,7 @@ export function BuildRunSection({
               className='border-border/50 border-t pt-1'
             />
             <CostLine
-              label='Variance → 5090'
+              label={`Variance → ${BUILD_VARIANCE_ACCOUNT}`}
               value={build.varianceAmount}
               currencyCode={currencyCode}
               signed

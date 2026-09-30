@@ -26,7 +26,7 @@
 //    can see it later instead of it being silent. The rows say so on screen too.
 // 3. **Scrap, priced.** B7: scrapped units consume material and produce no
 //    movement. Their whole standard cost falls out in `varianceAmount` and lands
-//    in account 5090. A person typing `2` into Scrapped is booking a variance,
+//    in account 5091. A person typing `2` into Scrapped is booking a variance,
 //    and the form says so at the input AND under the number.
 //
 // ## Why the numbers here are the numbers that get stored
@@ -39,7 +39,11 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { calendarDayKey, fromCalendarDayIso, toCalendarDayIso } from '@auxx/lib/field-values/client'
-import { absorbedRunCost, summarizeBuildCompletion } from '@auxx/lib/inventory/builds/client'
+import {
+  absorbedRunCost,
+  BUILD_VARIANCE_ACCOUNT,
+  summarizeBuildCompletion,
+} from '@auxx/lib/inventory/builds/client'
 import { getInstanceId, type RecordId } from '@auxx/lib/resources/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
@@ -141,7 +145,7 @@ export function CompleteBuildDialog({
     setKnown([])
     setLaborCost(null)
     setOverheadCost(null)
-    setCompletedAt(new Date().toISOString())
+    setCompletedAt(toCalendarDayIso(new Date()))
     setNotes('')
   }, [open, quantityPlanned])
 
@@ -346,7 +350,8 @@ export function CompleteBuildDialog({
                     <TriangleAlert className='mt-0.5 size-3 shrink-0' />
                     <span>
                       These {formatQuantity(scrapped)} units still consume components and produce no
-                      stock. Their whole cost is booked as a variance to account 5090.
+                      stock. Their whole cost is booked as a variance to account{' '}
+                      {BUILD_VARIANCE_ACCOUNT}.
                     </span>
                   </p>
                 )}
@@ -361,7 +366,9 @@ export function CompleteBuildDialog({
                 <FieldInputAdapter
                   fieldType={FieldType.DATE}
                   value={completedAt}
-                  onChange={(val) => setCompletedAt((val as string) ?? new Date().toISOString())}
+                  onChange={(val) =>
+                    setCompletedAt((val as string) ?? toCalendarDayIso(new Date()))
+                  }
                   disabled={completeBuild.isPending}
                 />
               </FieldPanelRow>
@@ -811,7 +818,7 @@ function CostSummary({
         className='border-border/50 border-t pt-1'
       />
       <SummaryLine
-        label='Variance → 5090'
+        label={`Variance → ${BUILD_VARIANCE_ACCOUNT}`}
         value={`${summary.varianceAmount > 0 ? '+' : ''}${money(summary.varianceAmount)}`}
         className='border-border/50 border-t pt-1 font-medium'
       />

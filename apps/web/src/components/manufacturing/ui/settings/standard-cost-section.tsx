@@ -43,7 +43,7 @@ export function StandardCostSection({ children }: { children?: ReactNode }) {
   // stale one left over from a tab somebody abandoned yesterday would silently
   // backdate the roll.
   useEffect(() => {
-    if (canRoll) setEffectiveAt(new Date().toISOString())
+    if (canRoll) setEffectiveAt(toCalendarDayIso(new Date()))
   }, [canRoll])
 
   // `keepPreviousData` because the effective date is part of the query key:
@@ -97,7 +97,7 @@ export function StandardCostSection({ children }: { children?: ReactNode }) {
               <FieldInputAdapter
                 fieldType={FieldType.DATE}
                 value={effectiveAt}
-                onChange={(val) => setEffectiveAt((val as string) ?? new Date().toISOString())}
+                onChange={(val) => setEffectiveAt((val as string) ?? toCalendarDayIso(new Date()))}
                 disabled={roll.isPending}
               />
             </FieldPanelRow>
