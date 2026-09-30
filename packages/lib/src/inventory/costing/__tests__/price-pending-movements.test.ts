@@ -45,6 +45,7 @@ const h = vi.hoisted(() => ({
   deleteWorkItemsAtStage: vi.fn(async () => ({ isOk: () => true })),
   refreshPendingParts: vi.fn(async () => ({ isOk: () => true })),
   finishPricedBuild: vi.fn(),
+  publishBuilds: vi.fn(),
 }))
 
 vi.mock('@auxx/database', () => ({
@@ -148,6 +149,7 @@ vi.mock('../standard-cost-queries', () => ({
   }),
 }))
 vi.mock('../../builds/price-build', () => ({ finishPricedBuild: h.finishPricedBuild }))
+vi.mock('../../builds/build-realtime', () => ({ publishBuildsChanged: h.publishBuilds }))
 vi.mock('../../builds/build-queries', () => ({
   getBuild: async () => ({ isErr: () => false, value: null }),
   readBuildMovements: async () => [],
@@ -253,10 +255,11 @@ beforeEach(() => {
       }),
     })
   )
-  h.finishPricedBuild.mockImplementation(async (_db: unknown, _org: string, buildId: string) => ({
-    finished: !h.ledger.some((row) => row.buildId === buildId && row.costBasis === 'pending'),
-    post: null,
-  }))
+  h.finishPricedBuild.mockImplementation(async (_db: unknown, _org: string, buildId: string) => {
+    const finished = !h.ledger.some((row) => row.buildId === buildId && row.costBasis === 'pending')
+    return { finished, post: null, build: finished ? { buildId } : null }
+  })
+  h.publishBuilds.mockClear()
 })
 
 describe('a first standard values every pending row of the part', () => {
@@ -354,7 +357,8 @@ describe('a first standard values every pending row of the part', () => {
     // Only the component priced: the produce leg is still pending.
     const partial = await pricePendingMovements(db, ORG, ['part_a'])
     expect(partial._unsafeUnwrap().finishedBuildIds).toEqual([])
-    expect(h.finishPricedBuild).toHaveBeenCalledWith(db, ORG, 'build_1')
+    expect(h.finishPricedBuild).toHaveBeenCalledWith(db, ORG, 'build_1', { publish: false })
+    expect(h.publishBuilds).not.toHaveBeenCalled()
     expect(h.deleteWorkItemsAtStage).toHaveBeenCalledWith(db, ORG, {
       sourceKind: 'build',
       sourceIds: [],
@@ -377,6 +381,24 @@ describe('a first standard values every pending row of the part', () => {
     })
     // A build never goes through the row poster: its entry is the build's, posted by the finisher.
     expect(h.postEntryInTx).not.toHaveBeenCalled()
+  })
+
+  it('announces every build one pricing pass finished in one frame', async () => {
+    h.ledger = [
+      pending('mv_1', 'part_a', 'build_consume', -1, { buildId: 'build_1' }),
+      pending('mv_2', 'part_a', 'build_consume', -1, { buildId: 'build_2' }),
+      pending('mv_3', 'part_a', 'build_consume', -1, { buildId: 'build_3' }),
+    ]
+
+    const result = await pricePendingMovements(db, ORG, ['part_a'])
+
+    expect(result._unsafeUnwrap().finishedBuildIds).toEqual(['build_1', 'build_2', 'build_3'])
+    expect(h.publishBuilds).toHaveBeenCalledTimes(1)
+    expect(h.publishBuilds).toHaveBeenCalledWith(ORG, [
+      { buildId: 'build_1' },
+      { buildId: 'build_2' },
+      { buildId: 'build_3' },
+    ])
   })
 
   // 103 §5a / 106-D9: a stored $0 with an origin is a standard. It fills at 0 and books nothing.

@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   refs: [] as Record<string, unknown>[],
   retried: [] as unknown[],
   openedBuilds: [] as string[],
+  canOpenBuilds: true,
 }))
 
 vi.mock('~/components/manufacturing/builds/build-sheet-store', () => ({
@@ -24,6 +25,7 @@ vi.mock('~/components/manufacturing/builds/build-badge', () => ({
   BuildBadge: ({ build }: { build: { buildId: string; number?: string | null } }) => (
     <span data-testid='build-badge'>{build.number ?? build.buildId}</span>
   ),
+  useCanOpenBuilds: () => state.canOpenBuilds,
 }))
 vi.mock('../stock-movement-badge', () => ({
   useStockMovementHref: (movement: { id: string; partId: string } | null) =>
@@ -209,6 +211,7 @@ beforeEach(() => {
   state.refs = []
   state.retried = []
   state.openedBuilds = []
+  state.canOpenBuilds = true
 })
 
 /** A parked item under a part, as `ledger.listBlockedItems` hands it back. */
@@ -357,6 +360,35 @@ describe('BlockedPanel', () => {
     }
   })
 
+  it('shows a build row without a way to open it to a member without mrp.view', () => {
+    state.canOpenBuilds = false
+    state.groups = [
+      reason({
+        reasonCode: 'STANDARD_COST_MISSING',
+        sourceKinds: ['build'],
+        count: 1,
+        refCount: 1,
+        sourceKindCounts: { build: 1 },
+      }),
+    ]
+    state.refs = [
+      group({
+        reasonCode: 'STANDARD_COST_MISSING',
+        externalRef: 'part_1',
+        refLabel: 'The Attic-Lift',
+        count: 1,
+        sourceKinds: ['build'],
+        sourceKindCounts: { build: 1 },
+      }),
+    ]
+    state.items = [priceItem({ sourceKind: 'build', sourceId: 'b1', label: 'B-0007' })]
+    renderPanel({})
+
+    fireEvent.click(screen.getAllByLabelText('Expand')[0]!)
+    fireEvent.click(screen.getAllByLabelText('Expand')[1]!)
+    expect(screen.getAllByText('B-0007').length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText('Open B-0007')).toBeNull()
+  })
   it('offers Set costs on the standard-cost reason only when a link is given, and follows it', () => {
     state.groups = [reason({ reasonCode: 'STANDARD_COST_MISSING' })]
     const { unmount } = renderPanel()

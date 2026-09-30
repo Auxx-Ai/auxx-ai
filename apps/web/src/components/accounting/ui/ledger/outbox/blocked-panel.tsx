@@ -33,7 +33,7 @@ import { PaymentGatewayAddDialog } from '~/components/accounting/ui/settings/pay
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { useBulkMode, useListSelection, useSelectionIds } from '~/components/list-selection'
-import { BuildBadge } from '~/components/manufacturing/builds/build-badge'
+import { BuildBadge, useCanOpenBuilds } from '~/components/manufacturing/builds/build-badge'
 import { openBuildSheet } from '~/components/manufacturing/builds/build-sheet-store'
 import { useProviderName } from '~/components/money/ui/provider-payment-notice'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
@@ -509,6 +509,7 @@ function BlockedItemRow({
 }: BlockedItemRowProps) {
   const providerName = useProviderName()
   const router = useRouter()
+  const canOpenBuilds = useCanOpenBuilds()
   // A build is a `Build` row, not a record: `label` carries its number.
   const buildId = item.sourceKind === 'build' ? item.sourceId : null
   // A count row: the item read joins its `StockMovement`; it opens the part's Inventory tab.
@@ -527,7 +528,7 @@ function BlockedItemRow({
     onOpen = () => onSelectShipment(item.sourceId)
     active = activeShipmentId === item.sourceId
   } else if (buildId) {
-    onOpen = () => openBuildSheet(buildId)
+    if (canOpenBuilds) onOpen = () => openBuildSheet(buildId)
   } else if (movementHref) {
     onOpen = () => router.push(movementHref)
   } else if (moneyId) {

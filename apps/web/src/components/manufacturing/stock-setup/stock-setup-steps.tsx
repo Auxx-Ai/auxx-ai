@@ -11,6 +11,7 @@ const STATE_LABEL: Record<StockSetupStepState, string> = {
   done: 'Done',
   skipped: 'Skipped',
   empty: 'Nothing yet',
+  unavailable: 'Not available',
 }
 
 interface StockSetupStepsProps {

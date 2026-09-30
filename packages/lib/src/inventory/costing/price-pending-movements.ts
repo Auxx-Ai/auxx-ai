@@ -20,7 +20,9 @@ import {
 import { deleteWorkItemsAtStage, refreshPendingParts } from '../../accounting/work-items/write'
 import { getOrgCache } from '../../cache'
 import { StockMovementCostBasis } from '../../resources/registry/enum-values'
+import { publishBuildsChanged } from '../builds/build-realtime'
 import { finishPricedBuild } from '../builds/price-build'
+import type { BuildRecord } from '../builds/types'
 import { fillPendingCost } from '../movements/fill-pending-cost'
 import { readPendingMovements } from '../movements/reads'
 import { guard } from './guard'
@@ -187,11 +189,14 @@ async function postDocuments(
   }
 
   const finishedBuildIds: string[] = []
+  const finishedBuilds: BuildRecord[] = []
   for (const buildId of buildIds) {
     try {
-      const finished = await finishPricedBuild(db, organizationId, buildId)
+      // One frame for the whole pass below, not one per build.
+      const finished = await finishPricedBuild(db, organizationId, buildId, { publish: false })
       if (!finished.finished) continue
       finishedBuildIds.push(buildId)
+      if (finished.build) finishedBuilds.push(finished.build)
       documentsPosted++
     } catch (error) {
       documentsFailed++
@@ -202,6 +207,7 @@ async function postDocuments(
       })
     }
   }
+  if (finishedBuilds.length > 0) await publishBuildsChanged(organizationId, finishedBuilds)
   return { documentsPosted, documentsFailed, finishedBuildIds }
 }
 

@@ -119,8 +119,10 @@ export { type BuildNowInput, type BuildNowOutcome, buildNow } from './build-now'
 export {
   assertBuildStatus,
   type BuildComponentPlanInput,
+  type BuildDetail,
   explodeBuildComponents,
   getBuild,
+  getBuildDetail,
   hasBuildReversal,
   listBuilds,
   listUnpostedBuilds,

@@ -23,6 +23,8 @@ export interface PartMovementListItem {
   /** `COALESCE(occurredAt, createdAt)`. */
   effectiveAt: Date
   buildId: string | null
+  /** The build's `B-0001` number, for a build leg. */
+  buildNumber: string | null
   reversesMovementId: string | null
   /** The movement that reverses this one, if any (at most one, by the unique index). */
   reversedById: string | null
@@ -81,6 +83,7 @@ export async function listPartMovements(
             createdAt: m.createdAt,
             effectiveAt: m.effectiveAt,
             buildId: m.buildId,
+            buildNumber: schema.Build.number,
             reversesMovementId: m.reversesMovementId,
             reversedById: reversal.id,
           })
@@ -91,6 +94,10 @@ export async function listPartMovements(
               eq(reversal.organizationId, m.organizationId),
               eq(reversal.reversesMovementId, m.id)
             )
+          )
+          .leftJoin(
+            schema.Build,
+            and(eq(schema.Build.organizationId, m.organizationId), eq(schema.Build.id, m.buildId))
           )
           .where(
             and(

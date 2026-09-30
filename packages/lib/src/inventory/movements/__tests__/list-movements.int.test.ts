@@ -70,4 +70,25 @@ describe('listPartMovements', () => {
     expect(second.items[0]!.reversedById).toBe(reversal!.id)
     expect(second.nextCursor).toBeNull()
   })
+
+  it("carries a build leg's build number and leaves other rows without one", async () => {
+    const { organizationId, partId } = await seedPart()
+    const [build] = await db()
+      .insert(schema.Build)
+      .values({ organizationId, partId, number: 'B-0042', status: 'completed' })
+      .returning({ id: schema.Build.id })
+    await db()
+      .insert(schema.StockMovement)
+      .values([
+        { organizationId, partId, type: 'build_produce', quantity: 1, buildId: build!.id },
+        { organizationId, partId, type: 'receive', quantity: 2 },
+      ])
+
+    const page = (
+      await listPartMovements(db(), organizationId, { partId, limit: 10 })
+    )._unsafeUnwrap()
+    const byType = Object.fromEntries(page.items.map((item) => [item.type, item]))
+    expect(byType.build_produce).toMatchObject({ buildId: build!.id, buildNumber: 'B-0042' })
+    expect(byType.receive).toMatchObject({ buildId: null, buildNumber: null })
+  })
 })

@@ -1,7 +1,6 @@
 // apps/web/src/components/manufacturing/builds/build-sheet.tsx
 'use client'
 
-import { FieldType } from '@auxx/database/enums'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { DrawerHeader } from '@auxx/ui/components/drawer'
@@ -14,7 +13,6 @@ import { type ReactNode, useRef, useState } from 'react'
 import { LedgerCard } from '~/components/accounting/ui/ledger-card'
 import { StockMovementTreeRow } from '~/components/drawers/cards/part-inventory-card'
 import { DrawerCardActionsProvider } from '~/components/drawers/drawer-card-actions'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { toRecordId, useResourceProperty } from '~/components/resources'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
@@ -25,6 +23,7 @@ import { api, type RouterOutputs } from '~/trpc/react'
 import { BatchRunBuilds, BatchRunSummary } from './batch-run-section'
 import { BUILD_SOURCE_LABEL } from './build-format'
 import { BuildRunSection } from './build-run-section'
+import { BuildNotesRow, BuildQuantityRow, DetailText } from './build-sheet-fields'
 import { type BuildSheetFrame, useBuildSheetStore } from './build-sheet-store'
 
 /** What `builds.get` answers for an existing build. */
@@ -98,6 +97,18 @@ function BuildFrame({ buildId }: { buildId: string }) {
         <Skeleton className='h-24 w-full' />
         <Skeleton className='h-40 w-full' />
       </div>
+    )
+  }
+  if (build.error) {
+    const forbidden = build.error.data?.code === 'FORBIDDEN'
+    return (
+      <EmptySection
+        className='m-4'
+        title={forbidden ? 'You do not have access to builds' : 'This build could not be loaded'}
+        description={
+          forbidden ? 'Opening a build needs permission to view MRP.' : build.error.message
+        }
+      />
     )
   }
   if (!build.data) {
@@ -201,58 +212,10 @@ function BuildDetailsSection({ build, canManage }: { build: BuildSheetData; canM
             </DetailText>
           </FieldPanelRow>
         )}
+        {canManage && build.status === 'planned' && <BuildQuantityRow build={build} />}
         <BuildNotesRow build={build} canManage={canManage} />
       </FieldPanel>
     </Section>
-  )
-}
-
-function DetailText({ children }: { children: ReactNode }) {
-  return <span className='block truncate px-2 py-1 text-sm'>{children}</span>
-}
-
-function BuildNotesRow({ build, canManage }: { build: BuildSheetData; canManage: boolean }) {
-  const [draft, setDraft] = useState<string | null>(null)
-  const utils = api.useUtils()
-  const updateNotes = api.builds.updateNotes.useMutation({
-    onSuccess: async () => {
-      setDraft(null)
-      await utils.builds.get.invalidate({ buildId: build.buildId })
-    },
-  })
-  const value = draft ?? build.notes ?? ''
-  const dirty = draft !== null && draft !== (build.notes ?? '')
-
-  const save = () => {
-    if (!dirty) return
-    updateNotes.mutate({ buildId: build.buildId, notes: draft || null })
-  }
-
-  return (
-    <FieldPanelRow
-      title='Notes'
-      type={BaseType.STRING}
-      showIcon
-      validationError={updateNotes.error?.message}>
-      {canManage ? (
-        <div
-          className='w-full'
-          onBlur={save}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) save()
-          }}>
-          <FieldInputAdapter
-            fieldType={FieldType.TEXT}
-            value={value}
-            onChange={(next) => setDraft((next as string) ?? '')}
-            placeholder='Add a note'
-            disabled={updateNotes.isPending}
-          />
-        </div>
-      ) : (
-        <DetailText>{build.notes || '—'}</DetailText>
-      )}
-    </FieldPanelRow>
   )
 }
 

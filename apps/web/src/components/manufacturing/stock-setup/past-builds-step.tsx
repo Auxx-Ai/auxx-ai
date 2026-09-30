@@ -1,6 +1,7 @@
 // apps/web/src/components/manufacturing/stock-setup/past-builds-step.tsx
 'use client'
 
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { CheckCircle2 } from 'lucide-react'
@@ -8,6 +9,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { BackflushPanel } from '~/components/manufacturing/builds/backflush-panel'
 import { UndoBackflushPanel } from '~/components/manufacturing/builds/undo-backflush-panel'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { FixAccountsCard } from './fix-accounts-card'
 import { stockSetupHref } from './stock-setup-href'
@@ -21,7 +23,24 @@ interface PastBuildsStepProps {
 }
 
 /** Step 3 (plans/mrp/17 §5.2, 22 F1): backflush all history, or skip it (D5). */
-export function PastBuildsStep({ status, onChanged }: PastBuildsStepProps) {
+export function PastBuildsStep(props: PastBuildsStepProps) {
+  // Every backflush procedure asserts `mrp.manage`; without it nothing here would load.
+  const canRecord = useAccess().can(PermissionKey.mrpManage)
+  if (!canRecord) {
+    return (
+      <div className='mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:p-6'>
+        <p
+          className='rounded-lg border border-dashed px-4 py-3 text-muted-foreground text-sm'
+          data-testid='past-builds-unavailable'>
+          Recording past builds needs permission to manage MRP. Ask an admin to record them.
+        </p>
+      </div>
+    )
+  }
+  return <PastBuildsPanel {...props} />
+}
+
+function PastBuildsPanel({ status, onChanged }: PastBuildsStepProps) {
   const hasBuilds = api.builds.hasBackflushBuilds.useQuery()
   const setFlag = api.purchasing.setStockSetupFlag.useMutation()
   const [running, setRunning] = useState(false)
