@@ -6,13 +6,13 @@
 
 import { describe, expect, it } from 'vitest'
 import type { AutoBuildStockRule } from '../auto-build-policy'
-import type { BuildStatusValue } from '../client'
 import {
   type BuildConvergenceAction,
   type OrderBuildConvergenceInput,
   planOrderBuildConvergence,
 } from '../reconcile-policy'
 import type { BuildRecord } from '../types'
+import { buildRecord } from './support/build-record'
 
 const LIFT = 'part_lift'
 const HOIST = 'part_hoist'
@@ -20,35 +20,16 @@ const BOLT = 'part_bolt'
 
 let sequence = 0
 
-/** A build row with everything convergence looks at, and defaults for the rest. */
+/** An order-raised `planned` build of the lift, three units. */
 function build(overrides: Partial<BuildRecord> = {}): BuildRecord {
   sequence += 1
-  return {
+  return buildRecord({
     buildId: `build_${sequence}`,
-    recordId: `def:build_${sequence}`,
-    number: null,
-    partId: LIFT,
-    status: 'planned' as BuildStatusValue,
     quantityPlanned: 3,
-    quantityProduced: null,
-    quantityScrapped: null,
-    startedAt: null,
-    completedAt: null,
-    materialCost: null,
-    laborCost: null,
-    overheadCost: null,
-    producedValue: null,
-    varianceAmount: null,
-    postedAt: null,
-    notes: null,
     orderId: 'order_1',
     source: 'order',
-    reversalOfBuildId: null,
-    orderRevision: null,
-    batchRun: null,
-    createdAt: new Date('2026-08-01T00:00:00.000Z'),
     ...overrides,
-  }
+  })
 }
 
 /**
@@ -266,13 +247,6 @@ describe('🛑 the rails — 13 §5, one test each', () => {
     }
   })
 
-  it('treats a build with no source the same way — a row predating the field', () => {
-    const legacy = build({ buildId: 'b1', source: null })
-    expect(plan({ desired: new Map(), existing: [legacy] })).toEqual([
-      { kind: 'skip', partId: LIFT, buildId: 'b1', reason: 'not-order-raised' },
-    ])
-  })
-
   it('a manual build does NOT block the order raising its own (AB7 — they coexist)', () => {
     const manual = build({ buildId: 'b1', source: 'manual' })
     expect(plan({ desired: new Map([[LIFT, 5]]), existing: [manual] })).toEqual([
@@ -330,34 +304,18 @@ describe('🛑 the rails — 13 §5, one test each', () => {
     })
   })
 
-  it('refuses to treat a null status as amendable, and refuses to build beside it', () => {
-    // `resolveBuildStatus` deliberately never defaults to `planned`. A row whose
-    // lifecycle nobody can state might BE a planned build with a broken option
-    // value, so creating a record next to it is not a recoverable mistake.
-    const broken = build({ buildId: 'b1', status: null, quantityPlanned: 3 })
-    const actions = plan({ desired: new Map([[LIFT, 9]]), existing: [broken] })
-    expect(actions).toEqual([
-      { kind: 'skip', partId: LIFT, buildId: 'b1', reason: 'unknown-status' },
-    ])
-    expect(writes(actions)).toEqual([])
-  })
-
   it('is total — no input throws, including empty everything', () => {
     expect(() => planOrderBuildConvergence(input())).not.toThrow()
     expect(() =>
       planOrderBuildConvergence({
         desired: new Map([['', Number.NaN]]),
-        existing: [build({ partId: null, status: null, source: null, createdAt: new Date(0) })],
+        existing: [build({ partId: '', createdAt: new Date(0) })],
         partKinds: new Map(),
         hasBom: new Map(),
         quantitiesOnHand: new Map(),
         stockRule: 'out_of_stock_only',
       })
     ).not.toThrow()
-  })
-
-  it('drops a build with no part rather than inventing a pair for it', () => {
-    expect(plan({ desired: new Map(), existing: [build({ partId: null })] })).toEqual([])
   })
 })
 

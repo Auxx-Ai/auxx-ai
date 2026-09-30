@@ -37,20 +37,18 @@ import { toDate } from '@auxx/utils/calendar-day'
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
-import { UnprocessableEntityError } from '../../errors'
 import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import {
   optionalFieldId,
   systemDefId,
   systemFieldMap,
-  systemRecordScope,
   systemValueJoin,
 } from '../../resources/system-records'
 import { isBuildablePartKind, resolvePartKind } from '../costing/client'
 import { readPartQuantitiesOnHand } from './auto-build-queries'
 import type { BackfillCoverage, BackfillDemandLine, BackfillPlanInput } from './backfill-types'
-import { readPartKinds, requireBuildContext } from './build-queries'
+import { readPartKinds } from './build-queries'
 import { guard } from './guard'
 
 /**
@@ -109,9 +107,7 @@ const SUBPART_PICK = pickSystemAttributes(SUBPART_FIELDS, [
  * An org with no `order` or `line_item` definition, or with the line fields
  * unprovisioned, reads as **no demand** rather than as an error: there is
  * nothing to build from, and the preview showing an empty plan is the honest
- * answer. An org that HAS demand but no provisioned `build` entity is refused,
- * because reading coverage as empty there would plan builds for demand that is
- * already covered.
+ * answer.
  */
 export async function readBackfillPlanReads(
   db: Database,
@@ -290,7 +286,7 @@ async function readDemandLines(
  *
  * Attribution, and it is what bounds the answer to the range:
  *
- * - a build carrying `build_order` resolves to that order's date, taken from
+ * - a build carrying an `orderId` resolves to that order's date, taken from
  *   the demand read's own map. An order that is not in that map is out of the
  *   range (or cancelled), so its build covers demand this run is not looking at
  *   and is **dropped** rather than counted as undated coverage;
@@ -308,75 +304,29 @@ async function readCoverage(
 ): Promise<BackfillCoverage[]> {
   if (partIds.length === 0) return []
 
-  // Refuses when the org has no `build` def, no `build_status` or no
-  // `build_part`. Deliberately louder than the demand read: this org HAS demand,
-  // and reading its coverage as empty would plan builds on top of production
-  // that already exists.
-  const ctx = await requireBuildContext(organizationId)
-  const partField = ctx.fields.build_part
-  const statusField = ctx.fields.build_status
-  const quantityField = ctx.fields.build_quantity_planned
-  const orderField = ctx.fields.build_order
-  if (!partField || !statusField || !quantityField || !orderField) {
-    throw new UnprocessableEntityError(
-      'Backfilling builds is not available until the build part, status, quantity and order fields are provisioned'
-    )
-  }
-
-  const partValue = alias(schema.FieldValue, 'backfill_build_part_v')
-  const statusValue = alias(schema.FieldValue, 'backfill_build_status_v')
-  const quantityValue = alias(schema.FieldValue, 'backfill_build_qty_v')
-  const orderValue = alias(schema.FieldValue, 'backfill_build_order_v')
-  const reversalValue = alias(schema.FieldValue, 'backfill_build_reversal_v')
-  const periodStartValue = alias(schema.FieldValue, 'backfill_build_period_start_v')
-  const periodEndValue = alias(schema.FieldValue, 'backfill_build_period_end_v')
-
-  // 🛑 Stays one statement, and stays raw: the quantity, the order and the two
-  // period columns are the ANSWER, not filters, and an id-returning lookup would
-  // make the whole backfill read three statements where the budget test pins one.
+  const b = schema.Build
+  // One statement: the quantity, the order and the period are the answer, and the budget test pins it.
   const rows = await db
     .select({
-      buildPartId: partValue.relatedEntityId,
-      plannedQuantity: quantityValue.valueNumber,
-      buildOrderId: orderValue.relatedEntityId,
-      periodStart: periodStartValue.valueDate,
-      periodEnd: periodEndValue.valueDate,
+      buildPartId: b.partId,
+      plannedQuantity: b.quantityPlanned,
+      buildOrderId: b.orderId,
+      periodStart: b.periodStart,
+      periodEnd: b.periodEnd,
     })
-    .from(schema.EntityInstance)
-    .innerJoin(
-      partValue,
-      and(systemValueJoin(partValue, partField.id), inArray(partValue.relatedEntityId, partIds))
-    )
-    .innerJoin(
-      statusValue,
+    .from(b)
+    .where(
       and(
-        systemValueJoin(statusValue, statusField.id),
-        inArray(statusValue.optionId, [...COVERAGE_STATUSES])
+        eq(b.organizationId, organizationId),
+        inArray(b.partId, partIds),
+        inArray(b.status, [...COVERAGE_STATUSES]),
+        // Reversals are `completed` so the status filter excludes them; asserted anyway.
+        isNull(b.reversalOfBuildId)
       )
     )
-    .leftJoin(quantityValue, systemValueJoin(quantityValue, quantityField.id))
-    .leftJoin(orderValue, systemValueJoin(orderValue, orderField.id))
-    // Belt and braces: a reversal and the build it reverses are both `completed`,
-    // so the status filter already excludes them. Asserted anyway, because the
-    // day a reversal can be raised against an open build this read would start
-    // counting production that nets out to nothing.
-    .leftJoin(
-      reversalValue,
-      systemValueJoin(reversalValue, optionalFieldId(ctx.fields.build_reversal_of))
-    )
-    .leftJoin(
-      periodStartValue,
-      systemValueJoin(periodStartValue, optionalFieldId(ctx.fields.build_period_start))
-    )
-    .leftJoin(
-      periodEndValue,
-      systemValueJoin(periodEndValue, optionalFieldId(ctx.fields.build_period_end))
-    )
-    .where(and(systemRecordScope(organizationId, ctx.defId), isNull(reversalValue.relatedEntityId)))
 
   const coverage: BackfillCoverage[] = []
   for (const row of rows) {
-    if (!row.buildPartId) continue
     const quantity = row.plannedQuantity == null ? 0 : Number(row.plannedQuantity)
     // A build planning nothing commits no production. Dropped here rather than
     // handed to the policy as a zero, so the coverage list is only ever things
@@ -390,9 +340,9 @@ async function readCoverage(
       continue
     }
 
-    const periodStart = toDate(row.periodStart)
+    const periodStart = row.periodStart
     if (periodStart) {
-      const periodEnd = toDate(row.periodEnd) ?? periodStart
+      const periodEnd = row.periodEnd ?? periodStart
       if (periodStart >= range.to || periodEnd <= range.from) continue
       coverage.push({ partId: row.buildPartId, quantity, appliesAt: periodStart })
       continue

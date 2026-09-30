@@ -21,6 +21,7 @@ const h = vi.hoisted(() => ({
   postedPeriodRows: vi.fn(),
   getOrganizationSetting: vi.fn(),
   movementRows: vi.fn(),
+  buildCount: vi.fn(),
 }))
 
 vi.mock('../../../cache', () => ({
@@ -35,8 +36,9 @@ vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: h.getOrganizationSetting,
 }))
 
-// Two drizzle chains, stubbed separately so the tests cannot confuse them:
-// `select()` is the movement read, `selectDistinct()` is the posted-period read.
+// Three drizzle chains, stubbed separately so the tests cannot confuse them: `select()` from
+// `Build` is the build count, from anything else the movement read; `selectDistinct()` is the
+// posted-period read.
 // Each is a builder whose methods return itself and whose TERMINAL `.where()`
 // resolves. Keeping `where` as the resolution point (rather than making the
 // chain thenable) also pins the shape of the real queries: if either read stops
@@ -44,11 +46,15 @@ vi.mock('../../../settings/settings-service', () => ({
 // builder.
 vi.mock('@auxx/database', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@auxx/database')
+  const { Build } = actual.schema as { Build: unknown }
+  const buildChain: Record<string, unknown> = {}
+  buildChain.where = async () => [{ n: h.buildCount() }]
   const movementChain: Record<string, unknown> = {}
-  for (const method of ['from', 'innerJoin', 'leftJoin', '$dynamic']) {
+  for (const method of ['innerJoin', 'leftJoin', '$dynamic']) {
     movementChain[method] = () => movementChain
   }
   movementChain.where = async () => h.movementRows()
+  const selectChain = { from: (table: unknown) => (table === Build ? buildChain : movementChain) }
 
   const postedChain: Record<string, unknown> = {}
   postedChain.from = () => postedChain
@@ -56,7 +62,7 @@ vi.mock('@auxx/database', async () => {
 
   return {
     ...actual,
-    database: { select: () => movementChain, selectDistinct: () => postedChain },
+    database: { select: () => selectChain, selectDistinct: () => postedChain },
   }
 })
 
@@ -105,6 +111,7 @@ const BOOKS_OPEN = {
 beforeEach(() => {
   vi.clearAllMocks()
   h.movementRows.mockReturnValue([])
+  h.buildCount.mockReturnValue(0)
   h.postedPeriodRows.mockReturnValue([])
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   settings(BOOKS_OPEN)
@@ -189,5 +196,14 @@ describe('guardPartDelete: no movements', () => {
 
     expect(h.getOrganizationSetting).not.toHaveBeenCalled()
     expect(h.resolvePeriodLock).not.toHaveBeenCalled()
+  })
+})
+
+describe('guardPartDelete: builds', () => {
+  it('refuses a part a build names, before reading its movements', async () => {
+    h.buildCount.mockReturnValue(2)
+
+    await expect(guardPartDelete(event())).rejects.toThrow(/2 builds.*archive the part/i)
+    expect(h.movementRows).not.toHaveBeenCalled()
   })
 })

@@ -20,7 +20,13 @@ const h = vi.hoisted(() => ({
   build: null as Record<string, unknown> | null,
   legs: [] as Leg[],
   rates: { laborCostPerUnit: 50, overheadCostPerUnit: 25 },
-  update: vi.fn(async (_recordId: string, _values: Record<string, unknown>) => ({})),
+  update: vi.fn(
+    async (_tx: unknown, _org: string, buildId: string, patch: Record<string, unknown>) => ({
+      ...h.build,
+      buildId,
+      ...patch,
+    })
+  ),
   publish: vi.fn(),
   postDocument: vi.fn(async () => ({ status: 'posted' })),
 }))
@@ -28,19 +34,13 @@ const h = vi.hoisted(() => ({
 vi.mock('../build-queries', () => ({
   getBuild: async () => ({ isErr: () => false, value: h.build }),
   readBuildMovements: async () => h.legs,
-  requireBuildContext: async () => ({ defId: 'def_build', fields: {} }),
 }))
-vi.mock('../complete-build', () => ({ publishBuildUpdate: h.publish }))
-vi.mock('../write-lane', () => ({ buildWriteSession: () => ({ kind: 'quiet' }) }))
+vi.mock('../build-writes', () => ({ updateBuild: h.update }))
+vi.mock('../build-realtime', () => ({ publishBuildsChanged: h.publish }))
 vi.mock('../../costing/standard-cost-queries', () => ({
   loadPartAbsorptionRates: async () => h.rates,
 }))
 vi.mock('../../../cache', () => ({ getOrgCache: () => ({ get: async () => 'user_system' }) }))
-vi.mock('../../../resources/crud/unified-handler', () => ({
-  UnifiedCrudHandler: class {
-    update = h.update
-  },
-}))
 vi.mock('../../../accounting/ledger/post/post-inventory-document', () => ({
   postInventoryDocument: h.postDocument,
 }))
@@ -48,7 +48,7 @@ vi.mock('../../../accounting/ledger/post/post-inventory-document', () => ({
 import { finishPricedBuild } from '../price-build'
 
 const ORG = 'org_1'
-const db = {} as never
+const db = { transaction: async (fn: (tx: unknown) => unknown) => fn('tx') } as never
 const COMPLETED = new Date('2026-08-20T09:00:00Z')
 
 function leg(
@@ -73,7 +73,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.build = {
     buildId: 'build_1',
-    recordId: 'def_build:build_1',
     partId: 'part_lift',
     orderId: null,
     quantityProduced: 10,
@@ -107,24 +106,16 @@ describe('finishPricedBuild', () => {
     expect(result.finished).toBe(true)
     // Material 2,500 (the consume rows, un-negated); labour and overhead as completion stamped
     // them; produced 10 x 400; variance = 2,500 + 900 + 300 - 4,000.
-    expect(h.update).toHaveBeenCalledWith('def_build:build_1', {
-      build_material_cost: 2_500,
-      build_labor_cost: 900,
-      build_overhead_cost: 300,
-      build_produced_value: 4_000,
-      build_variance_amount: -300,
+    expect(h.update).toHaveBeenCalledWith('tx', ORG, 'build_1', {
+      materialCost: 2_500,
+      laborCost: 900,
+      overheadCost: 300,
+      producedValue: 4_000,
+      varianceAmount: -300,
     })
-    expect(h.publish).toHaveBeenCalledWith(
-      ORG,
-      expect.anything(),
-      expect.objectContaining({
-        buildId: 'build_1',
-        materialCost: 2_500,
-        varianceAmount: -300,
-        pendingPartIds: [],
-      }),
-      COMPLETED
-    )
+    expect(h.publish).toHaveBeenCalledWith(ORG, [
+      expect.objectContaining({ buildId: 'build_1', materialCost: 2_500, varianceAmount: -300 }),
+    ])
     expect(h.postDocument).toHaveBeenCalledWith(
       db,
       ORG,
@@ -148,8 +139,10 @@ describe('finishPricedBuild', () => {
 
     // 12 units started x 50 and x 25.
     expect(h.update).toHaveBeenCalledWith(
-      'def_build:build_1',
-      expect.objectContaining({ build_labor_cost: 600, build_overhead_cost: 300 })
+      'tx',
+      ORG,
+      'build_1',
+      expect.objectContaining({ laborCost: 600, overheadCost: 300 })
     )
   })
 

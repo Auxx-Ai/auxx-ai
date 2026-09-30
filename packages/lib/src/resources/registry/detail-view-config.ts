@@ -272,6 +272,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
         icon: 'receipt-text',
         recordResource: 'credit_memo',
       },
+      { value: 'builds', label: 'Builds', icon: 'hammer', permissionKey: 'mrp.view' },
       {
         value: 'payments',
         label: 'Payments and refunds',
@@ -391,44 +392,6 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     sidebarCards: [
       { value: 'customer-site', label: 'Customer & site', icon: 'map-pin' },
       { value: 'origin', label: 'Origin', icon: 'link' },
-    ],
-  },
-
-  build: {
-    entityType: 'build',
-    // No entity-specific main tab. A build is not a document with lines you
-    // edit — it is raised, worked, and completed once (B8), so everything worth
-    // reading about a run fits the two sidebar cards below. The two universal
-    // tabs are the whole main area, exactly as the generic `entity` config.
-    mainTabs: [
-      { value: 'timeline', label: 'Timeline', icon: 'clock' },
-      { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
-    ],
-    sidebarTabs: DEFAULT_SIDEBAR_TABS,
-    defaultTab: 'timeline',
-    defaultSidebarTab: 'overview',
-    // The sidebar and the drawer read the SAME `DRAWER_TAB_CARD_COMPONENTS`
-    // registry, so each value here is the card key and must match the `build:*`
-    // entries there and in the build's drawer block.
-    //
-    // `run` is the only place the lifecycle actions live — Start, Cancel,
-    // Complete, Reverse — because `build_status` is `showInDialogs: false` and
-    // `completeBuild` is a procedure, not a status somebody picks.
-    // `ledger` is the only surface for the build's stock movements.
-    // `batch-run` is the run this build belongs to, and the only verb in the
-    // build UI whose scope is not this build (plans/money/tasks/45 §11): Undo
-    // cancels or reverses every build the run raised. It is declared here AND in
-    // `drawer-config.ts` because the two surfaces read the same registry and a
-    // card on one only is invisible until somebody opens the other.
-    sidebarCards: [
-      { value: 'run', label: 'Run', icon: 'hammer' },
-      {
-        value: 'ledger',
-        label: 'Ledger',
-        icon: 'arrow-left-right',
-        recordResource: 'build',
-      },
-      { value: 'batch-run', label: 'Batch run', icon: 'layers' },
     ],
   },
 

@@ -69,20 +69,6 @@ async function seedWidgets(options: { unique?: boolean } = {}): Promise<Widgets>
     })
     .returning()
   const defId = def!.id
-  const [buildPart, partBuilds] = await Promise.all(
-    ['build_part', 'part_builds'].map(async (attr) => {
-      const [row] = await db()
-        .select({ options: schema.CustomField.options })
-        .from(schema.CustomField)
-        .where(
-          and(
-            eq(schema.CustomField.organizationId, org),
-            eq(schema.CustomField.systemAttribute, attr)
-          )
-        )
-      return (row!.options as { relationship: Record<string, unknown> }).relationship
-    })
-  )
   const field = async (
     name: string,
     type: string,
@@ -120,14 +106,25 @@ async function seedWidgets(options: { unique?: boolean } = {}): Promise<Widgets>
     .update(schema.CustomField)
     .set({
       options: {
-        relationship: { ...buildPart, inverseResourceFieldId: `${f.partDefId}:${inverse}` },
+        relationship: {
+          relationshipType: 'belongs_to',
+          isInverse: false,
+          inverseResourceFieldId: `${f.partDefId}:${inverse}`,
+        },
       },
     })
     .where(eq(schema.CustomField.id, forward))
   await db()
     .update(schema.CustomField)
     .set({
-      options: { relationship: { ...partBuilds, inverseResourceFieldId: `${defId}:${forward}` } },
+      options: {
+        relationship: {
+          relationshipType: 'has_many',
+          isInverse: true,
+          onDelete: 'unlink',
+          inverseResourceFieldId: `${defId}:${forward}`,
+        },
+      },
     })
     .where(eq(schema.CustomField.id, inverse))
   await db()

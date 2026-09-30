@@ -26,7 +26,7 @@ import type { ConvergenceSkipReason } from './reconcile-policy'
  * `'range'` collapses the whole window into one build per part.
  *
  * Section 7.3: when the run creates `completed` builds and the range spans more
- * than one accounting month, `'range'` is not selectable. `build_completed_at`
+ * than one accounting month, `'range'` is not selectable. `completedAt`
  * decides which month-end entry reflects the build, so a coarser grouping
  * misstates every month it spans.
  */
@@ -93,12 +93,12 @@ export interface BackfillDemandLine {
 export interface BackfillCoverage {
   /** `EntityInstance.id` of the `part`. */
   partId: string
-  /** `build_quantity_planned`. */
+  /** `quantityPlanned`. */
   quantity: number
   /**
    * When this coverage applies.
    *
-   * An order-raised build resolves it through `build_order` to the order's
+   * An order-raised build resolves it through `orderId` to the order's
    * `order_placed_at`. A batch build resolves it to the start of its own demand
    * period. `null` when neither is knowable, which sorts first.
    *

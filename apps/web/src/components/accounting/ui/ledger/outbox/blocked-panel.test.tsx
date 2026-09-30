@@ -14,17 +14,16 @@ const state = vi.hoisted(() => ({
   items: [] as Record<string, unknown>[],
   refs: [] as Record<string, unknown>[],
   retried: [] as unknown[],
-  /** Records by id, as `useRecord` answers. */
-  records: {} as Record<string, { displayName: string }>,
+  openedBuilds: [] as string[],
 }))
 
-vi.mock('~/components/resources', () => ({
-  useResourceProperty: (slug: string) => `def-${slug}`,
-  useRecord: ({ recordId }: { recordId: string | null }) => ({
-    record: recordId ? state.records[recordId] : undefined,
-    isLoading: false,
-    isNotFound: false,
-  }),
+vi.mock('~/components/manufacturing/builds/build-sheet-store', () => ({
+  openBuildSheet: (buildId: string) => state.openedBuilds.push(buildId),
+}))
+vi.mock('~/components/manufacturing/builds/build-badge', () => ({
+  BuildBadge: ({ build }: { build: { buildId: string; number?: string | null } }) => (
+    <span data-testid='build-badge'>{build.number ?? build.buildId}</span>
+  ),
 }))
 vi.mock('../stock-movement-badge', () => ({
   useStockMovementHref: (movement: { id: string; partId: string } | null) =>
@@ -181,12 +180,7 @@ function group(overrides: Record<string, unknown> = {}) {
 }
 
 function renderPanel(
-  props: {
-    setCostsHref?: string
-    onSelectShipment?: (id: string) => void
-    onSelectRecord?: (id: string) => void
-    activeRecordId?: string | null
-  } = {}
+  props: { setCostsHref?: string; onSelectShipment?: (id: string) => void } = {}
 ) {
   return render(
     <TooltipProvider>
@@ -214,7 +208,7 @@ beforeEach(() => {
   state.items = []
   state.refs = []
   state.retried = []
-  state.records = {}
+  state.openedBuilds = []
 })
 
 /** A parked item under a part, as `ledger.listBlockedItems` hands it back. */
@@ -312,7 +306,7 @@ describe('BlockedPanel', () => {
         label: 'Shipment #1001',
         recordDefinitionId: 'def-fulfillment',
       }),
-      priceItem({ sourceKind: 'build', sourceId: 'b1' }),
+      priceItem({ sourceKind: 'build', sourceId: 'b1', label: 'B-0007' }),
       priceItem({
         sourceKind: 'stock_movement',
         sourceId: 'm1',
@@ -326,10 +320,8 @@ describe('BlockedPanel', () => {
         },
       }),
     ]
-    state.records = { 'def-build:b1': { displayName: 'BLD-0007' } }
     const onSelectShipment = vi.fn()
-    const onSelectRecord = vi.fn()
-    renderPanel({ onSelectShipment, onSelectRecord, activeRecordId: 'def-build:b1' })
+    renderPanel({ onSelectShipment })
 
     expect(
       screen.getByText('Standard cost missing · 1 part · 446 shipments · 12 builds · 1 count')
@@ -342,11 +334,11 @@ describe('BlockedPanel', () => {
     fireEvent.click(screen.getByLabelText('Open Shipment #1001'))
     expect(onSelectShipment).toHaveBeenCalledWith('f1')
 
-    // The build row is named by its record and opens it; it is the one the drawer shows.
-    const buildRow = screen.getByText('BLD-0007').closest('div')!
-    expect(buildRow.getAttribute('data-active')).toBe('true')
-    fireEvent.click(screen.getByLabelText('Open BLD-0007'))
-    expect(onSelectRecord).toHaveBeenCalledWith('def-build:b1')
+    // The build row is named by the number the item read labels it with, and opens the build sheet.
+    const buildRow = screen.getAllByText('B-0007')[0]!.closest('div')!
+    expect(buildRow.querySelector('[data-testid=build-badge]')?.textContent).toBe('B-0007')
+    fireEvent.click(screen.getByLabelText('Open B-0007'))
+    expect(state.openedBuilds).toEqual(['b1'])
 
     // The count row reads its type, signed quantity and reason off the movement, dated when it
     // happened, and opens its part's Inventory tab at the row.
@@ -359,27 +351,10 @@ describe('BlockedPanel', () => {
 
     const types = screen.getAllByTestId('type').map((node) => node.textContent)
     expect(types).toEqual(expect.arrayContaining(['Shipment', 'Build', 'Adjustment']))
-    // Every row's badge is the plain badge while a drawer handler takes the click.
+    // The row takes the click, so no badge links out on its own.
     for (const badge of screen.getAllByTestId('record-badge')) {
       expect(badge.getAttribute('data-link')).toBe('false')
     }
-  })
-
-  it('links a build or count out to its record when no drawer handler is given', () => {
-    state.groups = [
-      group({
-        reasonCode: 'STANDARD_COST_MISSING',
-        externalRef: 'part_1',
-        refLabel: 'The Attic-Lift',
-        sourceKinds: ['build'],
-        count: 1,
-      }),
-    ]
-    state.items = [priceItem({ sourceKind: 'build', sourceId: 'b1' })]
-    renderPanel()
-    fireEvent.click(screen.getByLabelText('Expand'))
-    expect(screen.getByTestId('record-badge').getAttribute('data-link')).toBe('true')
-    expect(screen.queryByLabelText('Open Build')).toBeNull()
   })
 
   it('offers Set costs on the standard-cost reason only when a link is given, and follows it', () => {

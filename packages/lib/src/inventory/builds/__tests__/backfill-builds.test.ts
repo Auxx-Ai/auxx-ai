@@ -27,20 +27,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { UnprocessableEntityError } from '../../../errors'
 import type { BackfillBucket, BackfillPlan, BackfillRequest } from '../backfill-types'
 import type { BuildRecord } from '../types'
+import { buildRecord } from './support/build-record'
 
 const ORG = 'org_1'
 const USER = 'user_1'
 const LIFT = 'part_lift'
 const HOIST = 'part_hoist'
-const BUILD_DEF = 'def_build'
 
 const h = vi.hoisted(() => ({
   /** `accounting.bookTimeZone`, or null for an org that keeps no books. */
   timeZone: null as string | null,
-  /** Which of the two demand-period fields are provisioned. */
-  periodFields: { start: true, end: true },
-  /** Whether `build_batch_run` is provisioned (entity migration 141). */
-  batchRunField: true,
   /** Every `recordNumbering.create` call, as `[organizationId, scope]`. */
   numberingCalls: [] as [string, string][],
   /** The counter the `recordNumbering` double increments, per org+scope. */
@@ -58,18 +54,6 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: vi.fn(async () => h.timeZone),
-}))
-
-vi.mock('../../../cache', () => ({
-  getOrgCache: () => ({
-    from: () => ({
-      bySystemAttributes: async () => ({
-        build_period_start: h.periodFields.start ? { id: 'f_period_start' } : null,
-        build_period_end: h.periodFields.end ? { id: 'f_period_end' } : null,
-        build_batch_run: h.batchRunField ? { id: 'f_batch_run' } : null,
-      }),
-    }),
-  }),
 }))
 
 // The run-number counter, doubled so a test can COUNT the allocations. The real
@@ -123,31 +107,7 @@ import { executeBackfill, resolveBackfillCompletedAt } from '../backfill-builds'
 const db = {} as never
 
 function raised(buildId: string, over: Partial<BuildRecord> = {}): BuildRecord {
-  return {
-    buildId,
-    recordId: `${BUILD_DEF}:${buildId}`,
-    number: null,
-    partId: LIFT,
-    status: 'planned',
-    quantityPlanned: 10,
-    quantityProduced: null,
-    quantityScrapped: null,
-    startedAt: null,
-    completedAt: null,
-    materialCost: null,
-    laborCost: null,
-    overheadCost: null,
-    producedValue: null,
-    varianceAmount: null,
-    postedAt: null,
-    notes: null,
-    orderId: null,
-    source: 'batch',
-    reversalOfBuildId: null,
-    orderRevision: null,
-    createdAt: new Date('2026-09-03T00:00:00.000Z'),
-    ...over,
-  } as BuildRecord
+  return buildRecord({ buildId, source: 'batch', ...over })
 }
 
 /** One monthly bucket. `month` is 1-based; the period is UTC-bounded by default. */
@@ -200,8 +160,6 @@ const COMPLETED: BackfillRequest = { ...PLANNED, status: 'completed' }
 beforeEach(() => {
   vi.useRealTimers()
   h.timeZone = 'UTC'
-  h.periodFields = { start: true, end: true }
-  h.batchRunField = true
   h.numberingCalls = []
   h.counters = new Map()
   h.createCalls = []
@@ -386,20 +344,6 @@ describe('🛑 the batch run number is allocated once per run', () => {
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().batchRun).toBe(1)
   })
-
-  // ⚠️ The asymmetry with the two demand-period fields is deliberate: coverage
-  // depends on the period, so a run without it computes the wrong thing, while
-  // nothing about the netting depends on the run number. An org short of entity
-  // migration 141 gets a correct backfill and un-numbered builds, and loses only
-  // undo.
-  it('runs anyway when build_batch_run is not provisioned', async () => {
-    h.batchRunField = false
-
-    const result = await executeBackfill(db, ORG, USER, planOf(bucket()), PLANNED)
-
-    expect(result.isOk()).toBe(true)
-    expect(result._unsafeUnwrap().created).toHaveLength(1)
-  })
 })
 
 describe('planned is the whole of the write', () => {
@@ -549,23 +493,6 @@ describe('a refused raise is a failed bucket, not a build to go and finish', () 
         reason: 'This part is classified as purchased, so it cannot be built.',
       },
     ])
-  })
-})
-
-// ─── The refusals that write nothing at all ─────────────────────────────
-
-describe('🛑 the demand-period fields are required before anything is written', () => {
-  // A batch build with no period is invisible to the netting read that decides
-  // what the NEXT run owes (§6.2), so an unprovisioned org would get four
-  // hundred builds and then get them all again on the second pass.
-  it('refuses the whole run, having raised nothing', async () => {
-    h.periodFields = { start: true, end: false }
-
-    const result = await executeBackfill(db, ORG, USER, planOf(bucket()), PLANNED)
-
-    expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr()).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.createCalls).toHaveLength(0)
   })
 })
 

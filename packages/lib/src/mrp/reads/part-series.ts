@@ -155,7 +155,7 @@ export async function readReceiptsForParts(
     )
   }
   const latePartIds = [...new Set(poLines.filter((l) => due(l) < asOf).map((l) => l.partId))]
-  const [lateness, poNames, buildNames] = await Promise.all([
+  const [lateness, poNames] = await Promise.all([
     Promise.all(
       latePartIds.map(
         async (id) => [id, await latenessByVendorPart(db, organizationId, id)] as const
@@ -166,12 +166,6 @@ export async function readReceiptsForParts(
       organizationId,
       'purchase_order',
       poLines.map((l) => l.purchaseOrderId)
-    ),
-    readRecordNames(
-      db,
-      organizationId,
-      'build',
-      builds.map((b) => b.id)
     ),
   ])
 
@@ -205,7 +199,7 @@ export async function readReceiptsForParts(
     target.events.push({
       day,
       kind: 'build_due',
-      label: buildNames.get(build.id) ?? 'Build',
+      label: build.number,
       qty: build.quantityOpen,
     })
   }

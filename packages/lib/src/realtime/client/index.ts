@@ -5,6 +5,7 @@ export type {
   AiStatus,
   AiValueMetadata,
   BackflushRunEvent,
+  BuildChangedEvent,
   DataConnectorSyncEvent,
   ExportBatchChangedEvent,
   FieldValuesUpdatedEvent,

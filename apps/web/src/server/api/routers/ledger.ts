@@ -134,6 +134,7 @@ import {
 } from '@auxx/lib/accounting/work-items'
 import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
 import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
+import { readBuildsByIds } from '@auxx/lib/inventory/builds'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import { toRecordId } from '@auxx/lib/resources/client'
@@ -236,9 +237,16 @@ async function hydrateSources<
         ).map((row) => [row.id, row])
       : []
   )
+  const buildIds = rows.filter((row) => row.sourceKind === 'build').map((row) => row.sourceId)
+  const builds = new Map(
+    (buildIds.length ? await readBuildsByIds(db, organizationId, buildIds) : []).map((build) => [
+      build.buildId,
+      { buildId: build.buildId, number: build.number },
+    ])
+  )
   // A `sourceKind` that is an entity type becomes a `RecordId` so the client
   // renders a badge, a `money_transaction` a `MovementBadge`, a `stock_movement` a
-  // `StockMovementBadge`; the remaining ledger-only kinds (`gl_posting`, `payout`, …) stay text.
+  // `StockMovementBadge`, a `build` a `BuildBadge`; the remaining ledger-only kinds stay text.
   const hydrated = await Promise.all(
     rows.map(async (row) => {
       const defId = await getCachedEntityDefId(organizationId, row.sourceKind)
@@ -260,6 +268,7 @@ async function hydrateSources<
             : null,
         stockMovement:
           row.sourceKind === 'stock_movement' ? (stockMovements.get(row.sourceId) ?? null) : null,
+        build: row.sourceKind === 'build' ? (builds.get(row.sourceId) ?? null) : null,
       }
     })
   )

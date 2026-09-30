@@ -361,6 +361,8 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
           icon: 'receipt-text',
           recordResource: 'credit_memo',
         },
+        // The builds raised against this order (`Build.orderId`); renders nothing when none.
+        { value: 'builds', label: 'Builds', icon: 'hammer', permissionKey: 'mrp.view' },
         // The money the order actually took and gave back; the row's own
         // "Post payment" gates itself on `ledger.control`.
         {
@@ -440,33 +442,6 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         { value: 'vendor', label: 'Vendor', icon: 'store' },
         { value: 'receiving', label: 'Receiving', icon: 'truck' },
         { value: 'bills', label: 'Bills', icon: 'receipt', recordResource: 'vendor_bill' },
-      ],
-    },
-  },
-
-  build: {
-    entityType: 'build',
-    // Drawer parity with the detail page (detail-view-config.ts): the same three
-    // cards, from the same `DRAWER_TAB_CARD_COMPONENTS` keys. A build opened
-    // from the parts list or an order must offer the same Complete button the
-    // page does, or the drawer becomes a read-only view of a run somebody then
-    // has to navigate away to finish.
-    additionalTabs: [],
-    tabCards: {
-      overview: [
-        { value: 'run', label: 'Run', icon: 'hammer' },
-        {
-          value: 'ledger',
-          label: 'Ledger',
-          icon: 'arrow-left-right',
-          recordResource: 'build',
-        },
-        // The batch run this build belongs to (plans/money/tasks/45 §11). Its own
-        // card and never folded into `run`: every verb on `run` acts on this one
-        // build, and this card's Undo acts on every build the run raised.
-        // It renders NOTHING for a build carrying no `build_batch_run`, which is
-        // every order-raised, hand-raised and reversing build.
-        { value: 'batch-run', label: 'Batch run', icon: 'layers' },
       ],
     },
   },

@@ -115,7 +115,6 @@ describe('silent-write conformance — every shut door names its reason', () => 
  * display-column and inverse frames, so each must name a publisher that exists and is called.
  */
 const COVERED_QUIET_WRITERS: Record<string, string> = {
-  'inventory/builds/write-lane.ts': 'publishQuietBuildWrites',
   'returns/salvage-writer.ts': 'announceQuietSalvageWrites',
 }
 
@@ -194,13 +193,13 @@ describe('the declarations themselves', () => {
   })
 
   it('a covered quiet session names its publisher, and refuses an empty one', () => {
-    const covered = quietSession('a reason', { coveredBy: 'publishQuietBuildWrites' })
+    const covered = quietSession('a reason', { coveredBy: 'announceQuietSalvageWrites' })
     expect(sessionLane(covered)).toBe('silent')
     expect(isCoveredQuiet(covered)).toBe(true)
     expect(covered.mode).toEqual({
       kind: 'quiet',
       reason: 'a reason',
-      coveredBy: 'publishQuietBuildWrites',
+      coveredBy: 'announceQuietSalvageWrites',
     })
     expect(isCoveredQuiet(quietSession('a reason'))).toBe(false)
     expect(isCoveredQuiet(absorbedSession('setBulkValues'))).toBe(false)

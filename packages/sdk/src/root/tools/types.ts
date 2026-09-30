@@ -69,7 +69,7 @@ export interface ToolActionContext {
  * orgs by an entity migration, not merely present in `SYSTEM_ENTITIES` (which
  * `ensureEntityDefinitions` only ever INSERTs, so it reaches fresh orgs alone).
  * `order` is seeded by entity-migration **107**; `purchase_order`,
- * `vendor_bill` and `gl_account` by **108**; `build` by **109**.
+ * `vendor_bill` and `gl_account` by **108**.
  *
  * 🛑 `deal`, `task` and `user` were REMOVED 2026-08-28 — they were the hazard
  * above, shipping. None of the three has an `EntityDefinition` row in any org
@@ -183,7 +183,6 @@ export type EntityRefKind =
   | 'line_item'
   | 'part'
   | 'product'
-  | 'build'
   | 'purchase_order'
   | 'vendor_bill'
   | 'gl_account'

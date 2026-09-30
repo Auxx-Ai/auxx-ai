@@ -117,7 +117,7 @@ const SCOPE_DEFAULTS: Record<AnySequenceScope, { prefix: string }> = {
   vendor_credit: { prefix: 'VC' },
   // The batch run counter (plans/money/tasks/45 §3.2). The prefix is COSMETIC
   // here and nothing renders it: the run number is consumed as the raw
-  // `sequenceNumber` integer, because `build_batch_run` is an integer field.
+  // `sequenceNumber` integer, because `Build.batchRun` is an integer column.
   // `BR` all the same, so a row somebody stumbles over in the table is legible
   // and collides with neither `B` (build) nor `BILL` (vendor bill).
   build_batch: { prefix: 'BR' },

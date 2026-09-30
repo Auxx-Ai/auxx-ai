@@ -84,7 +84,6 @@ vi.mock('../reverse-build', () => ({
         ? err(failure)
         : ok({
             buildId: `rev_${input.buildId}`,
-            recordId: `def_build:rev_${input.buildId}`,
             reversalOfBuildId: input.buildId,
             movementIds: [],
             recalculatedPartIds: [],
@@ -290,16 +289,6 @@ describe('undoBatchRun', () => {
       skipped: [],
       failed: [],
     })
-    expect(h.cancelCalls).toEqual([])
-    expect(h.reverseCalls).toEqual([])
-  })
-
-  it('fails a build whose status is missing, rather than guessing a verb', async () => {
-    given([build({ buildId: 'bld_odd', status: null })])
-
-    const summary = await undo()
-
-    expect(ids(summary.failed)).toEqual(['bld_odd'])
     expect(h.cancelCalls).toEqual([])
     expect(h.reverseCalls).toEqual([])
   })

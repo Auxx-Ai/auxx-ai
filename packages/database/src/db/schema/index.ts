@@ -30,6 +30,8 @@ export * from './article-placement'
 export * from './article-revision'
 export * from './attachment'
 export * from './audit-log'
+export type { BuildEntity, CreateBuildRowInput } from './build'
+export { Build, buildSource, buildStatus } from './build'
 // Recording domain tables
 export * from './calendar-event'
 export * from './call-recording'

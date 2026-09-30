@@ -3,17 +3,15 @@
 /** Reads of an undo run's `SyncJob` row, and which batch runs backflush wrote (plans/mrp/17 §8). */
 
 import { type Database, schema } from '@auxx/database'
-import { and, desc, eq, inArray, isNotNull, isNull, lt, notExists, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, lt, notExists, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { BuildSource } from '../../resources/registry/enum-values'
-import { optionalFieldId, systemValueJoin } from '../../resources/system-records'
 import {
   ACTIVE_BACKFLUSH_STATUSES,
   BACKFLUSH_RUN_CATEGORY,
   BACKFLUSH_RUN_TYPE,
 } from './backflush-run-queries'
 import type { BackflushRunStatus } from './backflush-types'
-import { loadBuildContext } from './build-queries'
 import type { UndoBackflushRun, UndoBackflushRunMetadata } from './undo-backflush-types'
 
 /** `SyncJob.type` of an undo run; same category as the backflush, so one index serves both. */
@@ -120,91 +118,51 @@ export async function listStaleUndoBackflushRuns(
   return rows.map(toRow)
 }
 
-/** Every `build_batch_run` number carried by a live `source: backflush` build, newest first. */
+/** Every `batchRun` number carried by a `source: backflush` build, newest first. */
 export async function listBackflushRunNumbers(
   db: Database,
   organizationId: string
 ): Promise<number[]> {
-  const ctx = await loadBuildContext(organizationId)
-  const runField = ctx?.fields.build_batch_run
-  const sourceField = ctx?.fields.build_source
-  if (!ctx || !runField || !sourceField) return []
-
-  const runValue = alias(schema.FieldValue, 'undo_run_v')
-  const sourceValue = alias(schema.FieldValue, 'undo_source_v')
   const rows = await db
-    .selectDistinct({ runNumber: runValue.valueNumber })
-    .from(schema.EntityInstance)
-    .innerJoin(
-      runValue,
-      and(systemValueJoin(runValue, runField.id), isNotNull(runValue.valueNumber))
-    )
-    .innerJoin(
-      sourceValue,
-      and(
-        systemValueJoin(sourceValue, sourceField.id),
-        eq(sourceValue.optionId, BuildSource.BACKFLUSH)
-      )
-    )
+    .selectDistinct({ runNumber: schema.Build.batchRun })
+    .from(schema.Build)
     .where(
       and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-        isNull(schema.EntityInstance.archivedAt)
+        eq(schema.Build.organizationId, organizationId),
+        eq(schema.Build.source, BuildSource.BACKFLUSH),
+        isNotNull(schema.Build.batchRun)
       )
     )
-
   return rows
-    .map((row) => Number(row.runNumber))
-    .filter((n) => Number.isFinite(n))
+    .map((row) => row.runNumber)
+    .filter((n): n is number => n != null)
     .sort((a, b) => b - a)
 }
 
-/** Whether any backflush build still stands: run-numbered, not archived, not reversed. */
+/** Whether any backflush build still stands: run-numbered and not reversed. */
 export async function hasStandingBackflushBuilds(
   db: Database,
   organizationId: string
 ): Promise<boolean> {
-  const ctx = await loadBuildContext(organizationId)
-  const runField = ctx?.fields.build_batch_run
-  const sourceField = ctx?.fields.build_source
-  if (!ctx || !runField || !sourceField) return false
-
-  const runValue = alias(schema.FieldValue, 'standing_run_v')
-  const sourceValue = alias(schema.FieldValue, 'standing_source_v')
-  const reversalValue = alias(schema.FieldValue, 'standing_reversal_v')
-  const reversal = alias(schema.EntityInstance, 'standing_reversal')
+  const reversal = alias(schema.Build, 'standing_reversal')
   const reversedBy = db
     .select({ one: sql`1` })
-    .from(reversalValue)
-    .innerJoin(reversal, and(eq(reversal.id, reversalValue.entityId), isNull(reversal.archivedAt)))
+    .from(reversal)
     .where(
       and(
-        eq(reversalValue.organizationId, organizationId),
-        eq(reversalValue.fieldId, optionalFieldId(ctx.fields.build_reversal_of)),
-        eq(reversalValue.relatedEntityId, schema.EntityInstance.id)
+        eq(reversal.organizationId, organizationId),
+        eq(reversal.reversalOfBuildId, schema.Build.id)
       )
     )
 
   const [row] = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .innerJoin(
-      runValue,
-      and(systemValueJoin(runValue, runField.id), isNotNull(runValue.valueNumber))
-    )
-    .innerJoin(
-      sourceValue,
-      and(
-        systemValueJoin(sourceValue, sourceField.id),
-        eq(sourceValue.optionId, BuildSource.BACKFLUSH)
-      )
-    )
+    .select({ id: schema.Build.id })
+    .from(schema.Build)
     .where(
       and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
-        isNull(schema.EntityInstance.archivedAt),
+        eq(schema.Build.organizationId, organizationId),
+        eq(schema.Build.source, BuildSource.BACKFLUSH),
+        isNotNull(schema.Build.batchRun),
         notExists(reversedBy)
       )
     )

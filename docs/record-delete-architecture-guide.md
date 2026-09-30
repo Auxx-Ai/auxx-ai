@@ -46,7 +46,7 @@ Drizzle table or a permission) stays a registered pre-delete hook.
   copy through the org cache, never the registry, so a user field and a system
   field are handled the same way.
 - **Seed-only pairs:** the self-relation fields that carry only
-  `relationshipConfig` (build reversal) used to be stored with no `relationship` block at all, so nothing
+  `relationshipConfig` used to be stored with no `relationship` block at all, so nothing
   could act on them. The seeder's Pass 3 now resolves their inverse by
   `(relatedEntityType, inverseSystemAttribute)` and migration 136 links them for
   orgs that already have the rows. Their values were always written on the
@@ -114,10 +114,10 @@ definitions by hand anymore.
 
 | hook | keeps | reason the enum cannot say it |
 | --- | --- | --- |
-| `guardPartDelete`, `guardBuildDelete`, `guardPurchaseOrderDelete`, `guardVendorBillDelete`, `guardOrderDelete` | refuse when a movement, receipt, bill date or fulfillment posting sits in a settled period | conditional on accounting state |
-| `deleteEntityInstances` → `deleteMovementsFor` | a dying part, build, PO line or fulfillment line takes its `StockMovement` rows; the surviving parts and lines settle after commit (plans/mrp/20 S9) | movements are a table with `no action` FKs, not a relation |
+| `guardPartDelete`, `guardPurchaseOrderDelete`, `guardVendorBillDelete`, `guardOrderDelete` | refuse when a movement, receipt, bill date or fulfillment posting sits in a settled period | conditional on accounting state |
+| `guardPartDelete` | refuse while any `Build` row names the part | `Build` is a Drizzle table with a `no action` FK on `partId`, not a relation (plans/mrp/23) |
+| `deleteEntityInstances` → `deleteMovementsFor` | a dying part, PO line or fulfillment line takes its `StockMovement` rows; the surviving parts and lines settle after commit (plans/mrp/20 S9) | movements are a table with `no action` FKs, not a relation |
 | `guardVendorBillDelete` | refuse when the bill is posted or paid | status |
-| `guardBuildDelete` | refuse when the build IS a reversal | read off the belongs_to side, which declares nothing |
 | `guardQuoteConvertedDelete` | refuse while an unfinished work order came from the quote | status of the related record |
 | `guardWorkOrderDelete` | refuse when an `InvoiceLineAllocation` names the job | a Drizzle table, not a relation |
 | `guardInvoiceDelete` | refuse on a succeeded charge whose allocation is still in flight, or a live posting | `PaymentTransaction` is a Drizzle table; the `payment` mirror only exists once allocated |
@@ -134,7 +134,7 @@ one-line change in the guard.
 Everything a guard used to cascade by hand is gone from the guards. Every static
 "refuse while related rows exist" check (invoice payments, vendor bill
 allocations, purchase order bills, work order invoices, tariff code offers, tags
-in use, reversing builds) is now a `restrict` declaration and its guard code was
+in use) is now a `restrict` declaration and its guard code was
 deleted.
 
 `suppressPostDeleteHooks` survives for one caller, `deleteInvoiceLine`, a command

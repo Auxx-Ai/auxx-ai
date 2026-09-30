@@ -1,6 +1,6 @@
 // packages/lib/src/resources/crud/__tests__/movement-parent-delete.int.test.ts
-// Deleting a part or build through the record handler takes its StockMovement rows with it and
-// re-derives the surviving parts' QoH; a settled period still refuses (plans/mrp/20 S9).
+// Deleting a part through the record handler takes its StockMovement rows with it; a settled
+// period or a build naming the part still refuses (plans/mrp/20 S9, plans/mrp/23 §4).
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
@@ -40,7 +40,7 @@ async function seed() {
   const organizationId = org.id
   const all = await createEntityDefinitions(db(), organizationId)
   const defs: EntityDefMap = new Map(
-    [...all].filter(([kind]) => ['part', 'subpart', 'build'].includes(kind))
+    [...all].filter(([kind]) => ['part', 'subpart'].includes(kind))
   )
   const made = await createAllFields(db(), organizationId, defs)
   await linkRelationships(db(), defs, made)
@@ -57,15 +57,6 @@ async function seed() {
     })
     partIds.push(created.instance.id)
   }
-  const [build] = await db()
-    .insert(schema.EntityInstance)
-    .values({
-      organizationId,
-      entityDefinitionId: defs.get('build')!.id,
-      createdById: user.id,
-      updatedAt: new Date(),
-    })
-    .returning()
 
   const write = async (inputs: StockMovementInput[]) => {
     const written = await db().transaction(async (tx: Transaction) =>
@@ -83,31 +74,14 @@ async function seed() {
           eq(schema.StockMovement.partId, partId)
         )
       )
-  const qoh = async (partId: string) => {
-    const [row] = await db()
-      .select({ value: schema.FieldValue.valueNumber })
-      .from(schema.FieldValue)
-      .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
-      .where(
-        and(
-          eq(schema.FieldValue.entityId, partId),
-          eq(schema.CustomField.systemAttribute, 'part_quantity_on_hand')
-        )
-      )
-    return row?.value ?? 0
-  }
-
   return {
     organizationId,
     crud,
     partDefId,
-    buildDefId: defs.get('build')!.id,
-    buildId: build!.id,
     mast: partIds[0]!,
     pump: partIds[1]!,
     write,
     movementsOf,
-    qoh,
   }
 }
 
@@ -123,24 +97,6 @@ const move = (partInstanceId: string, over: Partial<StockMovementInput>): StockM
 })
 
 describe('deleting a movement parent', () => {
-  it('deletes a build with its legs and re-derives the component QoH', async () => {
-    const s = await seed()
-    await s.write([
-      move(s.pump, { quantity: 5 }),
-      move(s.mast, { type: 'build_produce', quantity: 1, links: { buildId: s.buildId } }),
-      move(s.pump, { type: 'build_consume', quantity: -2, links: { buildId: s.buildId } }),
-    ])
-    expect(await s.qoh(s.pump)).toBe(3)
-    expect(await s.qoh(s.mast)).toBe(1)
-
-    await s.crud.delete(toRecordId(s.buildDefId, s.buildId))
-
-    expect(await s.qoh(s.pump)).toBe(5)
-    expect(await s.qoh(s.mast)).toBe(0)
-    expect(await s.movementsOf(s.mast)).toEqual([])
-    expect(await s.movementsOf(s.pump)).toHaveLength(1)
-  })
-
   it('deletes a part whose movements sit in an open period', async () => {
     const s = await seed()
     await s.write([move(s.pump, { quantity: 5 })])
@@ -169,5 +125,19 @@ describe('deleting a movement parent', () => {
       /reversing an entry/
     )
     expect(await s.movementsOf(s.pump)).toHaveLength(1)
+  })
+
+  it('refuses a part a build names, and keeps the part', async () => {
+    const s = await seed()
+    await db()
+      .insert(schema.Build)
+      .values({ organizationId: s.organizationId, number: 'B-0001', partId: s.mast })
+
+    await expect(s.crud.delete(toRecordId(s.partDefId, s.mast))).rejects.toThrow(/1 build\b/)
+    const [part] = await db()
+      .select({ id: schema.EntityInstance.id })
+      .from(schema.EntityInstance)
+      .where(eq(schema.EntityInstance.id, s.mast))
+    expect(part?.id).toBe(s.mast)
   })
 })

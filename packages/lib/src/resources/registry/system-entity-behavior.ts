@@ -100,7 +100,7 @@ export const DEFAULTS: Omit<SystemEntityBehavior, 'creatable' | 'metered'> = {
 /**
  * Per-`entityType` overrides for the system defs that differ from
  * {@link DEFAULTS}. The rest (`contact`, `ticket`, `part`, `company`, `product`,
- * `order`, `purchase_order`, `vendor_bill`, `build`, …) carry no entry here and
+ * `order`, `purchase_order`, `vendor_bill`, …) carry no entry here and
  * resolve to pure `DEFAULTS`.
  *
  * See plans/entity/system-entity-behavior-map.md §5 for the full inventory and

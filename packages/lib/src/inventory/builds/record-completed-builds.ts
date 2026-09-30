@@ -3,8 +3,9 @@
 /**
  * `recordCompletedBuilds` - `recordCompletedBuild` for many builds in ONE transaction: every read
  * once per batch, each build priced in memory by the same functions, builds and legs written
- * in one batch each, and one settle and one frame per def after the commit
- * (plans/mrp/12-slice-batched-backflush.md §2). All or nothing: a refused build refuses the batch.
+ * in one batch each (one number range for the slice), and one settle and one `build:changed` pass
+ * after the commit (plans/mrp/12-slice-batched-backflush.md §2). All or nothing: a refused build
+ * refuses the batch.
  */
 
 import type { Database } from '@auxx/database'
@@ -12,28 +13,20 @@ import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { exportInventoryMovement } from '../../accounting/ledger/post/post-inventory-movement'
 import { upsertWorkItems } from '../../accounting/work-items/write'
-import { createEntitiesBatch } from '../../resources/crud/create-entities-batch'
-import { toRecordId } from '../../resources/resource-id'
 import { loadDirectSubparts } from '../bom/subpart-graph'
 import type { AbsorptionRates, PartStandardCost } from '../costing/types'
 import { type StockMovementTouched, settleStockMovements, writeStockMovements } from '../movements'
+import { assertPartsExist, assertPlannedQuantity, composeRaiseValues } from './build-mutations'
 import {
-  assertPartsExist,
-  assertPlannedQuantity,
-  BUILD_STATUS_BYPASS,
-  composeRaiseValues,
-  requireDefId,
-} from './build-mutations'
-import {
-  type BuildContext,
   planComponentLines,
   priceComponentPlan,
   readAbsorptionRates,
   readPartKinds,
   readPartNames,
   readStandardCostMap,
-  requireBuildContext,
 } from './build-queries'
+import { publishBuildsChanged } from './build-realtime'
+import { insertBuilds, type NewBuild } from './build-writes'
 import {
   assertQuantities,
   completionBuildValues,
@@ -47,7 +40,6 @@ import {
 } from './complete-build'
 import { guard } from './guard'
 import type { CompleteBuildResult } from './types'
-import { buildCompletionSession, publishQuietBuildWrites } from './write-lane'
 
 const logger = createScopedLogger('builds:record-completed')
 
@@ -74,26 +66,20 @@ export async function recordCompletedBuilds(
     async () => {
       if (inputs.length === 0) return []
       for (const input of inputs) assertQuantities(input.quantity, 0)
-      const [ctx, partDefId] = await Promise.all([
-        requireBuildContext(organizationId),
-        requireDefId(organizationId, 'part'),
-      ])
       // `startBuild` stamps the wall clock, not the completion date; kept so both paths agree.
       const startedAt = new Date()
 
       const written = await db.transaction(async (tx) => {
         const txDb = tx as unknown as Database
-        const reads = await readBatch(txDb, organizationId, partDefId, inputs)
-        const priced = inputs.map((input) => priceBuild(ctx, partDefId, reads, input, startedAt))
-
-        const session = buildCompletionSession()
-        const builds = await createEntitiesBatch(
-          { db: txDb, organizationId, userId, session, bypassFieldGuards: BUILD_STATUS_BYPASS },
-          ctx.defId,
+        const reads = await readBatch(txDb, organizationId, inputs)
+        const priced = inputs.map((input) => priceBuild(reads, input, startedAt))
+        const builds = await insertBuilds(
+          tx,
+          organizationId,
+          userId,
           priced.map((build) => build.values)
         )
-        if (builds.isErr()) throw builds.error
-        const buildIds = builds.value.map((build) => build.id)
+        const buildIds = builds.map((build) => build.buildId)
 
         const legs = priced.map((build, index) =>
           completionMovementInputs(build.priced, {
@@ -113,9 +99,7 @@ export async function recordCompletedBuilds(
           offset += buildLegs.length
           completions.push(
             await postCompletion(tx, organizationId, userId, {
-              buildId: buildIds[index]!,
-              orderId: null,
-              buildRecordId: toRecordId(ctx.defId, buildIds[index]!),
+              build: builds[index]!,
               priced: build.priced,
               movements: {
                 records,
@@ -135,7 +119,7 @@ export async function recordCompletedBuilds(
         return { completions, touched: movements.value.touched }
       })
 
-      await finishCompletions(db, organizationId, { ctx, ...written })
+      await finishCompletions(db, organizationId, written)
       return written.completions.map((completion) => completion.result)
     },
     'Failed to record completed builds',
@@ -147,11 +131,10 @@ export async function recordCompletedBuilds(
 async function readBatch(
   txDb: Database,
   organizationId: string,
-  partDefId: string,
   inputs: readonly RecordCompletedBuildInput[]
 ): Promise<BatchReads> {
   const partIds = [...new Set(inputs.map((input) => input.partId))]
-  await assertPartsExist(txDb, organizationId, partDefId, partIds)
+  await assertPartsExist(txDb, organizationId, partIds)
   // Per part, the query `planBuildComponents` runs, so every plan sees its BOM in the same order.
   const edges = new Map<string, Array<{ childId: string; qty: number }>>()
   for (const partId of partIds) {
@@ -169,17 +152,13 @@ async function readBatch(
 
 /** One build's create values and pricing, from the batch's reads, as `recordCompletedBuild` derives them. */
 function priceBuild(
-  ctx: BuildContext,
-  partDefId: string,
   reads: BatchReads,
   input: RecordCompletedBuildInput,
   startedAt: Date
-): { input: RecordCompletedBuildInput; priced: PricedCompletion; values: Record<string, unknown> } {
+): { input: RecordCompletedBuildInput; priced: PricedCompletion; values: NewBuild } {
   assertPlannedQuantity(input.quantity)
   const edges = reads.edges.get(input.partId) ?? []
   const raised = composeRaiseValues(
-    ctx,
-    partDefId,
     {
       partId: input.partId,
       quantityPlanned: input.quantity,
@@ -198,33 +177,32 @@ function priceBuild(
     reads.kinds.get(input.partId) ?? null,
     { quantityProduced: input.quantity, quantityScrapped: 0 }
   )
-  const values: Record<string, unknown> = {
+  const values: NewBuild = {
     ...raised,
     ...completionBuildValues(priced, {
       quantityProduced: input.quantity,
       quantityScrapped: 0,
       completedAt: input.completedAt,
     }),
+    startedAt,
   }
-  if (ctx.fields.build_started_at) values.build_started_at = startedAt.toISOString()
   return { input, priced, values }
 }
 
-/** `finishCompletion` once for the batch: one settle, one park, one build frame. */
+/** `finishCompletion` once for the batch: one settle, one park, one build announcement. */
 async function finishCompletions(
   db: Database,
   organizationId: string,
-  args: { ctx: BuildContext; completions: WrittenCompletion[]; touched: StockMovementTouched }
+  args: { completions: WrittenCompletion[]; touched: StockMovementTouched }
 ): Promise<void> {
-  const { ctx, completions: written, touched } = args
+  const { completions: written, touched } = args
   await settleStockMovements(organizationId, touched)
   for (const completion of written) await exportInventoryMovement(db, completion.post)
   const parked = written.flatMap((completion) => pendingBuildWorkItem(completion) ?? [])
   if (parked.length > 0) await upsertWorkItems(db, organizationId, parked)
-  publishQuietBuildWrites(
+  await publishBuildsChanged(
     organizationId,
-    ctx.defId,
-    written.map((w) => w.result.buildId)
+    written.map((w) => w.build)
   )
   logger.info('Completed builds', {
     organizationId,

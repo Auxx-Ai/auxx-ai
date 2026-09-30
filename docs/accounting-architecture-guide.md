@@ -335,6 +335,11 @@ deposit. `occurrence` is the fourth column of the claim, which is what makes a *
 against one invoice representable and a second issuance not**, and what lets a fulfillment's
 inventory entry claim `'inventory'` beside the revenue entry's `'original'`.
 
+`sourceId` is whatever `sourceKind` names. For a record kind that is an `EntityInstance` id; two
+inventory kinds point at plain tables instead: `stock_movement` at a `StockMovement` row and
+`build` at a `Build` row (plans/mrp/20, /23). A `build` subject is not an `EntityInstance`, has no
+record page and no `FieldValue`s; readers join `Build` and label it by `Build.number`.
+
 🛑 **A reversal DELETES the original's subject row** (`markReversedInTx`), which is what frees the
 source to post again. A reversal is an undo, not a correction. The reversal writes its own subject
 row, `(gl_posting, <original id>, occurrence 'reversal')`.
@@ -1269,6 +1274,9 @@ AccountingWorkItem
 `setValueWithType` on the record, for entity-backed and table-backed sources alike. Movements,
 shipments and payouts park at stage `post`, a credit memo at `issue`, an acceptance at `evidence`.
 A pre-delete hook (`field-hooks/pre/accounting-work-item-delete.ts`) sweeps a deleted record's rows.
+A `build` item's subject is a `Build` row: the list reads (`work-items/reads.ts`) join `Build` for
+its label (`number`) and its date (`completedAt`, else `createdAt`). Builds have no delete, so
+nothing sweeps them.
 
 🔑 **Only the code is stored.** `work-items/codes.ts` is the closed, client-safe vocabulary; the
 sentence, the severity (`info` · `warning` · `error`) and the status (`waiting` · `blocked` ·

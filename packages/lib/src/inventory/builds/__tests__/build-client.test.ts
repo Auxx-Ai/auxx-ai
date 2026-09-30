@@ -16,28 +16,9 @@ import {
   canReverseBuild,
   canStartBuild,
   componentConsumption,
-  resolveBuildStatus,
   summarizeBuildCompletion,
   unitsStarted,
 } from '../client'
-
-describe('resolveBuildStatus', () => {
-  it('reads the four stored values', () => {
-    expect(resolveBuildStatus('planned')).toBe('planned')
-    expect(resolveBuildStatus('in_progress')).toBe('in_progress')
-    expect(resolveBuildStatus('completed')).toBe('completed')
-    expect(resolveBuildStatus('canceled')).toBe('canceled')
-  })
-
-  it('does NOT default an absent or unknown status', () => {
-    // Unlike `part_kind`, which reads NULL as `component`. A build with no
-    // status is a row whose lifecycle nobody can state, and defaulting it to
-    // `planned` would let a write path post an append-only ledger entry.
-    expect(resolveBuildStatus(null)).toBeNull()
-    expect(resolveBuildStatus(undefined)).toBeNull()
-    expect(resolveBuildStatus('shipped')).toBeNull()
-  })
-})
 
 describe('the status gates', () => {
   it('refuses every action on a null status', () => {

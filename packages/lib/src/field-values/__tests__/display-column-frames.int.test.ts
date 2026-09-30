@@ -273,7 +273,7 @@ describe('covered quiet sessions — the caller announces the rows', () => {
   it('a coveredBy quiet create publishes no record:updated', async () => {
     const f = await seed()
     const ctx = createFieldValueContext(f.orgId, 'user-1', db(), undefined, {
-      session: quietSession('build completion', { coveredBy: 'publishQuietBuildWrites' }),
+      session: quietSession('salvage', { coveredBy: 'announceQuietSalvageWrites' }),
     })
 
     await createValuesForEntity(ctx, {
@@ -290,7 +290,7 @@ describe('covered quiet sessions — the caller announces the rows', () => {
     const ctx = createFieldValueContext(f.orgId, 'user-1', db())
 
     await runWithWriteSession(
-      quietSession('build completion', { coveredBy: 'publishQuietBuildWrites' }),
+      quietSession('salvage', { coveredBy: 'announceQuietSalvageWrites' }),
       () =>
         setValuesForEntity(ctx, {
           recordId: f.recordId,

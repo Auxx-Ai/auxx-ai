@@ -13,7 +13,7 @@
 import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { UnprocessableEntityError } from '../../../errors'
-import { getBuild, readBuildMovements } from '../../../inventory/builds/build-queries'
+import { readBuild, readBuildMovements } from '../../../inventory/builds/build-queries'
 import { readStandardCost } from '../../../inventory/costing/standard-cost-queries'
 import { computeExtendedCost } from '../../../inventory/movements/client'
 import { readMovementsByIds, type StockMovementRow } from '../../../inventory/movements/reads'
@@ -178,9 +178,8 @@ export async function postInventoryDocumentInTx(
 
   if (kind === 'build') {
     const buildId = rows.find((row) => row.buildId)!.buildId!
-    const build = await getBuild(db, organizationId, buildId)
-    if (build.isErr()) throw build.error
-    if (!build.value) {
+    const build = await readBuild(tx, organizationId, buildId)
+    if (!build) {
       throw new UnprocessableEntityError(`Build ${buildId} was not found`, { buildId })
     }
     // The document is the build, whatever subset of its legs the caller holds.
@@ -193,8 +192,8 @@ export async function postInventoryDocumentInTx(
     }
     return postInventoryMovementInTx(tx, {
       ...base,
-      ...buildDocumentPosting(build.value),
-      occurredAt: build.value.completedAt ?? first.occurredAt,
+      ...buildDocumentPosting(build),
+      occurredAt: build.completedAt ?? first.occurredAt,
       movements: legs
         .filter((leg) => leg.extendedCost !== 0)
         .map((leg) =>

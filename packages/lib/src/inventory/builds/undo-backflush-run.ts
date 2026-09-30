@@ -12,7 +12,11 @@ import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, onCacheEvent } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
-import { getRealtimeService, publishRecordsInvalidated } from '../../realtime'
+import {
+  getRealtimeService,
+  publishBuildChangedEvent,
+  publishRecordsInvalidated,
+} from '../../realtime'
 import { type BatchRunBuild, listBatchRuns, readBatchRunBuilds } from './batch-run-queries'
 import { guard } from './guard'
 import type { UndoBatchRunSummary } from './types'
@@ -208,7 +212,7 @@ export async function finalizeUndoBackflushRun(
       if (!row || !isActive(row)) return false
       const meta = row.metadata
 
-      await announce(organizationId)
+      await announce(organizationId, meta.runNumbers)
       const finished: UndoBackflushRunMetadata = { ...meta, finalizedAt: new Date().toISOString() }
       await onCacheEvent('stock-setup.changed', { orgId: organizationId })
       await completeUndoBackflushRun(db, runId, finished)
@@ -277,15 +281,20 @@ function isActionable(build: BatchRunBuild): boolean {
   return build.status === 'completed' && !build.alreadyReversed && !build.isReversal
 }
 
-async function announce(organizationId: string) {
-  const defIds = await Promise.all([
-    getCachedEntityDefId(organizationId, 'build'),
-    getCachedEntityDefId(organizationId, 'part'),
-  ])
-  const entityDefinitionIds = defIds.filter((id): id is string => !!id)
-  if (entityDefinitionIds.length === 0) return
+/** Coarse frames for clients that missed per-build ones: the runs' builds, then the part list. */
+async function announce(organizationId: string, runNumbers: number[]) {
   try {
-    await publishRecordsInvalidated(getRealtimeService(), organizationId, { entityDefinitionIds })
+    const service = getRealtimeService()
+    await publishBuildChangedEvent(service, organizationId, {
+      buildIds: [],
+      partIds: [],
+      orderIds: [],
+      batchRuns: runNumbers,
+    })
+    const partDefId = await getCachedEntityDefId(organizationId, 'part')
+    if (partDefId) {
+      await publishRecordsInvalidated(service, organizationId, { entityDefinitionIds: [partDefId] })
+    }
   } catch {
     // Best effort; each reversal already published its own frames.
   }

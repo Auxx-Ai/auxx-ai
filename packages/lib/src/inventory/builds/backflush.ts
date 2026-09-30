@@ -11,7 +11,7 @@
  * slice is walked again build by build, so one refusal is one failed build.
  *
  * Never throws for one part or day — `executeBackfill`'s discipline. No permission checks;
- * the router asserts edit on `build`, as for `completeBuild`.
+ * the router asserts `mrp.manage`, as for `completeBuild`.
  */
 
 import type { Database } from '@auxx/database'
@@ -20,7 +20,6 @@ import type { Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { getOrgCache } from '../../cache'
 import { recordNumbering } from '../../records/record-numbering'
-import { systemFieldMap } from '../../resources/system-records'
 import { raiseAndCompleteBuild } from './backfill-builds'
 import {
   type BackflushDay,
@@ -238,14 +237,8 @@ function notesFor(build: BackflushBuild): string {
   return `Backflush for ${build.day}`
 }
 
-/** One `build_batch` number per run; an org short of the field gets un-numbered builds and no undo. */
+/** One `build_batch` number per run, the `batchRun` every build it writes carries. */
 async function allocateRunNumber(organizationId: string): Promise<number> {
-  const fields = await systemFieldMap(undefined, organizationId, ['build_batch_run'] as const)
-  if (!fields.build_batch_run) {
-    logger.warn('This organization has no build_batch_run field, so the run will be un-numbered', {
-      organizationId,
-    })
-  }
   const { sequenceNumber } = await recordNumbering.create(organizationId, 'build_batch')
   return sequenceNumber
 }

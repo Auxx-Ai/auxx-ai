@@ -16,7 +16,6 @@ import {
 } from '@auxx/lib/accounting/export/client'
 import { EXPORT_AVENUES } from '@auxx/lib/accounting/ledger/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
-import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -72,9 +71,6 @@ interface OutboxPanelProps {
   /** A refused shipment opens its `?shipment=` frame in the same drawer slot. */
   activeShipmentId: string | null
   onSelectShipment: (fulfillmentId: string) => void
-  /** A build or a count waiting on a cost opens its record in the same slot (111 Q18). */
-  activeRecordId?: string | null
-  onSelectRecord?: (recordId: RecordId) => void
   /** A Summary row opens its `?summary=` frame in the same slot. */
   activeSummaryKey: string | null
   onSelectSummary: (key: string) => void
@@ -110,8 +106,6 @@ function OutboxBody({
   onSelectMovement,
   activeShipmentId,
   onSelectShipment,
-  activeRecordId,
-  onSelectRecord,
   activeSummaryKey,
   onSelectSummary,
 }: OutboxPanelProps) {
@@ -248,8 +242,6 @@ function OutboxBody({
                 onSelectMovement={onSelectMovement}
                 activeShipmentId={activeShipmentId}
                 onSelectShipment={onSelectShipment}
-                activeRecordId={activeRecordId}
-                onSelectRecord={onSelectRecord}
                 setCostsHref={canManageStock ? SET_COSTS_HREF : undefined}
               />
             ) : view === 'transaction' ? (

@@ -407,20 +407,7 @@ describe('reads', () => {
         .returning({ id: schema.EntityDefinition.id })
       return row!.id
     }
-    const buildDef = await def('build')
     const partDef = await def('part')
-    const [completedAt] = await db()
-      .insert(schema.CustomField)
-      .values({
-        organizationId,
-        entityDefinitionId: buildDef,
-        systemAttribute: 'build_completed_at',
-        name: 'build_completed_at',
-        type: 'DATETIME',
-        isCustom: false,
-        updatedAt: new Date(),
-      })
-      .returning({ id: schema.CustomField.id })
     const record = async (entityDefinitionId: string, displayName: string | null) => {
       const [row] = await db()
         .insert(schema.EntityInstance)
@@ -442,15 +429,17 @@ describe('reads', () => {
       return row!
     }
 
-    const build = await record(buildDef, 'B-0007')
-    await db().insert(schema.FieldValue).values({
-      organizationId,
-      entityDefinitionId: buildDef,
-      entityId: build.id,
-      fieldId: completedAt!.id,
-      valueDate: '2026-03-20T09:00:00.000Z',
-    })
     const part = await record(partDef, 'Cable')
+    const [build] = await db()
+      .insert(schema.Build)
+      .values({
+        organizationId,
+        number: 'B-0007',
+        partId: part.id,
+        status: 'completed',
+        completedAt: new Date('2026-03-20T09:00:00.000Z'),
+      })
+      .returning({ id: schema.Build.id })
     const dated = await movement({
       type: 'adjust',
       quantity: -3,
@@ -461,7 +450,7 @@ describe('reads', () => {
 
     const refused = (sourceKind: string, sourceId: string) =>
       park({ sourceKind, sourceId, stage: 'price', reasonCode: 'REFUSED' })
-    await refused('build', build.id)
+    await refused('build', build!.id)
     await refused('stock_movement', dated.id)
     await refused('stock_movement', undated.id)
     await refused('fulfillment', 'ful_1')
@@ -471,9 +460,9 @@ describe('reads', () => {
       await listWorkItemsInGroup(db(), organizationId, group, { limit: 10 })
     )._unsafeUnwrap()
     const byId = new Map(items.items.map((item) => [item.sourceId, item]))
-    expect(byId.get(build.id)).toMatchObject({
+    expect(byId.get(build!.id)).toMatchObject({
       label: 'B-0007',
-      recordDefinitionId: buildDef,
+      recordDefinitionId: null,
       documentDate: new Date('2026-03-20T09:00:00.000Z'),
     })
     expect(byId.get(dated.id)).toMatchObject({

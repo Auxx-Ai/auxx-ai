@@ -19,7 +19,6 @@ import * as barrel from '../index'
  */
 const REGISTERED = [
   ['bank_deposit', 'BANK_DEPOSIT_HOOKS'],
-  ['build', 'BUILD_HOOKS'],
   ['contact', 'CONTACT_HOOKS'],
   ['invoice', 'INVOICE_HOOKS'],
   ['journal_entry', 'JOURNAL_ENTRY_HOOKS'],

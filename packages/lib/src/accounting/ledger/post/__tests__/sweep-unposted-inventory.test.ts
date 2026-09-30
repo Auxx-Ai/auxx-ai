@@ -37,8 +37,7 @@ vi.mock('@auxx/database', async () => {
   return {
     schema: {
       StockMovement: actual.schema.StockMovement,
-      CustomField: actual.schema.CustomField,
-      FieldValue: actual.schema.FieldValue,
+      Build: actual.schema.Build,
       GlPostingSource: pgTable('GlPostingSource', {
         organizationId: text().notNull(),
         glPostingId: text().notNull(),

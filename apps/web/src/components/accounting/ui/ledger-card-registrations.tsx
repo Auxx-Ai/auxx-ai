@@ -12,7 +12,6 @@
 //   payout         `buildPayoutEntry` (money/payouts/sync.ts)
 //   credit_memo    `buildCreditMemoEntry` (postings/build-credit-memo-entry.ts)
 //   order          the order is the fulfillment's `parent` link, not a subject
-//   build          `build-inventory-movement-entry.ts` (MIGRATION step 5, not yet wired)
 //
 // Never inferred from the record: the registry key names the entity, and the
 // writer names the source, and those two are the same string by convention,
@@ -75,14 +74,4 @@ export function VendorBillLedgerCard(props: DrawerTabProps) {
       emptyLabel={stranded ? 'No entry — Edit then Save to post it again' : undefined}
     />
   )
-}
-
-// `build`'s own posting builder (`build-inventory-movement-entry.ts`) and its
-// writer (`builds/complete-build.ts`) do not exist until MIGRATION step 5 -
-// same "Nothing posted yet" fallback as `VendorBillLedgerCard` until then.
-// Replaces the former `BuildLedgerCard`'s bespoke stock-movement tree; that
-// audit trail has no home on this tab until step 5's `document / … / its
-// stock_movements` member links land.
-export function BuildLedgerCard(props: DrawerTabProps) {
-  return <LedgerCard {...props} sourceKind='build' />
 }

@@ -12,7 +12,7 @@ import {
   workItemSeverity,
   workItemStatus,
 } from '@auxx/lib/accounting/work-items/client'
-import { type RecordId, StockMovementType, toRecordId } from '@auxx/lib/resources/client'
+import { StockMovementType, toRecordId } from '@auxx/lib/resources/client'
 import { ActionBar } from '@auxx/ui/components/action-bar'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
@@ -33,8 +33,9 @@ import { PaymentGatewayAddDialog } from '~/components/accounting/ui/settings/pay
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { useBulkMode, useListSelection, useSelectionIds } from '~/components/list-selection'
+import { BuildBadge } from '~/components/manufacturing/builds/build-badge'
+import { openBuildSheet } from '~/components/manufacturing/builds/build-sheet-store'
 import { useProviderName } from '~/components/money/ui/provider-payment-notice'
-import { useRecord, useResourceProperty } from '~/components/resources'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api, type RouterOutputs } from '~/trpc/react'
@@ -113,9 +114,6 @@ interface BlockedPanelProps {
   /** The shipment open in the `?shipment=` drawer. */
   activeShipmentId: string | null
   onSelectShipment: (fulfillmentId: string) => void
-  /** The build or stock movement open in the `?record=` drawer; without a handler the badge links out. */
-  activeRecordId?: string | null
-  onSelectRecord?: (recordId: RecordId) => void
   /** Where the `STANDARD_COST_MISSING` row's "Set costs" goes (17 D6); no button without it. */
   setCostsHref?: string
 }
@@ -131,8 +129,6 @@ export function BlockedPanel({
   onSelectMovement,
   activeShipmentId,
   onSelectShipment,
-  activeRecordId = null,
-  onSelectRecord,
   setCostsHref,
 }: BlockedPanelProps) {
   const utils = api.useUtils()
@@ -346,8 +342,6 @@ export function BlockedPanel({
             onSelectMovement={onSelectMovement}
             activeShipmentId={activeShipmentId}
             onSelectShipment={onSelectShipment}
-            activeRecordId={activeRecordId}
-            onSelectRecord={onSelectRecord}
             onRetry={(item) =>
               retry.mutate({ source: { sourceKind: item.sourceKind, sourceId: item.sourceId } })
             }
@@ -459,8 +453,6 @@ interface BlockedItemTargets {
   onSelectMovement: (moneyTransactionId: string) => void
   activeShipmentId: string | null
   onSelectShipment: (fulfillmentId: string) => void
-  activeRecordId: string | null
-  onSelectRecord?: (recordId: RecordId) => void
   onRetry: (item: BlockedItem) => void
 }
 
@@ -504,7 +496,7 @@ interface BlockedItemRowProps extends BlockedItemTargets {
   depth: number
 }
 
-/** One item: a shipment opens its frame, a build or a count its record, money its movement. */
+/** One item: a shipment opens its frame, a build its sheet, a count its part, money its movement. */
 function BlockedItemRow({
   item,
   depth,
@@ -513,25 +505,20 @@ function BlockedItemRow({
   onSelectMovement,
   activeShipmentId,
   onSelectShipment,
-  activeRecordId,
-  onSelectRecord,
   onRetry,
 }: BlockedItemRowProps) {
   const providerName = useProviderName()
   const router = useRouter()
-  const buildDefId = useResourceProperty('build', 'id')
-  const buildRecordId =
-    item.sourceKind === 'build' && buildDefId ? toRecordId(buildDefId, item.sourceId) : null
-  const { record: build } = useRecord({ recordId: buildRecordId, enabled: !!buildRecordId })
+  // A build is a `Build` row, not a record: `label` carries its number.
+  const buildId = item.sourceKind === 'build' ? item.sourceId : null
   // A count row: the item read joins its `StockMovement`; it opens the part's Inventory tab.
   const movement = item.sourceKind === 'stock_movement' ? item.movement : null
   const movementRef = movement ? { ...movement, id: item.sourceId } : null
   const movementHref = useStockMovementHref(movementRef)
 
-  const documentRecordId = buildRecordId
-  const recordId =
-    documentRecordId ??
-    (item.recordDefinitionId ? toRecordId(item.recordDefinitionId, item.sourceId) : null)
+  const recordId = item.recordDefinitionId
+    ? toRecordId(item.recordDefinitionId, item.sourceId)
+    : null
   const moneyId = item.moneyTransactionId
 
   let onOpen: (() => void) | undefined
@@ -539,9 +526,8 @@ function BlockedItemRow({
   if (item.sourceKind === 'fulfillment') {
     onOpen = () => onSelectShipment(item.sourceId)
     active = activeShipmentId === item.sourceId
-  } else if (documentRecordId) {
-    onOpen = onSelectRecord ? () => onSelectRecord(documentRecordId) : undefined
-    active = activeRecordId === documentRecordId
+  } else if (buildId) {
+    onOpen = () => openBuildSheet(buildId)
   } else if (movementHref) {
     onOpen = () => router.push(movementHref)
   } else if (moneyId) {
@@ -557,8 +543,8 @@ function BlockedItemRow({
       ? (MOVEMENT_PURPOSE_LABEL[item.purpose as keyof typeof MOVEMENT_PURPOSE_LABEL] ??
         sourceLabel(item.sourceKind))
       : sourceLabel(item.sourceKind)
-  const title = buildRecordId
-    ? (build?.displayName ?? item.label ?? sourceLabel(item.sourceKind))
+  const title = buildId
+    ? (item.label ?? sourceLabel(item.sourceKind))
     : movement
       ? `${movement.quantity > 0 ? '+' : ''}${movement.quantity}${note ? ` · ${note}` : ''}`
       : (item.label ?? item.externalRef ?? item.sourceId)
@@ -577,8 +563,10 @@ function BlockedItemRow({
       secondary={
         movementRef ? (
           <StockMovementBadge movement={movementRef} size='sm' link={false} />
+        ) : buildId ? (
+          <BuildBadge build={{ buildId, number: item.label }} size='sm' link={false} />
         ) : recordId ? (
-          <RecordBadge recordId={recordId} size='sm' link={!!documentRecordId && !onOpen} />
+          <RecordBadge recordId={recordId} size='sm' />
         ) : undefined
       }
       amount={

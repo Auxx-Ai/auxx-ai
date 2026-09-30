@@ -108,8 +108,6 @@ import {
   registerPurchaseOrderLineRollupReconcilers,
 } from './post/purchase-order-line-rollups'
 import { sweepAccountingWorkItemsOnDelete } from './pre/accounting-work-item-delete'
-import { guardBuildDelete } from './pre/build-delete-guard'
-import { guardManualBuildLifecycleStatus } from './pre/build-status-guard'
 import {
   guardCreditApplicationCreate,
   guardCreditApplicationDelete,
@@ -273,7 +271,7 @@ export function registerAllHooks(): void {
   // touches a build.
   registerOrderDriftReconcilers()
 
-  // A part/build/PO line/FL delete removes its movements; these re-derive the surviving parts and
+  // A part/PO line/FL delete removes its movements; these re-derive the surviving parts and
   // lines after the delete commits (plans/mrp/20 S9).
   registerMovementSettleReconcilers()
 
@@ -575,26 +573,6 @@ export function registerAllHooks(): void {
     guardManualPurchaseOrderIssued,
   ])
 
-  // Manual-`in_progress`/`completed`/`canceled` wall for `build_status`. The build subsystem
-  // enforced its transitions inside `startBuild` / `completeBuild` / `cancelBuild` /
-  // `reverseBuild` via `assertBuildStatus`, which is a DIFFERENT door: a drawer edit, a grid
-  // inline edit, a kanban drag or a Kopilot record tool writes through `fieldValue.set` ->
-  // `FieldValueService` and reaches none of them. Until this registration existed,
-  // `build_status: 'completed'` was typeable by hand — a finished production run with no
-  // movements, no costs and no variance, believed by every downstream read.
-  //
-  // All five sanctioned writers pass `bypassFieldGuards: ['build_status']` through their
-  // `UnifiedCrudHandler`, which forwards it to the `FieldValueService` it owns: `createBuild`,
-  // `startBuild`, `cancelBuild` (`builds/build-mutations.ts`), `completeBuild`
-  // (`builds/complete-build.ts`) and `reverseBuild` (`builds/reverse-build.ts`).
-  // 🛑 A new sanctioned writer means a new bypass, not a weaker guard.
-  //
-  // 🛑 NO system-hook twin, unlike the other three — see `resources/hooks/build-hooks.ts`.
-  // System hooks do not consult `bypassFieldGuards`, and the three build writers that write
-  // status on an UPDATE go through `UnifiedCrudHandler.runPreHooks`, so a twin would refuse
-  // Start, Complete and Cancel while adding no coverage this registration lacks.
-  registerFieldPreHooks('builds', 'build_status', [guardManualBuildLifecycleStatus])
-
   // The `return` physical lifecycle and the cross-return quantity ceiling
   // (plans/money/tasks/54-returns.md sections 3.3 and 3.5).
   //
@@ -712,14 +690,14 @@ export function registerAllHooks(): void {
   // `cascade` closure set-based (order lines, invoice lines, PO lines, bill
   // lines, BOM rows, supplier prices, tariff rates, ...), and it refuses on
   // `restrict` while a related row exists (invoice
-  // payments, work-order invoices, PO bills, bill payment allocations, a build's
-  // reversal, a tariff code's offers, a tag's threads/articles/children).
+  // payments, work-order invoices, PO bills, bill payment allocations,
+  // a tariff code's offers, a tag's threads/articles/children).
   // Archived rows count in both. It then runs the pre-delete hooks below over
   // EVERY record in the closure, still one record per call, before writing
   // anything, and publishes a lifecycle event per cascaded row, so the system
   // record rules (`mfg-subparts-deleted`, ...) keep recomputing their roll-ups
   // on the surviving parents. Stock movements are a table, not a closure edge:
-  // `deleteEntityInstances` deletes them with their part, build, PO line or FL.
+  // `deleteEntityInstances` deletes them with their part, PO line or FL.
   //
   // So a pre-delete hook is now ONLY a refusal the registry cannot express: one
   // conditional on accounting state, a status, a Drizzle table, or a
@@ -753,12 +731,12 @@ export function registerAllHooks(): void {
   // it inherits its order's contact, falling back to the guest.
   registerEntityPreCreateHooks('credit-memos', [fillGuestCreditMemoContact])
 
-  // Inventory and purchasing: all four refuse on `settledPeriodsFor`, a stock movement (part,
-  // build), a receipt under a line (purchase order) or the bill's own date (vendor bill) in a
+  // Inventory and purchasing: all three refuse on `settledPeriodsFor`, a stock movement (part),
+  // a receipt under a line (purchase order) or the bill's own date (vendor bill) in a
   // settled month. Open-period movements are then deleted by `deleteEntityInstances` (plan 20 S9).
+  // The part guard also refuses while a `Build` row names the part (plans/mrp/23 §4).
   registerEntityPreDeleteHooks('parts', [guardPartDelete])
   registerFieldPreHooks('parts', 'part_kind', [guardPartKindService, resetKindConflictConfirmation])
-  registerEntityPreDeleteHooks('builds', [guardBuildDelete])
   registerEntityPreDeleteHooks('purchase-orders', [guardPurchaseOrderDelete])
   registerEntityPreDeleteHooks('vendor-bills', [guardVendorBillDelete])
   // A posted bill loses no lines until somebody presses Edit (73 D4). The cascade

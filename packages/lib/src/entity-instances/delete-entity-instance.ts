@@ -43,7 +43,6 @@ const DELETE_CHUNK = 500
 /** The definitions whose `StockMovement` rows go with them (plan 20 S9), by the column that names them. */
 const MOVEMENT_PARENT_COLUMNS: Record<string, keyof DeleteMovementsForInput> = {
   part: 'partIds',
-  build: 'buildIds',
   purchase_order_line: 'purchaseOrderLineIds',
   fulfillment_line: 'fulfillmentLineIds',
 }

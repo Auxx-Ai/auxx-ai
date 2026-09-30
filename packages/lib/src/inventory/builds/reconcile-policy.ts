@@ -19,9 +19,7 @@
  * ## The rails it exists to enforce (13 §5)
  *
  * - **`source: 'manual'` is never touched.** Not amended, not cancelled, not
- *   counted as the order's build. Enforced here in memory as the second of the
- *   two checks 13 §5 asks for — `listBuilds` silently drops a filter whose field
- *   the org has not materialised, so the SQL-side filter alone is not enough.
+ *   counted as the order's build.
  * - **A `completed` build is never amended and never cancelled** (build README
  *   B6/B8). It is reversed, by `reverseBuild`, and convergence does not reverse:
  *   AB6 reverses on *order cancellation*, which is `auto-build-cancel.ts`, not
@@ -31,8 +29,7 @@
  *   movements, but material may already be on the saw. It stays *cancellable*
  *   by the order-cancellation sweep and never amendable by this one.
  * - **Never throws.** Total on every input, including a build with a `null`
- *   status, a `null` quantity or a `null` part. 13 §5: one bad line must not
- *   lose the rest of the order.
+ *   quantity. 13 §5: one bad line must not lose the rest of the order.
  *
  * ## Admission versus convergence (Q7 + Q12)
  *
@@ -103,12 +100,10 @@ export type ConvergenceSkipReason =
   | 'in-progress-not-amendable'
   /** B6/B8 — reversed, never edited or deleted, and never by this pass. */
   | 'completed-immutable'
-  /** 13 §5 — `source: 'manual'` (or a row predating the field). Never touched. */
+  /** 13 §5 — `source` other than `order`. Never touched. */
   | 'not-order-raised'
   /** A reversing build (B6). It undoes another build; it is not demand. */
   | 'is-a-reversal'
-  /** `resolveBuildStatus` returned `null`. A data problem, not a lifecycle state. */
-  | 'unknown-status'
   /** A second `planned` build for the same pair. See {@link planOrderBuildConvergence}. */
   | 'duplicate-build'
 
@@ -143,9 +138,7 @@ export interface OrderBuildConvergenceInput {
   /**
    * Every build already raised against this order — all sources, all statuses.
    *
-   * ⚠️ Pass the **unfiltered** set. The `source: 'manual'` and reversal rows are
-   * what make the skip list honest, and dropping them upstream would let a
-   * missing `build_source` filter (13 §5) reach the writer unnoticed.
+   * Manual and reversal rows are classified here as skips, so an unfiltered set is safe.
    */
   existing: readonly BuildRecord[]
   /** `partId` -> raw `part_kind` option value, exactly as stored. `null` reads as `component`. */
@@ -193,9 +186,8 @@ export interface OrderBuildPlan {
  * | a `planned` build, part no longer wanted | `cancel` |
  * | an `in_progress` build | `skip` `in-progress-not-amendable` — 13 §1.0(a) |
  * | a `completed` build | `skip` `completed-immutable` — B6/B8 |
- * | `source !== 'order'` | `skip` `not-order-raised` — 13 §5, the in-memory half of the two checks |
+ * | `source !== 'order'` | `skip` `not-order-raised` — 13 §5 |
  * | `reversalOfBuildId` set | `skip` `is-a-reversal` |
- * | `status` is `null` | `skip` `unknown-status` |
  *
  * ## 🛑 Several builds for one pair — a real, pre-existing hazard
  *
@@ -208,10 +200,8 @@ export interface OrderBuildPlan {
  * person may raise a `source: 'manual'` build for a part at any time. The rule here is stated loudly because it is the one
  * place this function is knowingly asymmetric:
  *
- * - **An active build blocks a raise.** `planned`, `in_progress`, `completed` —
- *   and `unknown-status`, because a row we cannot classify may well *be* a
- *   planned build with a broken option value, and creating a record next to it
- *   is not a recoverable mistake. Never a top-up build alongside one that exists.
+ * - **An active build blocks a raise.** `planned`, `in_progress`, `completed`.
+ *   Never a top-up build alongside one that exists.
  * - **At most ONE `planned` build is amended** — the oldest by `createdAt`. The
  *   rest are `duplicate-build` skips. Amending all of them would multiply the
  *   demand by their count: three builds each amended to 5 is 15 units on the
@@ -249,16 +239,10 @@ export function planOrderBuildConvergence(input: OrderBuildConvergenceInput): Or
   return { actions, hasWrites: actions.some((action) => action.kind !== 'skip') }
 }
 
-/**
- * Group by `partId`, oldest first.
- *
- * A build with no part is dropped without a skip row: it names no pair, so there
- * is nothing for a reader to act on and nothing convergence could do to it.
- */
+/** Group by `partId`, oldest first. */
 function groupByPart(builds: readonly BuildRecord[]): Map<string, BuildRecord[]> {
   const byPart = new Map<string, BuildRecord[]>()
   for (const build of builds) {
-    if (!build.partId) continue
     const bucket = byPart.get(build.partId)
     if (bucket) bucket.push(build)
     else byPart.set(build.partId, [build])
@@ -312,8 +296,7 @@ function planOnePart(
   let admitted = false
 
   for (const build of builds) {
-    // 13 §5, in memory as well as in SQL. A manual build is not this order's
-    // build: never touched, and never allowed to block the order's own.
+    // 13 §5: a manual build is not this order's build, never touched and never blocking.
     if (build.source !== 'order') {
       classified.push(skip(partId, build.buildId, 'not-order-raised'))
       continue
@@ -322,11 +305,6 @@ function planOnePart(
     // lands the reversal `completed`, so this would otherwise read as one.
     if (build.reversalOfBuildId) {
       classified.push(skip(partId, build.buildId, 'is-a-reversal'))
-      continue
-    }
-    if (build.status === null) {
-      classified.push(skip(partId, build.buildId, 'unknown-status'))
-      blocked = true
       continue
     }
     admitted = true
@@ -357,7 +335,7 @@ function planOnePart(
 
   // Nothing to converge and nothing wanted: the steady state after a cancel.
   if (wanted <= 0) return
-  // An active — or unclassifiable — build already answered for this pair.
+  // An active build already answered for this pair.
   if (blocked) return
 
   out.push(admissionDecision(input, partId, wanted, admitted))

@@ -5,10 +5,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => {
   const state = {
     moved: [] as { partId: string }[],
+    built: [] as { partId: string }[],
     rows: [] as { partId: string | null; fieldId: string }[],
+    buildTable: null as unknown,
   }
   const db = {
-    selectDistinct: () => ({ from: () => ({ where: async () => state.moved }) }),
+    selectDistinct: () => ({
+      from: (table: unknown) => ({
+        where: async () => (table === state.buildTable ? state.built : state.moved),
+      }),
+    }),
   }
   return { state, db }
 })
@@ -38,6 +44,7 @@ vi.mock('../../../resources/system-records', () => ({
   },
 }))
 
+import { schema } from '@auxx/database'
 import { BadRequestError } from '../../../errors'
 import { guardPartKindService } from '../part-kind-service-guard'
 
@@ -62,6 +69,8 @@ function event(optionId: string) {
 beforeEach(() => {
   h.state.rows = []
   h.state.moved = []
+  h.state.built = []
+  h.state.buildTable = schema.Build
 })
 
 describe('guardPartKindService', () => {
@@ -92,7 +101,7 @@ describe('guardPartKindService', () => {
   })
 
   it('refuses a part with a build, and movements win the sentence', async () => {
-    h.state.rows = [{ partId: 'part_1', fieldId: 'f_build_part' }]
+    h.state.built = [{ partId: 'part_1' }]
     await expect(guardPartKindService(event('service'))).rejects.toThrow(/it has builds/)
     h.state.moved = [{ partId: 'part_1' }]
     await expect(guardPartKindService(event('service'))).rejects.toThrow(/stock movements/)

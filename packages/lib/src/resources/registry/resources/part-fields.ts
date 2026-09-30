@@ -1350,34 +1350,6 @@ export const PART_FIELDS = defineResourceFields({
       'overhead absorbed. Gated on partKind exactly as laborCostPerUnit is',
   },
 
-  // Reverse relationship: builds (from build.part)
-  builds: {
-    id: toFieldId('builds'),
-    key: 'builds',
-    label: 'Builds',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'part_builds',
-    systemSortOrder: 'c2',
-    showInPanel: false, // has_many inverse; a tab lists them
-    showInDialogs: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'build:part' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'unlink',
-      isInverse: true,
-    },
-    description: 'Builds that produce this part',
-  },
-
   // Reverse relationship: returnLines (from return_line:part)
   returnLines: {
     id: toFieldId('returnLines'),

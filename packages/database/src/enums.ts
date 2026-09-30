@@ -145,7 +145,6 @@ export const ModelTypeValues = [
   'vendor_bill',
   'vendor_bill_line',
   'gl_account',
-  'build',
   // Undeposited funds moved to the bank as one line per bank run
   // (plans/accounting/tasks/done/06-deposit-grouping.md). NOT a customer deposit,
   // which is a liability and lives on `PaymentTransaction`.
@@ -226,7 +225,6 @@ export const ModelTypes = {
   VENDOR_BILL: 'vendor_bill',
   VENDOR_BILL_LINE: 'vendor_bill_line',
   GL_ACCOUNT: 'gl_account',
-  BUILD: 'build',
   BANK_DEPOSIT: 'bank_deposit',
   BANK_ACCOUNT: 'bank_account',
   BANK_TRANSACTION: 'bank_transaction',
@@ -565,19 +563,6 @@ export const ModelTypeMeta: Record<
     dbTable: 'EntityInstance',
     hasDetailPage: false,
   },
-  build: {
-    label: 'Build',
-    plural: 'Builds',
-    icon: 'hammer',
-    color: 'teal',
-    apiSlug: 'builds',
-    dbTable: 'EntityInstance',
-    // A build is raised, worked and completed against — the `quote` / `order`
-    // shape (plans/products/build/01-build-plan.md §1.1). Seeded
-    // `isVisible: false` by entity migration 109 and flipped in phase 2, when
-    // there is a UI and a way to create a row.
-    hasDetailPage: true,
-  },
   bank_deposit: {
     label: 'Bank Deposit',
     plural: 'Bank Deposits',
@@ -843,6 +828,14 @@ export type StockMovementTypeValue = (typeof StockMovementTypeValues)[number]
 /** Where a movement's unit cost came from; `pending` means none yet (`unitCostMinor` is null). */
 export const StockMovementCostBasisValues = ['standard', 'actual', 'pending'] as const
 export type StockMovementCostBasisValue = (typeof StockMovementCostBasisValues)[number]
+
+/** A `Build.status`. Mirrors the `BuildStatus` pgEnum; labels live in lib's `enum-values.ts`. */
+export const BuildStatusValues = ['planned', 'in_progress', 'completed', 'canceled'] as const
+export type BuildStatusValue = (typeof BuildStatusValues)[number]
+
+/** Who raised a build (`Build.source`). Mirrors the `BuildSource` pgEnum. */
+export const BuildSourceValues = ['manual', 'order', 'batch', 'backflush'] as const
+export type BuildSourceValue = (typeof BuildSourceValues)[number]
 
 export const INVENTORY_POLICYValues = ['CONTINUE', 'DENY'] as const
 

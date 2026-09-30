@@ -19,17 +19,8 @@ export interface BatchCreateAudit {
   entityPreCreateHooks: 0
 }
 
-/**
- * The system definitions eligible for the batched create. `build_status`'s guard reads only the
- * new value and the caller's bypass, so it holds per value in a batch as per record.
- */
-export const BATCH_CREATE_AUDITS: Readonly<Record<string, BatchCreateAudit>> = {
-  build: {
-    systemHooks: { build_number: { range: 'build' } },
-    fieldPreHooks: ['build_status'],
-    entityPreCreateHooks: 0,
-  },
-}
+/** The system definitions eligible for the batched create; none today. */
+export const BATCH_CREATE_AUDITS: Readonly<Record<string, BatchCreateAudit>> = {}
 
 /** The common hooks every def runs; the batch runs them per item like the CRUD create. */
 const AUDITED_COMMON_HOOKS = ['created_by_id']

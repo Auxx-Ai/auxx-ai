@@ -16,13 +16,8 @@
  * | `completed` | `reverseBuild` — a second, opposite build carrying the ORIGINAL's frozen costs |
  * | `canceled` | skip, already terminal |
  *
- * 🛑 **A build with `build_source = 'manual'` is never touched**, even when it
- * points at the cancelled order. A person raised it deliberately, against this
- * order, on purpose — that is the entire reason AB7 added `build_source`
- * alongside `build_order`. The read that guarantees it is
- * {@link readOrderRaisedBuilds} in `reconcile-queries.ts`, which filters in SQL
- * AND re-checks in memory because `listBuilds` silently drops a filter whose
- * field the org has not materialised; its header carries the full argument.
+ * A `source: 'manual'` build is never touched, even when it names the cancelled order (AB7);
+ * {@link readOrderRaisedBuilds} filters it out.
  *
  * 🛑 **Never throws.** Same contract as `auto-build.ts`: one build that will not
  * cancel must not strand the others.
@@ -195,6 +190,6 @@ async function undoBuild(
     return { buildId: build.buildId, action: 'reversed', reversalBuildId: result.value.buildId }
   }
 
-  // `canceled`, or a row whose status is missing entirely. Terminal either way.
+  // `canceled`: terminal.
   return skipped
 }

@@ -9,7 +9,6 @@ import { BANK_ACCOUNT_FIELDS } from './resources/bank-account-fields'
 import { BANK_DEPOSIT_FIELDS } from './resources/bank-deposit-fields'
 import { BANK_RULE_FIELDS } from './resources/bank-rule-fields'
 import { BANK_TRANSACTION_FIELDS } from './resources/bank-transaction-fields'
-import { BUILD_FIELDS } from './resources/build-fields'
 import { CATALOG_GROUP_FIELDS } from './resources/catalog-group-fields'
 import { COMPANY_FIELDS } from './resources/company-fields'
 import { CONTACT_FIELDS } from './resources/contact-fields'
@@ -169,7 +168,6 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   gl_account: GL_ACCOUNT_FIELDS,
   journal_entry: JOURNAL_ENTRY_FIELDS,
   journal_entry_line: JOURNAL_ENTRY_LINE_FIELDS,
-  build: BUILD_FIELDS,
   bank_deposit: BANK_DEPOSIT_FIELDS,
   payout: PAYOUT_FIELDS,
   processor_balance_entry: PROCESSOR_BALANCE_ENTRY_FIELDS,

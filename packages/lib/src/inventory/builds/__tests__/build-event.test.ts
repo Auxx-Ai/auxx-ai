@@ -1,22 +1,22 @@
 // packages/lib/src/inventory/builds/__tests__/build-event.test.ts
 //
-// The build event: what `createBuild` does NOT write, what `completeBuild`
-// writes and at what cost, and what `reverseBuild` carries back.
-//
-// The org cache, the CRUD handler, the movement seam and the standard-cost read are
-// doubles, and a db stand-in routes the reads by table identity plus whether the
-// query joined. Movement rows are shaped by the real `toStockMovementRow`. Nothing
-// here needs a database.
-//
-// ⚠️ `src/test/setup.ts` mocks `@auxx/database` wholesale, so `schema.Foo` is a
-// memoized `{}` and its COLUMNS are `undefined`. Table identity therefore works
-// (`.from(schema.FieldValue)` is comparable by reference) but no assertion can
-// name a column, and the double ignores every `WHERE` — so a fixture must be
-// narrow enough that "the rows this table would return" is unambiguous.
+// The build event: what `createBuild` does NOT write, what `completeBuild` writes and at what
+// cost, what `reverseBuild` carries back, and the lifecycle checks every writer makes. The build
+// table primitives, the movement seam and the standard-cost read are doubles; the part reads run
+// against a db stand-in routed by table identity (`src/test/setup.ts` mocks `@auxx/database`, so
+// no WHERE is evaluated).
 
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { BadRequestError, ConflictError, UnprocessableEntityError } from '../../../errors'
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  UnprocessableEntityError,
+} from '../../../errors'
+import type { BuildPatch, NewBuild } from '../build-writes'
+import type { BuildRecord } from '../types'
+import { buildRecord } from './support/build-record'
 
 const ORG = 'org_1'
 const USER = 'user_1'
@@ -26,91 +26,33 @@ const PART_ASM = 'part_asm'
 const PART_MOTOR = 'part_motor'
 const CREATED_AT = new Date('2026-08-01T00:00:00.000Z')
 
-/** One stored `FieldValue`, in the widest projection any read here selects. */
-interface ValueRow {
-  entityId: string
-  fieldId: string
-  valueText: string | null
-  valueNumber: number | null
-  valueDate: string | null
-  optionId: string | null
-  relatedEntityId: string | null
-  /** `rowsToTypedValues` needs it to compose a `RecordId`; any non-null def id will do. */
-  relatedEntityDefinitionId: string | null
-}
-
-/**
- * The stored shape of each attribute, which the reader types its cells by.
- *
- * A field whose type the double got wrong reads back as text, so this is what
- * makes `record.number(...)` and `record.related(...)` mean anything here.
- */
-const FIELD_TYPES: Record<string, string> = {
-  build_part: 'RELATIONSHIP',
-  build_order: 'RELATIONSHIP',
-  build_reversal_of: 'RELATIONSHIP',
-  build_status: 'SINGLE_SELECT',
-  build_source: 'SINGLE_SELECT',
-  build_started_at: 'DATE',
-  build_completed_at: 'DATE',
-  build_posted_at: 'DATE',
-  build_period_start: 'DATE',
-  build_period_end: 'DATE',
-  build_quantity_planned: 'NUMBER',
-  build_quantity_produced: 'NUMBER',
-  build_quantity_scrapped: 'NUMBER',
-  build_material_cost: 'NUMBER',
-  build_labor_cost: 'NUMBER',
-  build_overhead_cost: 'NUMBER',
-  build_produced_value: 'NUMBER',
-  build_variance_amount: 'NUMBER',
-  build_batch_run: 'NUMBER',
-  part_kind: 'SINGLE_SELECT',
-  part_quantity_on_hand: 'NUMBER',
-}
-
-/** One created record, as the CRUD double reports it back. */
-interface CreatedRecord {
-  defId: string
-  /** The id the double minted — what a realtime frame must carry, bare. */
-  id: string
-  values: Record<string, unknown>
-}
-
 const h = vi.hoisted(() => ({
-  /** `.from(EntityInstance)` with no join. */
+  /** `.from(EntityInstance)`: the parts, for the existence probe and the names. */
   instanceRows: [] as { id: string; createdAt: Date; displayName: string | null }[],
+  /** `.from(FieldValue)`: the `part_kind` rows. */
+  kindRows: [] as { entityId: string; optionId: string }[],
   /** What `readMovementsByBuilds` returns: the build's own movements. */
   buildMovements: [] as Record<string, unknown>[],
   /** Every `StockMovement` row the seam double was asked to insert, in write order. */
   movementRows: [] as Record<string, unknown>[],
   /** Every `touched` handed to `settleStockMovements`. */
   settleCalls: [] as Array<{ partIds: string[]; buildIds: string[] }>,
-  /** `.from(FieldValue)` with no join. One combined list; every reader buckets it. */
-  valueRows: [] as ValueRow[],
-  /** `.from(FieldValue).innerJoin(EntityInstance)` — the already-reversed probe. */
-  reversalRows: [] as { id: string }[],
-  /** systemAttributes the org has materialised. */
-  materialised: new Set<string>(),
-  /** systemAttribute -> stored field type, so the reader types its cells. */
-  fieldTypes: {} as Record<string, string>,
-  /** entityType -> def id; a missing key models a def the org does not have. */
-  defs: new Map<string, string>(),
+  /** The `Build` table. */
+  builds: new Map<string, BuildRecord>(),
+  /** Whether a reversal already points at the build (`hasBuildReversal`). */
+  alreadyReversed: false,
   /** partId -> frozen standard cost, minor units. Absent = never rolled. */
   standards: new Map<string, number>(),
   /** The produced part's two per-part rates, per unit, minor units. */
   rates: { laborCostPerUnit: null as number | null, overheadCostPerUnit: null as number | null },
   /** parentPartId -> direct children, the real depth-1 semantics over a fixture. */
   bom: new Map<string, { childId: string; qty: number }[]>(),
-  created: [] as CreatedRecord[],
-  updated: [] as { recordId: string; values: Record<string, unknown> }[],
-  /** Options every `UnifiedCrudHandler` was constructed with, in order. */
-  constructions: [] as (Record<string, unknown> | undefined)[],
+  inserted: [] as NewBuild[],
+  patches: [] as { buildId: string; patch: BuildPatch }[],
   /** Interleaved trace: what ran, and on which side of the commit. */
   trace: [] as string[],
-  publishedEntries: [] as unknown[],
-  /** Every tier-2 `records:changed` frame `publishQuietBuildWrites` emitted. */
-  buildFrames: [] as Array<{ entityDefinitionId: string; entries: Array<{ recordId: string }> }>,
+  /** Build ids of every `build:changed` publish, in order. */
+  published: [] as string[][],
   getDeductionTargets: vi.fn(),
   loadSubpartGraph: vi.fn(),
   nextId: 0,
@@ -123,32 +65,20 @@ vi.mock('../../../accounting/work-items/write', () => ({
 }))
 
 vi.mock('../../../cache', () => ({
-  getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => h.defs.get(entityType)),
-  requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => {
-    const id = h.defs.get(entityType)
-    if (!id) throw new Error(`EntityDefinition not found for entityType: ${entityType}`)
-    return id
-  }),
+  getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => `def_${entityType}`),
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: readonly string[]) =>
         Object.fromEntries(
-          attrs.map((attr) => [
-            attr,
-            h.materialised.has(attr)
-              ? { id: `fld_${attr}`, type: h.fieldTypes[attr] ?? 'TEXT' }
-              : null,
-          ])
+          attrs.map((attr) => [attr, { id: `fld_${attr}`, type: 'SINGLE_SELECT' }])
         ),
     }),
   }),
 }))
 
 vi.mock('../../bom/subpart-graph', () => ({
-  // The REAL depth-1 semantics over the fixture: asked for the lift it returns
-  // the assembly, asked for the assembly it would return the motor. That is what
-  // makes the direct-only assertion mean something — if the code walked a level
-  // deeper it would get an answer, and the motor would appear in the ledger.
+  // The REAL depth-1 semantics over the fixture: if the code walked a level deeper it would get
+  // an answer, and the motor would appear in the ledger.
   loadDirectSubparts: vi.fn(async (_db: unknown, _org: string, partId: string) => {
     h.trace.push(`loadDirectSubparts:${partId}`)
     return h.bom.get(partId) ?? []
@@ -221,62 +151,74 @@ vi.mock('../../movements/reads', () => ({
   readMovementsByBuilds: vi.fn(async () => h.buildMovements),
 }))
 
-vi.mock('../../../realtime', () => ({
-  getRealtimeService: () => ({}),
-  publishFieldValueUpdates: vi.fn(async (_svc: unknown, _org: string, entries: unknown[]) => {
-    h.trace.push('publish')
-    h.publishedEntries.push(...entries)
-  }),
-  publishRecordsChanged: vi.fn(
-    async (
-      _svc: unknown,
-      _org: string,
-      args: { entityDefinitionId: string; entries: Array<{ recordId: string }> }
-    ) => {
-      h.trace.push('publish-build')
-      h.buildFrames.push(args)
-    }
-  ),
-}))
+vi.mock('../build-queries', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../build-queries')>()
+  const { NotFoundError } = await import('../../../errors')
+  const { ok } = await import('neverthrow')
+  const lock = async (_tx: unknown, _org: string, buildId: string) => {
+    const build = h.builds.get(buildId)
+    if (!build) throw new NotFoundError(`Build ${buildId} not found`)
+    return build
+  }
+  return {
+    ...actual,
+    lockBuild: vi.fn(lock),
+    readBuild: vi.fn(async (_db: unknown, _org: string, id: string) => h.builds.get(id)),
+    getBuild: vi.fn(async (_db: unknown, _org: string, id: string) => ok(h.builds.get(id) ?? null)),
+    hasBuildReversal: vi.fn(async () => h.alreadyReversed),
+  }
+})
 
-vi.mock('../../../resources/crud/unified-handler', () => ({
-  UnifiedCrudHandler: class {
-    constructor(
-      _org: string,
-      _user: string,
-      _db: unknown,
-      _socketId: unknown,
-      options?: Record<string, unknown>
-    ) {
-      h.constructions.push(options)
-    }
-    async create(defId: string, values: Record<string, unknown>) {
-      h.nextId += 1
-      const id = `bld_new_${h.nextId}`
-      h.created.push({ defId, id, values })
-      h.trace.push('create:build')
-      return { instance: { id }, recordId: `${defId}:${id}`, values }
-    }
-    async update(recordId: string, values: Record<string, unknown>) {
-      h.updated.push({ recordId, values })
+vi.mock('../build-writes', async () => {
+  const { buildRecord } = await import('./support/build-record')
+  const insert = (build: NewBuild): BuildRecord => {
+    h.nextId += 1
+    const record = buildRecord({
+      ...(build as Partial<BuildRecord>),
+      buildId: build.id ?? `bld_new_${h.nextId}`,
+      number: `B-${h.nextId}`,
+    })
+    h.inserted.push(build)
+    h.builds.set(record.buildId, record)
+    h.trace.push('create:build')
+    return record
+  }
+  return {
+    insertBuild: vi.fn(async (_db: unknown, _org: string, _user: unknown, build: NewBuild) =>
+      insert(build)
+    ),
+    insertBuilds: vi.fn(async (_db: unknown, _org: string, _user: unknown, builds: NewBuild[]) =>
+      builds.map(insert)
+    ),
+    updateBuild: vi.fn(async (_tx: unknown, _org: string, buildId: string, patch: BuildPatch) => {
+      const next = { ...h.builds.get(buildId)!, ...(patch as Partial<BuildRecord>) }
+      h.patches.push({ buildId, patch })
+      h.builds.set(buildId, next)
       h.trace.push('update')
-      return { id: recordId }
-    }
-  },
+      return next
+    }),
+  }
+})
+
+vi.mock('../build-realtime', () => ({
+  publishBuildsChanged: vi.fn(async (_org: string, builds: BuildRecord[]) => {
+    h.trace.push('publish-build')
+    h.published.push(builds.map((build) => build.buildId))
+  }),
 }))
 
-import { amendPlannedBuildQuantity, cancelBuild, createBuild, startBuild } from '../build-mutations'
+import {
+  amendPlannedBuildQuantity,
+  cancelBuild,
+  createBuild,
+  startBuild,
+  updateBuildNotes,
+} from '../build-mutations'
 import { completeBuild } from '../complete-build'
 import { reverseBuild } from '../reverse-build'
 
 // ─── The db double ──────────────────────────────────────────────────────
 
-/**
- * A real Promise carrying the terminal chain methods, so `await` works anywhere
- * along the chain. Deliberately a Promise with properties attached rather than a
- * hand-rolled thenable: an object with its own `then` is a trap the moment
- * anything else awaits it.
- */
 interface RowsChain extends PromiseLike<unknown[]> {
   limit(): RowsChain
   offset(): RowsChain
@@ -293,74 +235,23 @@ function rowsPromise(rows: unknown[]): RowsChain {
   })
 }
 
-/**
- * Every literal a `where` binds, at any depth.
- *
- * The COLUMNS a condition names are `undefined` under the wholesale
- * `@auxx/database` mock, but its PARAMETERS are real — which is enough to tell
- * the reader's child-by-parent lookup from any other value read. Routing on
- * that rather than on call order keeps the double order-independent.
- */
-// biome-ignore lint/suspicious/noExplicitAny: walking drizzle's SQL chunk tree
-function boundValues(node: any, out: string[] = []): string[] {
-  if (!node) return out
-  // With the columns mocked away drizzle binds a literal rather than a `Param`,
-  // so a bare string IS a bound value.
-  if (typeof node === 'string') {
-    out.push(node)
-    return out
-  }
-  if (Array.isArray(node)) {
-    for (const child of node) boundValues(child, out)
-    return out
-  }
-  if (node.queryChunks) return boundValues(node.queryChunks, out)
-  if (typeof node.value === 'string') out.push(node.value)
-  if (Array.isArray(node.value)) for (const v of node.value) if (typeof v === 'string') out.push(v)
-  return out
-}
-
-function makeChain(columns: unknown) {
-  const state = { table: null as unknown, joined: false, joinBound: [] as string[] }
-  const keyed = !!columns && typeof columns === 'object' && 'key' in columns
-  const rows = (condition: unknown) => {
-    const bound = [...boundValues(condition), ...state.joinBound]
-    // `findSystemRecordIdsByValue` is the only read projecting a `key` beside
-    // the instance id - the reader's child-by-parent lookup.
-    if (keyed) {
-      if (bound.includes('fld_build_reversal_of')) {
-        return h.reversalRows.map((row) => ({ entityId: row.id, key: 'k' }))
-      }
-      return []
-    }
-    if (state.table === schema.EntityInstance) return h.instanceRows
-    if (state.joined) return h.reversalRows
-    // The reader's child-by-parent lookup: a `{ entityId }` projection filtered
-    // on one relationship field.
-    if (columns && bound.includes('fld_build_reversal_of')) {
-      return h.reversalRows.map((row) => ({ entityId: row.id }))
-    }
-    return h.valueRows
-  }
+function makeChain() {
+  const state = { table: null as unknown }
   const chain: Record<string, unknown> = {
     from: (table: unknown) => {
       state.table = table
       return chain
     },
-    innerJoin: (_table: unknown, on: unknown) => {
-      state.joined = true
-      state.joinBound.push(...boundValues(on))
-      return chain
-    },
+    innerJoin: () => chain,
     leftJoin: () => chain,
     $dynamic: () => chain,
-    where: (condition: unknown) => rowsPromise(rows(condition)),
+    where: () => rowsPromise(state.table === schema.EntityInstance ? h.instanceRows : h.kindRows),
   }
   return chain
 }
 
 const db = {
-  select: (columns?: unknown) => makeChain(columns),
+  select: () => makeChain(),
   transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
     h.trace.push('begin')
     const result = await fn(db)
@@ -372,78 +263,24 @@ const db = {
 
 // ─── Fixtures ───────────────────────────────────────────────────────────
 
-const BUILD_ATTRS = [
-  'build_number',
-  'build_part',
-  'build_status',
-  'build_quantity_planned',
-  'build_quantity_produced',
-  'build_quantity_scrapped',
-  'build_started_at',
-  'build_completed_at',
-  'build_material_cost',
-  'build_labor_cost',
-  'build_overhead_cost',
-  'build_produced_value',
-  'build_variance_amount',
-  'build_posted_at',
-  'build_notes',
-  'build_order',
-  'build_source',
-  'build_reversal_of',
-  'build_order_revision',
-]
-
-function value(entityId: string, attr: string, over: Partial<ValueRow>): ValueRow {
-  return {
-    entityId,
-    fieldId: `fld_${attr}`,
-    valueText: null,
-    valueNumber: null,
-    valueDate: null,
-    optionId: null,
-    relatedEntityId: null,
-    relatedEntityDefinitionId: over.relatedEntityId ? 'def_related' : null,
+/** The SAME build after the completion in the scrap test: 10 good, 2 scrapped. */
+function completedBuild(over: Partial<BuildRecord> = {}): BuildRecord {
+  return buildRecord({
+    buildId: BUILD,
+    partId: PART_LIFT,
+    status: 'completed',
+    source: 'batch',
+    batchRun: 7,
+    quantityProduced: 10,
+    quantityScrapped: 2,
+    materialCost: 87864,
+    laborCost: 6000,
+    overheadCost: 2400,
+    producedValue: 80220,
+    varianceAmount: 16044,
+    completedAt: new Date('2026-08-02T00:00:00.000Z'),
     ...over,
-  }
-}
-
-/** The part classifications every fixture shares. */
-function partKindRows(): ValueRow[] {
-  return [
-    value(PART_LIFT, 'part_kind', { optionId: 'finished_good' }),
-    value(PART_ASM, 'part_kind', { optionId: 'subassembly' }),
-    value(PART_MOTOR, 'part_kind', { optionId: 'component' }),
-  ]
-}
-
-/** A `planned` build of 10 lifts. */
-function plannedBuildRows(): ValueRow[] {
-  return [
-    value(BUILD, 'build_status', { optionId: 'planned' }),
-    value(BUILD, 'build_part', { relatedEntityId: PART_LIFT }),
-    value(BUILD, 'build_quantity_planned', { valueNumber: 10 }),
-  ]
-}
-
-/**
- * The SAME build after the completion in `completes a run with scrap` — 10 good,
- * 2 scrapped, at the numbers that test asserts.
- */
-function completedBuildRows(): ValueRow[] {
-  return [
-    value(BUILD, 'build_status', { optionId: 'completed' }),
-    value(BUILD, 'build_part', { relatedEntityId: PART_LIFT }),
-    value(BUILD, 'build_quantity_planned', { valueNumber: 10 }),
-    value(BUILD, 'build_quantity_produced', { valueNumber: 10 }),
-    value(BUILD, 'build_quantity_scrapped', { valueNumber: 2 }),
-    value(BUILD, 'build_material_cost', { valueNumber: 87864 }),
-    value(BUILD, 'build_labor_cost', { valueNumber: 6000 }),
-    value(BUILD, 'build_overhead_cost', { valueNumber: 2400 }),
-    value(BUILD, 'build_produced_value', { valueNumber: 80220 }),
-    value(BUILD, 'build_variance_amount', { valueNumber: 16044 }),
-    value(BUILD, 'build_completed_at', { valueDate: '2026-08-02T00:00:00.000Z' }),
-  ]
+  })
 }
 
 /** The two movements that completion wrote, with their FROZEN costs. */
@@ -476,27 +313,22 @@ function completedMovementRows(): Record<string, unknown>[] {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.materialised = new Set([...BUILD_ATTRS, 'part_kind'])
-  h.fieldTypes = FIELD_TYPES
-  h.defs = new Map([
-    ['build', 'def_build'],
-    ['part', 'def_part'],
-    ['order', 'def_order'],
-  ])
-  // The build row FIRST: the double ignores `WHERE`, and every detail read takes
-  // `[instance]`, so position is what identifies it.
   h.instanceRows = [
-    { id: BUILD, createdAt: CREATED_AT, displayName: null },
     { id: PART_LIFT, createdAt: CREATED_AT, displayName: 'Auxx Lift 400lbs 4x8' },
     { id: PART_ASM, createdAt: CREATED_AT, displayName: '400Lbs motor Assembly' },
+    { id: PART_MOTOR, createdAt: CREATED_AT, displayName: 'Motor' },
   ]
+  h.kindRows = [
+    { entityId: PART_LIFT, optionId: 'finished_good' },
+    { entityId: PART_ASM, optionId: 'subassembly' },
+    { entityId: PART_MOTOR, optionId: 'component' },
+  ]
+  h.builds = new Map([[BUILD, buildRecord({ buildId: BUILD, partId: PART_LIFT })]])
+  h.alreadyReversed = false
   h.buildMovements = []
   h.movementRows = []
   h.settleCalls = []
-  h.reversalRows = []
-  h.valueRows = [...plannedBuildRows(), ...partKindRows()]
-  // 2 assemblies per lift; 1 motor per assembly. The motor is one level too deep
-  // for a build to touch (B4).
+  // 2 assemblies per lift; 1 motor per assembly. The motor is one level too deep (B4).
   h.bom = new Map([
     [PART_LIFT, [{ childId: PART_ASM, qty: 2 }]],
     [PART_ASM, [{ childId: PART_MOTOR, qty: 1 }]],
@@ -507,14 +339,16 @@ beforeEach(() => {
     [PART_MOTOR, 2010],
   ])
   h.rates = { laborCostPerUnit: 500, overheadCostPerUnit: 200 }
-  h.created = []
-  h.updated = []
-  h.constructions = []
+  h.inserted = []
+  h.patches = []
   h.trace = []
-  h.publishedEntries = []
-  h.buildFrames = []
+  h.published = []
   h.nextId = 0
 })
+
+function setStatus(status: BuildRecord['status']): void {
+  h.builds.set(BUILD, { ...h.builds.get(BUILD)!, status })
+}
 
 /** Every `StockMovement` row the seam double was asked to insert. */
 function movementWrites(): Record<string, unknown>[] {
@@ -524,11 +358,6 @@ function movementWrites(): Record<string, unknown>[] {
 /** The ids of every movement written, in write order. */
 function movementIdsWritten(): string[] {
   return h.movementRows.map((row) => row.id as string)
-}
-
-/** Every `build` the CRUD double was asked to create. */
-function buildWrites(): Record<string, unknown>[] {
-  return h.created.filter((row) => row.defId === 'def_build').map((row) => row.values)
 }
 
 async function expectErr(promise: Promise<{ isErr(): boolean; _unsafeUnwrapErr(): Error }>) {
@@ -545,13 +374,38 @@ describe('createBuild', () => {
 
     expect(result.isOk()).toBe(true)
     expect(movementWrites()).toEqual([])
-    expect(buildWrites()).toHaveLength(1)
-    expect(buildWrites()[0]).toMatchObject({
-      build_status: 'planned',
-      build_quantity_planned: 10,
-      build_part: 'def_part:part_lift',
-      build_source: 'manual',
+    expect(h.inserted).toEqual([
+      {
+        partId: PART_LIFT,
+        status: 'planned',
+        source: 'manual',
+        quantityPlanned: 10,
+        notes: null,
+      },
+    ])
+    expect(h.published).toEqual([[result._unsafeUnwrap().buildId]])
+  })
+
+  it('stamps the order and the fingerprint it was handed on an order-raised build', async () => {
+    await createBuild(db, ORG, USER, {
+      partId: PART_LIFT,
+      quantityPlanned: 2,
+      orderId: 'ord_1',
+      source: 'order',
+      orderRevision: 'rev_1',
     })
+    expect(h.inserted[0]).toMatchObject({ orderId: 'ord_1', orderRevision: 'rev_1' })
+  })
+
+  it('never stamps a revision on a build a person raised against an order', async () => {
+    await createBuild(db, ORG, USER, {
+      partId: PART_LIFT,
+      quantityPlanned: 2,
+      orderId: 'ord_1',
+      orderRevision: 'rev_1',
+    })
+    expect(h.inserted[0]).toMatchObject({ orderId: 'ord_1', source: 'manual' })
+    expect(h.inserted[0]).not.toHaveProperty('orderRevision')
   })
 
   it('refuses a component — a purchased part is not assembled', async () => {
@@ -559,10 +413,17 @@ describe('createBuild', () => {
       createBuild(db, ORG, USER, { partId: PART_MOTOR, quantityPlanned: 1 })
     )
     expect(error).toBeInstanceOf(UnprocessableEntityError)
-    // The kind check runs BEFORE the bill-of-materials check, and the motor has
-    // one — so this must fail on the classification, not on the BOM.
     expect(error.message).toContain('part kind')
-    expect(h.created).toEqual([])
+    expect(h.inserted).toEqual([])
+  })
+
+  it('refuses a part that does not exist', async () => {
+    h.instanceRows = []
+    const error = await expectErr(
+      createBuild(db, ORG, USER, { partId: PART_LIFT, quantityPlanned: 1 })
+    )
+    expect(error).toBeInstanceOf(NotFoundError)
+    expect(h.inserted).toEqual([])
   })
 
   it('refuses a part with no bill of materials — a build would consume nothing', async () => {
@@ -572,7 +433,7 @@ describe('createBuild', () => {
     )
     expect(error).toBeInstanceOf(UnprocessableEntityError)
     expect(error.message).toContain('bill of materials')
-    expect(h.created).toEqual([])
+    expect(h.inserted).toEqual([])
   })
 
   it('refuses a run that plans to produce nothing', async () => {
@@ -580,28 +441,76 @@ describe('createBuild', () => {
       createBuild(db, ORG, USER, { partId: PART_LIFT, quantityPlanned: 0 })
     )
     expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.created).toEqual([])
+    expect(h.inserted).toEqual([])
+  })
+})
+
+// ─── The lifecycle transitions ──────────────────────────────────────────
+
+describe('startBuild and cancelBuild', () => {
+  it('starts a planned build and stamps startedAt, then announces it after the commit', async () => {
+    const startedAt = new Date('2026-08-03T00:00:00.000Z')
+    const result = await startBuild(db, ORG, USER, { buildId: BUILD, startedAt })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'in_progress', startedAt })
+    expect(h.patches).toEqual([{ buildId: BUILD, patch: { status: 'in_progress', startedAt } }])
+    expect(h.trace.indexOf('publish-build')).toBeGreaterThan(h.trace.indexOf('commit'))
+  })
+
+  it.each([
+    'in_progress',
+    'completed',
+    'canceled',
+  ] as const)('refuses to start a %s build', async (status) => {
+    setStatus(status)
+    const error = await expectErr(startBuild(db, ORG, USER, { buildId: BUILD }))
+    expect(error).toBeInstanceOf(ConflictError)
+    expect(h.patches).toEqual([])
+    expect(h.published).toEqual([])
+  })
+
+  it('cancels an in-progress build and appends the reason to the notes', async () => {
+    h.builds.set(BUILD, { ...h.builds.get(BUILD)!, status: 'in_progress', notes: 'rush' })
+    const result = await cancelBuild(db, ORG, USER, { buildId: BUILD, reason: 'order cancelled' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({
+      status: 'canceled',
+      notes: 'rush\norder cancelled',
+    })
+    expect(movementWrites()).toEqual([])
+  })
+
+  it.each(['completed', 'canceled'] as const)('refuses to cancel a %s build', async (status) => {
+    setStatus(status)
+    const error = await expectErr(cancelBuild(db, ORG, USER, { buildId: BUILD }))
+    expect(error).toBeInstanceOf(ConflictError)
+    expect(h.patches).toEqual([])
+  })
+
+  it('refuses a build that does not exist', async () => {
+    const error = await expectErr(startBuild(db, ORG, USER, { buildId: 'bld_missing' }))
+    expect(error).toBeInstanceOf(NotFoundError)
+  })
+})
+
+describe('updateBuildNotes', () => {
+  it('edits the notes of a completed build, and writes nothing else', async () => {
+    h.builds.set(BUILD, completedBuild())
+    const result = await updateBuildNotes(db, ORG, { buildId: BUILD, notes: 'checked' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ notes: 'checked', status: 'completed' })
+    expect(h.patches).toEqual([{ buildId: BUILD, patch: { notes: 'checked' } }])
+  })
+
+  it('stores blank notes as null', async () => {
+    await updateBuildNotes(db, ORG, { buildId: BUILD, notes: '  ' })
+    expect(h.patches[0]?.patch).toEqual({ notes: null })
   })
 })
 
 // ─── amendPlannedBuildQuantity ──────────────────────────────────────────
 
-/**
- * The writer plan 13's Model B reconciler converges an order-raised build with
- * (plans/products/13-order-build-reconciliation.md §1.5, §5).
- *
- * 🛑 Two properties are what this suite is for: it writes NO movements, like
- * everything else in `build-mutations.ts` (B2); and it accepts `planned` ONLY,
- * which is deliberately narrower than `cancelBuild` — an `in_progress` build has
- * written nothing either, but material may already be cut against the quantity
- * somebody was told to build (§1.0(a)).
- */
 describe('amendPlannedBuildQuantity', () => {
-  /** The one build update the CRUD double was asked to perform. */
-  function amendment(): Record<string, unknown> | undefined {
-    return h.updated[0]?.values
-  }
-
   it('amends a planned build and re-stamps the order revision in the SAME update', async () => {
     const result = await amendPlannedBuildQuantity(db, ORG, USER, {
       buildId: BUILD,
@@ -610,117 +519,44 @@ describe('amendPlannedBuildQuantity', () => {
     })
 
     expect(result.isOk()).toBe(true)
-    // 🛑 One update, not two. A reader between two writes would see a build that
-    // disagrees with its own drift fingerprint.
-    expect(h.updated).toHaveLength(1)
-    expect(amendment()).toEqual({
-      build_quantity_planned: 25,
-      build_order_revision: 'rev_after',
-    })
-    // B2 — nothing here reaches the ledger.
+    expect(h.patches).toEqual([
+      { buildId: BUILD, patch: { quantityPlanned: 25, orderRevision: 'rev_after' } },
+    ])
     expect(movementWrites()).toEqual([])
-    expect(h.created).toEqual([])
+    expect(h.inserted).toEqual([])
   })
 
   it('writes only the quantity when no revision is given', async () => {
-    const result = await amendPlannedBuildQuantity(db, ORG, USER, {
-      buildId: BUILD,
-      quantityPlanned: 3,
-    })
-
-    expect(result.isOk()).toBe(true)
-    expect(amendment()).toEqual({ build_quantity_planned: 3 })
-    expect(amendment()).not.toHaveProperty('build_order_revision')
+    await amendPlannedBuildQuantity(db, ORG, USER, { buildId: BUILD, quantityPlanned: 3 })
+    expect(h.patches[0]?.patch).toEqual({ quantityPlanned: 3 })
   })
 
   it('clears the stamp back to unknown when the caller passes null explicitly', async () => {
-    // `hasDrifted` reads a missing stamp as *unknown*, never as *drifted*, so a
-    // reconciler that converged the build but could not compute the order's new
-    // fingerprint says so rather than leaving a stamp that now reports drift
-    // which has just been resolved.
-    const result = await amendPlannedBuildQuantity(db, ORG, USER, {
+    await amendPlannedBuildQuantity(db, ORG, USER, {
       buildId: BUILD,
       quantityPlanned: 4,
       orderRevision: null,
     })
-
-    expect(result.isOk()).toBe(true)
-    expect(amendment()).toEqual({ build_quantity_planned: 4, build_order_revision: null })
+    expect(h.patches[0]?.patch).toEqual({ quantityPlanned: 4, orderRevision: null })
   })
 
-  it('leaves the revision alone on an org that has not materialised the field', async () => {
-    h.materialised.delete('build_order_revision')
-
-    const result = await amendPlannedBuildQuantity(db, ORG, USER, {
-      buildId: BUILD,
-      quantityPlanned: 7,
-      orderRevision: 'rev_after',
-    })
-
-    expect(result.isOk()).toBe(true)
-    expect(amendment()).toEqual({ build_quantity_planned: 7 })
-  })
-
-  it('🛑 REFUSES an in_progress build — cancellable, never silently amendable', async () => {
-    h.valueRows = [
-      value(BUILD, 'build_status', { optionId: 'in_progress' }),
-      value(BUILD, 'build_part', { relatedEntityId: PART_LIFT }),
-      value(BUILD, 'build_quantity_planned', { valueNumber: 10 }),
-      ...partKindRows(),
-    ]
-
+  it.each([
+    'in_progress',
+    'completed',
+    'canceled',
+  ] as const)('refuses a %s build', async (status) => {
+    setStatus(status)
     const error = await expectErr(
       amendPlannedBuildQuantity(db, ORG, USER, { buildId: BUILD, quantityPlanned: 25 })
     )
-
     expect(error).toBeInstanceOf(ConflictError)
-    expect(h.updated).toEqual([])
-    // And the same build is still cancellable — that is the asymmetry §1.5 asks for.
+    expect(h.patches).toEqual([])
+  })
+
+  it('leaves an in-progress build cancellable — the asymmetry plan 13 §1.5 asks for', async () => {
+    setStatus('in_progress')
     const cancelled = await cancelBuild(db, ORG, USER, { buildId: BUILD })
     expect(cancelled.isOk()).toBe(true)
-  })
-
-  it('refuses a completed build — B6/B8, it is reversed, never edited', async () => {
-    h.valueRows = [...completedBuildRows(), ...partKindRows()]
-
-    const error = await expectErr(
-      amendPlannedBuildQuantity(db, ORG, USER, { buildId: BUILD, quantityPlanned: 25 })
-    )
-
-    expect(error).toBeInstanceOf(ConflictError)
-    expect(h.updated).toEqual([])
-  })
-
-  it('refuses a canceled build — terminal', async () => {
-    h.valueRows = [
-      value(BUILD, 'build_status', { optionId: 'canceled' }),
-      value(BUILD, 'build_part', { relatedEntityId: PART_LIFT }),
-      ...partKindRows(),
-    ]
-
-    const error = await expectErr(
-      amendPlannedBuildQuantity(db, ORG, USER, { buildId: BUILD, quantityPlanned: 25 })
-    )
-
-    expect(error).toBeInstanceOf(ConflictError)
-    expect(h.updated).toEqual([])
-  })
-
-  it('refuses a build whose status is missing entirely', async () => {
-    // A row nobody can state the lifecycle of is never defaulted to `planned`
-    // on a path that writes (`resolveBuildStatus`).
-    h.valueRows = [
-      value(BUILD, 'build_part', { relatedEntityId: PART_LIFT }),
-      value(BUILD, 'build_quantity_planned', { valueNumber: 10 }),
-      ...partKindRows(),
-    ]
-
-    const error = await expectErr(
-      amendPlannedBuildQuantity(db, ORG, USER, { buildId: BUILD, quantityPlanned: 25 })
-    )
-
-    expect(error).toBeInstanceOf(ConflictError)
-    expect(h.updated).toEqual([])
   })
 
   it('refuses a quantity that plans to produce nothing — the same words as createBuild', async () => {
@@ -731,17 +567,7 @@ describe('amendPlannedBuildQuantity', () => {
       expect(error, String(quantityPlanned)).toBeInstanceOf(BadRequestError)
       expect(error.message).toBe('A build must plan to produce at least one unit')
     }
-    expect(h.updated).toEqual([])
-  })
-
-  it('takes the DEFAULT lane — a planned build writes no ledger and must stay realtime', async () => {
-    // Only `completeBuild` / `reverseBuild` take `buildWriteSession()`
-    // (`write-lane.ts`); silencing an amendment would cost the build list its
-    // realtime update for no benefit.
-    await amendPlannedBuildQuantity(db, ORG, USER, { buildId: BUILD, quantityPlanned: 25 })
-
-    expect(h.constructions).toHaveLength(1)
-    expect(h.constructions[0]?.session).toBeUndefined()
+    expect(h.patches).toEqual([])
   })
 })
 
@@ -836,9 +662,12 @@ describe('completeBuild', () => {
       costBasis: 'standard',
     })
     expect(h.postSpy).not.toHaveBeenCalled()
-    expect(h.updated[0]?.values).toMatchObject({ build_status: 'completed' })
-    expect(h.updated[0]?.values).not.toHaveProperty('build_material_cost')
-    expect(h.updated[0]?.values).not.toHaveProperty('build_variance_amount')
+    expect(h.patches[0]?.patch).toMatchObject({
+      status: 'completed',
+      materialCost: null,
+      producedValue: null,
+      varianceAmount: null,
+    })
     expect(value).toMatchObject({
       materialCost: null,
       producedValue: null,
@@ -889,13 +718,13 @@ describe('completeBuild', () => {
   })
 
   it('refuses a SECOND completion — one completion per build (B8)', async () => {
-    h.valueRows = [...completedBuildRows(), ...partKindRows()]
+    h.builds.set(BUILD, completedBuild())
     const error = await expectErr(
       completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
     )
     expect(error).toBeInstanceOf(ConflictError)
-    expect(h.created).toEqual([])
-    expect(h.updated).toEqual([])
+    expect(movementWrites()).toEqual([])
+    expect(h.patches).toEqual([])
   })
 
   it('sets adjustSubparts: false on every row it writes', async () => {
@@ -927,30 +756,12 @@ describe('completeBuild', () => {
     }
   })
 
-  it('announces the build with one tier-2 frame, after the commit', async () => {
+  it('announces the completed build once, after the commit', async () => {
     await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
 
-    // The parts' frames are the settle's; the build row is announced here.
-    expect(h.buildFrames.map((f) => f.entityDefinitionId)).toEqual(['def_build'])
-    // BARE instance ids (`RecordChangedEntry.recordId`), never composite ones.
-    expect(h.buildFrames[0]!.entries).toEqual([{ recordId: BUILD }])
+    expect(h.published).toEqual([[BUILD]])
     expect(h.trace.indexOf('publish-build')).toBeGreaterThan(h.trace.indexOf('commit'))
-  })
-
-  it('writes the ledger on the quiet lane, and never with the deprecated skipEvents alias', async () => {
-    await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
-
-    const ledgerHandlers = h.constructions.filter((options) => options?.session)
-    expect(ledgerHandlers).toHaveLength(1)
-    const session = ledgerHandlers[0]?.session as {
-      mode?: { kind: string; coveredBy?: string }
-      origin: { kind: string }
-    }
-    expect(session.mode?.kind).toBe('quiet')
-    expect(session.mode?.coveredBy).toBe('publishQuietBuildWrites')
-    // `automation`, not `seed`: a build completion is production automation, and
-    // a seed reason string would be a lie.
-    expect(session.origin.kind).toBe('automation')
+    expect(h.builds.get(BUILD)?.status).toBe('completed')
   })
 
   it('freezes the standard onto every row, with the extended cost signed like the quantity', async () => {
@@ -987,16 +798,16 @@ describe('completeBuild', () => {
       quantityProduced: 10,
       quantityScrapped: 2,
     })
-    expect(h.updated).toHaveLength(1)
-    expect(h.updated[0]?.values).toMatchObject({
-      build_status: 'completed',
-      build_quantity_produced: 10,
-      build_quantity_scrapped: 2,
-      build_material_cost: 87864,
-      build_labor_cost: 6000,
-      build_overhead_cost: 2400,
-      build_produced_value: 80220,
-      build_variance_amount: 16044,
+    expect(h.patches).toHaveLength(1)
+    expect(h.patches[0]?.patch).toMatchObject({
+      status: 'completed',
+      quantityProduced: 10,
+      quantityScrapped: 2,
+      materialCost: 87864,
+      laborCost: 6000,
+      overheadCost: 2400,
+      producedValue: 80220,
+      varianceAmount: 16044,
     })
   })
 
@@ -1059,7 +870,7 @@ describe('completeBuild', () => {
       completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 0 })
     )
     expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.created).toEqual([])
+    expect(h.patches).toEqual([])
   })
 })
 
@@ -1067,7 +878,7 @@ describe('completeBuild', () => {
 
 describe('reverseBuild', () => {
   beforeEach(() => {
-    h.valueRows = [...completedBuildRows(), ...partKindRows()]
+    h.builds.set(BUILD, completedBuild())
     h.buildMovements = completedMovementRows()
   })
 
@@ -1106,19 +917,27 @@ describe('reverseBuild', () => {
 
   it('writes a second build carrying the negated quantities and costs', async () => {
     await reverseBuild(db, ORG, USER, { buildId: BUILD })
-    const [reversal] = buildWrites()
-    expect(reversal).toMatchObject({
-      build_status: 'completed',
-      build_reversal_of: 'def_build:bld_1',
-      build_part: 'def_part:part_lift',
-      build_quantity_produced: -10,
-      build_quantity_scrapped: -2,
-      build_material_cost: -87864,
-      build_labor_cost: -6000,
-      build_overhead_cost: -2400,
-      build_produced_value: -80220,
-      build_variance_amount: -16044,
-    })
+    expect(h.inserted).toEqual([
+      {
+        partId: PART_LIFT,
+        status: 'completed',
+        source: 'batch',
+        reversalOfBuildId: BUILD,
+        quantityPlanned: null,
+        quantityProduced: -10,
+        quantityScrapped: -2,
+        materialCost: -87864,
+        laborCost: -6000,
+        overheadCost: -2400,
+        producedValue: -80220,
+        varianceAmount: -16044,
+        completedAt: expect.any(Date),
+        orderId: null,
+        notes: null,
+      },
+    ])
+    // Inserted before its movements: the unique index refuses a racing second reversal first.
+    expect(h.trace.indexOf('create:build')).toBeLessThan(h.trace.indexOf('create:build_consume'))
     // Every reversing movement belongs to the NEW build, which is what
     // `reverseMovement` could not express.
     for (const values of movementWrites()) {
@@ -1164,127 +983,32 @@ describe('reverseBuild', () => {
     expect(movementWrites()).toEqual([])
   })
 
-  it('announces the new build row — a CREATE no open builds list would otherwise see', async () => {
+  it('announces the reversing build, after the commit', async () => {
     await reverseBuild(db, ORG, USER, { buildId: BUILD })
 
-    expect(h.buildFrames).toHaveLength(1)
-    expect(h.buildFrames[0]!.entityDefinitionId).toBe('def_build')
-    // The REVERSING build, not the one being reversed — that is the row the list is missing.
-    expect(h.buildFrames[0]!.entries.map((entry) => entry.recordId)).toEqual(['bld_new_1'])
+    expect(h.published).toEqual([['bld_new_1']])
     expect(h.trace.indexOf('publish-build')).toBeGreaterThan(h.trace.indexOf('commit'))
   })
 
   it('refuses a build that is already reversed — a second negation is invisible', async () => {
-    h.reversalRows = [{ id: 'bld_rev' }]
+    h.alreadyReversed = true
     const error = await expectErr(reverseBuild(db, ORG, USER, { buildId: BUILD }))
     expect(error).toBeInstanceOf(ConflictError)
-    expect(h.created).toEqual([])
+    expect(h.inserted).toEqual([])
   })
 
   it('refuses to reverse a reversal — the correction of an over-correction is a fresh build', async () => {
-    h.valueRows = [
-      ...completedBuildRows(),
-      value(BUILD, 'build_reversal_of', { relatedEntityId: 'bld_original' }),
-      ...partKindRows(),
-    ]
+    h.builds.set(BUILD, completedBuild({ reversalOfBuildId: 'bld_original' }))
     const error = await expectErr(reverseBuild(db, ORG, USER, { buildId: BUILD }))
     expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.created).toEqual([])
+    expect(h.inserted).toEqual([])
   })
 
   it('refuses a build that was never completed — cancel it instead', async () => {
-    h.valueRows = [...plannedBuildRows(), ...partKindRows()]
+    h.builds.set(BUILD, buildRecord({ buildId: BUILD }))
     const error = await expectErr(reverseBuild(db, ORG, USER, { buildId: BUILD }))
     expect(error).toBeInstanceOf(ConflictError)
-    expect(h.created).toEqual([])
-  })
-})
-
-// ─── the build_status lifecycle wall ────────────────────────────────────
-
-/**
- * 🛑 `field-hooks/pre/build-status-guard.ts` refuses a manual write of `in_progress`,
- * `completed` or `canceled`. `fireFieldPreHooks` short-circuits on
- * `ctx.bypassFieldGuards.has(systemAttribute)` BEFORE that handler runs, and
- * `UnifiedCrudHandler` forwards the set it was constructed with to the `FieldValueService`
- * it owns — so these assertions are the only thing standing between the guard and Start /
- * Complete / Cancel / Reverse silently ceasing to work
- * (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §4: half of this fix is
- * worse than none).
- *
- * Nothing in this file's doubles enforces the guard, which is precisely why the bypass has
- * to be asserted rather than inferred from a green test.
- */
-describe('every sanctioned build_status writer carries its bypass', () => {
-  /** The bypass set of the handler that performed the Nth construction. */
-  function bypasses(index = 0): string[] {
-    const options = h.constructions[index]
-    const set = options?.bypassFieldGuards as ReadonlySet<string> | undefined
-    return set ? [...set] : []
-  }
-
-  it('createBuild bypasses, even though planned is not guarded', async () => {
-    // The exemption belongs to the WRITER, not to today's value set — widening the guard
-    // later must not break the action that raises a build.
-    await createBuild(db, ORG, USER, { partId: PART_LIFT, quantityPlanned: 10 })
-    expect(bypasses()).toEqual(['build_status'])
-  })
-
-  it('startBuild bypasses — it writes the guarded in_progress', async () => {
-    const result = await startBuild(db, ORG, USER, { buildId: BUILD })
-    expect(result.isOk()).toBe(true)
-    expect(h.updated[0]?.values).toMatchObject({ build_status: 'in_progress' })
-    expect(bypasses()).toEqual(['build_status'])
-  })
-
-  it('cancelBuild bypasses — it writes the guarded canceled', async () => {
-    const result = await cancelBuild(db, ORG, USER, { buildId: BUILD })
-    expect(result.isOk()).toBe(true)
-    expect(h.updated[0]?.values).toMatchObject({ build_status: 'canceled' })
-    expect(bypasses()).toEqual(['build_status'])
-  })
-
-  it('completeBuild bypasses — without it the ledger writer is refused by its own wall', async () => {
-    const result = await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
-    expect(result.isOk()).toBe(true)
-    expect(bypasses()).toEqual(['build_status'])
-  })
-
-  it('reverseBuild bypasses — the reversing build is CREATED at completed', async () => {
-    // 🛑 The field chain has no `operation === 'create'` exemption, so a create carrying a
-    // guarded value is refused exactly like an update. B6's only correction for a posted run
-    // depends on this.
-    h.valueRows = [...completedBuildRows(), ...partKindRows()]
-    h.buildMovements = completedMovementRows()
-
-    const result = await reverseBuild(db, ORG, USER, { buildId: BUILD })
-    expect(result.isOk()).toBe(true)
-    expect(buildWrites()[0]).toMatchObject({ build_status: 'completed' })
-    expect(bypasses()).toEqual(['build_status'])
-  })
-
-  // ONE element: a second attribute would silently disarm another guard on the build row (21 §7.1).
-  it('names build_status and nothing else, on every handler it constructs', async () => {
-    h.valueRows = [...completedBuildRows(), ...partKindRows()]
-    h.buildMovements = completedMovementRows()
-    await reverseBuild(db, ORG, USER, { buildId: BUILD })
-
-    expect(h.constructions.length).toBeGreaterThan(0)
-    for (const options of h.constructions) {
-      const set = options?.bypassFieldGuards as ReadonlySet<string> | undefined
-      expect(set).toBeDefined()
-      expect(set?.size).toBe(1)
-      expect(set?.has('build_status')).toBe(true)
-    }
-  })
-
-  it('keeps the quiet lane and the bypass on the same handler', async () => {
-    await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
-    const ledgerHandlers = h.constructions.filter((options) => options?.session)
-    expect(ledgerHandlers).toHaveLength(1)
-    expect([...(ledgerHandlers[0]?.bypassFieldGuards as ReadonlySet<string>)]).toEqual([
-      'build_status',
-    ])
+    expect(h.inserted).toEqual([])
   })
 })
 

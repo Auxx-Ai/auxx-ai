@@ -1,36 +1,11 @@
 // packages/lib/src/inventory/builds/build-now.ts
 
 /**
- * Raise, start and complete a run in one call
- * (plans/money/tasks/23-build-from-the-part.md §3.3).
- *
- * The whole of it is a composition: `createBuild` -> `startBuild` ->
- * `completeBuild`, in that order, with no arithmetic of its own. A shop
- * assembling five brackets on the bench should not have to walk a three-state
- * lifecycle to say so, and the three-state lifecycle is still what actually
- * happens underneath.
- *
- * 🛑 **It is NOT atomic, and no caller may be told otherwise.** Each of the three
- * runs its own `UnifiedCrudHandler` work inside its own `guard`, so a refused
- * completion — a component with no `part_standard_cost` being the likely
- * reason — leaves the run sitting at `in_progress` with no movements written.
- * That is recoverable, not corrupt: the build is in the builds list and
- * `build-run-card` can complete or cancel it.
- *
- * 🛑 **Which is why a mid-composition failure is a RESULT, not an error.** It
- * comes back as {@link BuildNowOutcome} `left_in_progress`, carrying the build
- * that was raised, because the caller has to be able to name and link it. An
- * error channel cannot do that: `errorFormatter` sends the client a message and
- * nothing else, so the person would be told "failed" about a run that exists,
- * and would press the button again. The `err` channel is reserved for
- * `createBuild` refusing, which writes nothing at all.
- *
- * 🛑 **Do not make it atomic by inlining the three bodies.** That would put a
- * second copy of the ledger writer in the tree, which is the one thing
- * `complete-build.ts` is structured to prevent.
- *
- * No permission checks. The router asserts (`docs/lib-module-guide.md` §6) —
- * and it must assert BOTH halves, because this path writes stock movements.
+ * Raise, start and complete a run in one call (plans/money/tasks/23-build-from-the-part.md §3.3):
+ * `createBuild` -> `startBuild` -> `completeBuild`, with no arithmetic of its own. Not atomic: a
+ * refused completion leaves the run `in_progress` with no movements, and that comes back as the
+ * `left_in_progress` result carrying the build, so the caller can name it. The router must assert
+ * both the build and the part permissions, because this path writes stock movements.
  */
 
 import type { Database } from '@auxx/database'
@@ -72,18 +47,8 @@ export type BuildNowOutcome =
     }
 
 /**
- * Create a run, start it, and complete it at BOM-standard consumption.
- *
- * 🛑 **The assertion this makes on the caller's behalf**: standard consumption
- * straight off the bill of materials, zero scrap, and the effective absorption
- * rates. No component overrides, and `laborCost` / `overheadCost` are omitted so
- * the server resolves them from the produced part's own rates falling back to
- * the org's (`routers/builds.ts` documents omitting them as the supported case).
- *
- * That assertion is true for most small runs and false for some. When it is
- * false the person wants the full completion dialog, which is why the part
- * drawer keeps a "Plan and open..." verb beside this one rather than growing
- * override inputs into a two-field popover.
+ * Create a run, start it, and complete it at BOM-standard consumption: no overrides, no scrap,
+ * and the absorption rates resolved server-side. Anything else is the full completion dialog.
  */
 export async function buildNow(
   db: Database,

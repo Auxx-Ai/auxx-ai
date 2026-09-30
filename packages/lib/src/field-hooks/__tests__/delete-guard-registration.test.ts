@@ -30,7 +30,6 @@
 
 import { describe, expect, it } from 'vitest'
 import { SYSTEM_ENTITIES } from '../../seed/entity-seeder/constants'
-import { guardBuildDelete } from '../pre/build-delete-guard'
 import { guardCreditMemoDelete } from '../pre/credit-memo-delete-guard'
 import { guardInvoiceDelete } from '../pre/invoice-delete-guard'
 import { guardJournalEntryDelete } from '../pre/journal-entry-delete-guard'
@@ -46,7 +45,6 @@ const GUARDED = [
   { slug: 'invoices', handler: guardInvoiceDelete },
   { slug: 'orders', handler: guardOrderDelete },
   { slug: 'parts', handler: guardPartDelete },
-  { slug: 'builds', handler: guardBuildDelete },
   { slug: 'purchase-orders', handler: guardPurchaseOrderDelete },
   { slug: 'vendor-bills', handler: guardVendorBillDelete },
   // `journal-entries` is `isVisible: false`, so it is NOT in the derived
@@ -90,7 +88,6 @@ const MONEY_ENTITY_TYPES = [
   'purchase_order_line',
   'vendor_bill',
   'vendor_bill_line',
-  'build',
   'part',
   'vendor_part',
   'subpart',
@@ -158,7 +155,7 @@ describe('pre-delete hook registration', () => {
     expect(unguarded).toEqual([])
   })
 
-  it('holds the four visible money parents the costing guide §3 names', () => {
+  it('holds the three visible money parents the costing guide §3 names', () => {
     // Pins the derivation itself: if a money entity flips to visible, or a new
     // one ships visible, this fails and the guard question gets asked BEFORE the
     // delete button is live, which is the whole point of the file.
@@ -170,6 +167,6 @@ describe('pre-delete hook registration', () => {
     // reference data). Flip that flag back and this assertion fails, which is
     // the reminder to check that `DECLARATIVE_ONLY` still tells the truth
     // rather than a reason to delete the line.
-    expect(visibleMoneyParents()).toEqual(['builds', 'parts', 'purchase-orders', 'vendor-bills'])
+    expect(visibleMoneyParents()).toEqual(['parts', 'purchase-orders', 'vendor-bills'])
   })
 })

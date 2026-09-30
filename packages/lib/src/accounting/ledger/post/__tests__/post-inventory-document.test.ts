@@ -32,7 +32,7 @@ vi.mock('../post-inventory-movement', () => ({
   exportInventoryMovement: (db: unknown, post: unknown) => h.exportSpy(db, post),
 }))
 vi.mock('../../../../inventory/builds/build-queries', () => ({
-  getBuild: async () => ({ isErr: () => false, value: h.build }),
+  readBuild: async () => h.build ?? undefined,
   readBuildMovements: async () => h.legs,
 }))
 vi.mock('../../../../inventory/costing/standard-cost-queries', () => ({
@@ -190,7 +190,6 @@ describe('a build', () => {
   beforeEach(() => {
     h.build = {
       buildId: 'build_1',
-      recordId: 'def_build:build_1',
       orderId: 'ord_9',
       laborCost: 500,
       overheadCost: 250,

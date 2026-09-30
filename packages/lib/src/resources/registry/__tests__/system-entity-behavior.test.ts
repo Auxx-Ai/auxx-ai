@@ -29,7 +29,6 @@ const PURE_DEFAULT_ENTITY_TYPES = [
   'order',
   'purchase_order',
   'vendor_bill',
-  'build',
   'return',
   // The visible parent of the two owned children below (71 §5 U7).
   'vendor_credit',
@@ -117,14 +116,7 @@ describe('coverage: every SYSTEM_ENTITIES type is an explicit decision', () => {
 })
 
 describe('phase 1 is provably a no-op', () => {
-  /**
-   * `build` is the one documented exception (migration 110): its
-   * `SYSTEM_ENTITIES` seed value is already `isVisible: true` and it carries no
-   * override here, so this exception is not currently exercised — it exists so
-   * a future edit to either side fails loudly here rather than silently.
-   */
   const DOCUMENTED_EXCEPTIONS = new Set([
-    'build',
     // The two defs this change deliberately surfaces. Safe only because
     // `apps/web/src/app/(protected)/app/{shipments,parcels}/` now exist -
     // migration 110 warns a visible def with no route folder 404s its nav
@@ -279,7 +271,6 @@ describe('metered: the records plan limit counts main records only', () => {
   it.each([
     'line_item',
     'tax_line',
-    'build',
     'credit_memo',
     'fulfillment',
     'journal_entry',

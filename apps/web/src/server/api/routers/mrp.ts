@@ -222,7 +222,7 @@ export const mrpRouter = createTRPCRouter({
     active: await isMrpRunActive(ctx.session.organizationId),
   })),
 
-  // D41: draft creation also asserts write on the document def the draft lands in.
+  // D41: a draft PO also asserts write on the purchase order def; a build is not a record.
   createDraftPurchaseOrders: permissionProcedure(PermissionKey.mrpManage)
     .input(
       z.object({
@@ -256,7 +256,6 @@ export const mrpRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      ctx.capabilities.assertWriteEntity(await requireDefId(organizationId, 'build'))
       const result = await draftBuilds(ctx.db, organizationId, userId, {
         runId: input.runId ?? undefined,
         items: input.items,

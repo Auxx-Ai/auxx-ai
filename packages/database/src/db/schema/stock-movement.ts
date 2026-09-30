@@ -75,7 +75,8 @@ export const StockMovement = pgTable(
     reversesMovementId: text().references((): AnyPgColumn => StockMovement.id, {
       onUpdate: 'cascade',
     }),
-    buildId: text().references((): AnyPgColumn => EntityInstance.id, { onUpdate: 'cascade' }),
+    /** A `Build.id`. No FK: the schema migration runs before the build reset clears old ids (mrp 23). */
+    buildId: text(),
     /** The as-built BOM quantity; null is the off-BOM marker. */
     qtyPerUnit: numeric({ precision: 20, scale: 6, mode: 'number' }),
     fulfillmentLineId: text().references((): AnyPgColumn => EntityInstance.id, {

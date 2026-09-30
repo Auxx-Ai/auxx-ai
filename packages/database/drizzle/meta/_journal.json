@@ -2878,6 +2878,13 @@
       "when": 1790655881930,
       "tag": "0410_stock_movement_table",
       "breakpoints": true
+    },
+    {
+      "idx": 411,
+      "version": "7",
+      "when": 1790748170064,
+      "tag": "0411_build_table",
+      "breakpoints": true
     }
   ]
 }

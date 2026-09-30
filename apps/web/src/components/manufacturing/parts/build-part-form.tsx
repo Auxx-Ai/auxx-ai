@@ -21,7 +21,6 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { summarizeBuildCompletion } from '@auxx/lib/inventory/builds/client'
-import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -31,8 +30,7 @@ import { keepPreviousData } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
-import { useOpenRecord } from '~/components/records/record-drill-panels'
-import { useResourceProperty } from '~/components/resources'
+import { openBuildSheet } from '~/components/manufacturing/builds/build-sheet-store'
 import { BaseType } from '~/components/workflow/types'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
@@ -41,10 +39,6 @@ const PREVIEW_DEBOUNCE_MS = 250
 
 /**
  * What every write on this surface invalidates afterwards.
- *
- * 🛑 `completeBuild` writes on the QUIET lane, so it emits no `record:created`
- * frame and no open build list learns about it. The same set `build-run-card`
- * invalidates, for the same reason.
  *
  * The part's own QoH is NOT here on purpose: `batchRecalculateQoH` ends in
  * `publishFieldValueUpdates` with no `excludeSocketId`, and the client merges
@@ -59,17 +53,11 @@ const PREVIEW_DEBOUNCE_MS = 250
  */
 export function useBuildRefresh(onSuccess?: () => void): () => Promise<void> {
   const utils = api.useUtils()
-  const buildDefId = useResourceProperty('build', 'id')
 
   return useCallback(async () => {
-    await Promise.all([
-      utils.builds.list.invalidate(),
-      buildDefId
-        ? utils.record.listFiltered.invalidate({ entityDefinitionId: buildDefId })
-        : Promise.resolve(),
-    ])
+    await utils.builds.list.invalidate()
     onSuccess?.()
-  }, [utils, buildDefId, onSuccess])
+  }, [utils, onSuccess])
 }
 
 /** A run `Plan and open...` has raised, handed up for the completion dialog. */
@@ -106,7 +94,7 @@ interface BuildPartFormProps {
  *
  * | Button | Calls | Result |
  * | --- | --- | --- |
- * | `Plan` | `builds.create` | a `planned` run; writes nothing; opens its drawer |
+ * | `Plan` | `builds.create` | a `planned` run; writes nothing; opens its sheet |
  * | `Plan and open...` | `builds.create` | the run, with the full completion dialog on it |
  * | `Build now` | `builds.buildNow` | create + start + complete; ledger posted |
  *
@@ -128,7 +116,6 @@ export function BuildPartForm({
 
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
-  const openRecord = useOpenRecord()
 
   const previewQuantity = useDebouncedPositive(quantity, PREVIEW_DEBOUNCE_MS)
 
@@ -228,7 +215,7 @@ export function BuildPartForm({
     const raised = await raise()
     if (!raised) return
     onDone()
-    openRecord?.(raised.recordId as RecordId)
+    openBuildSheet(raised.buildId)
   }
 
   const handlePlanAndOpen = async () => {
@@ -257,13 +244,13 @@ export function BuildPartForm({
       // at a 200 rather than as an error. The run EXISTS and is `in_progress`
       // with no movements written; saying only "failed" is what makes somebody
       // press the button again and raise a duplicate against the same
-      // components. So the toast names it and the drawer opens on it.
+      // components. So the toast names it and the sheet opens on it.
       if (outcome.status === 'left_in_progress') {
         toastError({
-          title: `${outcome.build.number ?? 'The build'} was raised but not completed`,
+          title: `${outcome.build.number} was raised but not completed`,
           description: outcome.reason,
         })
-        openRecord?.(outcome.build.recordId as RecordId)
+        openBuildSheet(outcome.build.buildId)
       }
     } catch {
       // onError above already surfaced the toast — this arm wrote nothing.

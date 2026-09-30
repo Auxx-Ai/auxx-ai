@@ -6,7 +6,7 @@
  * `plans/money/tasks/45-batch-only-builds.md` section 4, and section 10.8 for
  * why `skipped` is its own bucket.
  *
- * Every build carrying `build_batch_run = N`, and one rule per status:
+ * Every build carrying `batchRun = N`, and one rule per status:
  *
  * | status | action |
  * | --- | --- |
@@ -87,7 +87,7 @@ const PROGRESS_EVERY = 25
 /**
  * Cancel or reverse every build one run raised.
  *
- * @param runNumber the `build_batch_run` to undo. A number no build carries is
+ * @param runNumber the `batchRun` to undo. A number no build carries is
  *   an empty summary, never an error.
  * @returns what happened per build, never a throw. `err` is reserved for the
  *   failures that touched NOTHING AT ALL, such as a read that could not run.
@@ -186,44 +186,34 @@ export async function undoBatchRunBuild(
     return
   }
 
-  if (build.status === 'completed') {
-    // 🛑 Classified, not caught (45 section 10.8). Both of these are what the
-    // rules ask for and neither is a failure.
-    if (build.alreadyReversed) {
-      summary.skipped.push(entry(build, 'skipped', 'This build has already been reversed'))
-      return
-    }
-    if (build.isReversal) {
-      summary.skipped.push(entry(build, 'skipped', 'This build is itself a reversal'))
-      return
-    }
-
-    const reversed = await reverseBuild(db, organizationId, userId, {
-      buildId: build.buildId,
-      reason: `Reversed by the undo of batch run ${runNumber}`,
-    })
-    if (reversed.isErr()) {
-      // The backstop: the pre-check above and this call are not one
-      // transaction, so a reversal written in between still reads as a skip.
-      const error = reversed.error
-      if (error instanceof ConflictError || error instanceof BadRequestError) {
-        summary.skipped.push(entry(build, 'skipped', error.message))
-        return
-      }
-      summary.failed.push(entry(build, 'failed', error.message))
-      return
-    }
-
-    const result = entry(build, 'reversed', null)
-    result.reversalBuildId = reversed.value.buildId
-    summary.reversed.push(result)
+  // Completed. Classified, not caught (45 §10.8): neither of these is a failure.
+  if (build.alreadyReversed) {
+    summary.skipped.push(entry(build, 'skipped', 'This build has already been reversed'))
+    return
+  }
+  if (build.isReversal) {
+    summary.skipped.push(entry(build, 'skipped', 'This build is itself a reversal'))
     return
   }
 
-  // A build whose status value is missing entirely. Never defaulted (see
-  // `resolveBuildStatus`), because guessing here would either cancel a run that
-  // is live or reverse one that wrote nothing.
-  summary.failed.push(entry(build, 'failed', 'This build has no status, so it cannot be undone'))
+  const reversed = await reverseBuild(db, organizationId, userId, {
+    buildId: build.buildId,
+    reason: `Reversed by the undo of batch run ${runNumber}`,
+  })
+  if (reversed.isErr()) {
+    // The pre-check and this call are not one transaction, so a reversal written between reads as a skip.
+    const error = reversed.error
+    if (error instanceof ConflictError || error instanceof BadRequestError) {
+      summary.skipped.push(entry(build, 'skipped', error.message))
+      return
+    }
+    summary.failed.push(entry(build, 'failed', error.message))
+    return
+  }
+
+  const result = entry(build, 'reversed', null)
+  result.reversalBuildId = reversed.value.buildId
+  summary.reversed.push(result)
 }
 
 function entry(

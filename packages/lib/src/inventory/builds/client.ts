@@ -9,6 +9,8 @@
  * (`docs/lib-module-guide.md` section 7).
  */
 
+import type { BuildStatusValue } from '@auxx/database/enums'
+
 /**
  * The drift between a part's live cost and its frozen standard, in minor units.
  *
@@ -28,8 +30,8 @@ export function standardCostDrift(
 //
 // plans/products/build/01-build-plan.md section 3, README B2/B6/B7/B8.
 
-/** The four values `build_status` can hold. Mirrors `BuildStatus` in the registry. */
-export type BuildStatusValue = 'planned' | 'in_progress' | 'completed' | 'canceled'
+/** The four values `Build.status` can hold (the `BuildStatus` pg enum). */
+export type { BuildStatusValue }
 
 /** Human labels, so a caller never has to re-derive them from the enum. */
 export const BUILD_STATUS_LABELS: Readonly<Record<BuildStatusValue, string>> = Object.freeze({
@@ -38,24 +40,6 @@ export const BUILD_STATUS_LABELS: Readonly<Record<BuildStatusValue, string>> = O
   completed: 'Completed',
   canceled: 'Canceled',
 })
-
-/**
- * Read a stored `build_status` option value, or `null`.
- *
- * 🛑 **Unlike {@link resolvePartKind}, an absent status does NOT fall back.** A
- * part with no `part_kind` is an unclassified part and reading it as a
- * `component` is the conservative direction; a build with no status is a row
- * whose lifecycle nobody can state, and defaulting it to `planned` would let
- * `completeBuild` write an append-only ledger entry against it. `build_status`
- * carries `defaultValue: 'planned'` and `createBuild` sets it explicitly, so
- * `null` here is a data problem, and the write paths refuse it.
- */
-export function resolveBuildStatus(raw: string | null | undefined): BuildStatusValue | null {
-  if (raw === 'planned' || raw === 'in_progress' || raw === 'completed' || raw === 'canceled') {
-    return raw
-  }
-  return null
-}
 
 /** `planned` is the only status a run can be started from. */
 export function canStartBuild(status: BuildStatusValue | null): boolean {
@@ -91,9 +75,7 @@ export function canCancelBuild(status: BuildStatusValue | null): boolean {
  * build is *cancellable but never silently amendable*
  * (plans/products/13-order-build-reconciliation.md §1.0(a) and §1.5).
  *
- * `completed` and `canceled` are terminal for the usual reasons — B6/B8 — and a
- * `null` status is refused like every other write gate here
- * ({@link resolveBuildStatus}).
+ * `completed` and `canceled` are terminal for the usual reasons — B6/B8.
  */
 export function canAmendBuild(status: BuildStatusValue | null): boolean {
   return status === 'planned'
@@ -279,6 +261,8 @@ export type {
   BuildComponentLine,
   BuildComponentOverride,
   BuildComponentPlan,
+  BuildRecord,
+  BuildSourceValue,
 } from './types'
 
 /**
@@ -312,6 +296,8 @@ export function skipReasonLabel(skip: {
   }
 }
 
+// The status and source vocabularies with their labels and colours, for the build sheet.
+export { BuildSource, BuildStatus } from '../../resources/registry/enum-values'
 /**
  * The backfill contract, re-exported for the browser.
  *
@@ -338,7 +324,6 @@ export {
   type BackfillRunSummary,
   type BackfillStatus,
 } from './backfill-types'
-
 export type {
   BackflushBuild,
   BackflushPlan,

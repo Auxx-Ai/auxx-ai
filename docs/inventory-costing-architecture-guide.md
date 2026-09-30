@@ -2,7 +2,7 @@
 
 # Inventory, Purchasing & Costing Architecture Guide
 
-**Last Updated:** 2026-09-19
+**Last Updated:** 2026-09-29
 
 > [`plans/accounting/TARGET.md`](../plans/accounting/TARGET.md) is the statement of intent this
 > subsystem was built to, and it has landed: the monthly inventory assertion is gone and every
@@ -122,7 +122,7 @@ Seeded in `packages/lib/src/seed/entity-seeder/constants.ts`:
 | `vendor_bill` | ✅ | What we are being charged. Totals are **transcribed**, never computed. |
 | `vendor_bill_line` | ❌ | `quantityBilled`, `unitPriceBilled`, the `purchaseOrderLine` match key. |
 | `StockMovement` | — | The ledger: a Drizzle table, not an entity (plans/mrp/20). Append-only (§6). |
-| `build` | ✅ | A production run: consume components, produce a finished good. |
+| `Build` | — | A production run: consume components, produce a finished good. A Drizzle table, not an entity and not a registered resource (plans/mrp/23, §8). |
 | `part` | ✅ | The one item register, labelled *Parts & Services* (singular *Item*): everything bought, stocked or sold. Carries `partKind`, QoH, the five frozen standard-cost fields, and the selling fields `part_sell_price` / `part_markup` / `part_taxable` / `part_sellable` (§7.1). Sell and buy lines both point at it through their part relation. |
 | `vendor_part` | ❌ | The `(part, supplier)` price row. Prefill and provenance only. |
 | `gl_account` | ❌ | Our chart of accounts. The provider's id hangs off it via `RecordIdentity`. |
@@ -339,8 +339,8 @@ Every write goes through `writeStockMovements` in the caller's transaction, then
 | `adjustStock` | `adjust` (±) | interactive |
 | `setCount` | `initial` (±, once per part, at the ledger start, carrying the count fact) or `adjust` (±) dated the count day — the one count door; `openStockBalance` and `bulkOpenStockBalance` call it (111 D21) | interactive |
 | `reanchorInitials` | no row — re-dates and re-quantifies a part's `initial` when older history arrives (§6.2) | quiet |
-| `completeBuild` | `build_consume` (−) **and** `build_produce` (+) | quiet, one transaction |
-| `reverseMovement` / `reverseBuild` | the negating row | quiet |
+| `completeBuild` | `build_consume` (−) **and** `build_produce` (+) | one transaction with the `Build` row |
+| `reverseMovement` / `reverseBuild` | the negating row | `reverseBuild`: one transaction with the reversing `Build` row |
 | `fillPendingCost` | no row — fills the cost onto a `pending` row, once (§7.4) | quiet |
 | `pricePendingMovements` | no row — calls `fillPendingCost` for a part's pending rows and posts their documents (§7.2, §9.3) | quiet |
 | `restampMovementAccounts` (via `fixMovementAccounts`) | no row — rewrites `glRole` on **unposted** rows whose part changed kind, under the commit lock; posted rows keep their stamp and the part gets one `inventory_account_fix` entry instead (plans/mrp/17 §5.2) | `UPDATE StockMovement` |
@@ -387,8 +387,8 @@ same day the close files the row under (§9.5). A document whose local month is 
 
 ### 6.4 The generic delete door, and why `updatable: false` does not close it
 
-**Every entity in this subsystem is `EntityInstance`-backed (§3; the movement ledger is the one
-table, §6). The consequence nobody decided on is that each one inherits the generic records table — with its row
+**Every entity in this subsystem is `EntityInstance`-backed (§3; the movement ledger and builds
+are tables, §6 and §8). The consequence nobody decided on is that each one inherits the generic records table — with its row
 delete and its bulk delete — for free.** Everything else in this guide reasons about the money
 doors (receive, bill, match, reverse). This is the door that arrived with the storage choice, and
 it is the one that had no guard for the first six weeks of this subsystem's life.
@@ -428,7 +428,7 @@ is also why a pre-delete cascade must delete its children through `UnifiedCrudHa
 not raw SQL, or those rules never fire.
 
 🛑 **A registered guard is not a working guard, and the fourth instance of this shape was the
-guard itself.** `guardBuildDelete` shipped in #1995 registered, reviewed and green across 260
+guard itself.** `guardBuildDelete` (gone with the build entity, plans/mrp/23) shipped in #1995 registered, reviewed and green across 260
 tests, and was **inert in production**: it read `event.values.build_reversal_of` with a
 `typeof === 'string'` test, while `captureEventData` hands a RELATIONSHIP over as a one-element
 **array**. Deleting a reversal build in dev succeeded and cascaded its 9 stock movements. The same
@@ -476,18 +476,18 @@ action in a browser and then asking the database whether it had happened. Budget
 
 | Entity | `isVisible` | Pre-delete hook |
 | --- | --- | --- |
-| `part` | **true** | ✅ `guardPartDelete` — refuses when a movement sits in a settled period; cascades `subpart` + `vendor_part`; leaves the vendor documents |
-| `build` | **true** | ✅ `guardBuildDelete` — refuses on a settled movement **or** on either end of a reversal pair |
+| `part` | **true** | ✅ `guardPartDelete` — refuses while any `Build` names the part (its `partId` FK is `no action`), or when a movement sits in a settled period; cascades `subpart` + `vendor_part`; leaves the vendor documents |
 | `purchase_order` | **true** | ✅ `guardPurchaseOrderDelete` — refuses when any `vendor_bill` names it, or when a receipt under any of its lines is settled; cascades its lines |
 | `vendor_bill` | **true** | ✅ `guardVendorBillDelete` — refuses on `posted`/`partially_paid`/`paid` or on a settled `billedAt`; cascades its lines |
 | `subpart`, `vendor_part`, `purchase_order_line`, `vendor_bill_line`, `gl_account` | false | n/a — not reachable from a records table, only through a parent |
 
 **Movements go with their parent in `deleteEntityInstances`, not by cascade (plans/mrp/20 S9).**
 The table's parent FKs are `no action`, so the one record-delete seam calls `deleteMovementsFor`
-for a dying part, build, PO line or fulfillment line (children, reversals and facts included),
-after the guards above, and settles the surviving parts and lines once the delete commits.
+for a dying part, PO line or fulfillment line (children, reversals and facts included),
+after the guards above, and settles the surviving parts and lines once the delete commits. A
+build is not a record and has no delete at all (§8).
 
-All four share `accounting/ledger/periods/settled-periods.ts` (`settledPeriodsFor`) and, where they read the ledger,
+All three share `accounting/ledger/periods/settled-periods.ts` (`settledPeriodsFor`) and, where they read the ledger,
 `field-hooks/pre/guarded-movements.ts`. Both were extracted precisely so the reasoning below
 survives being reused — a copied predicate keeps the behaviour and loses the reason.
 
@@ -501,7 +501,7 @@ discovery six weeks later.
 when the child's post-delete hook re-projects **the document being deleted** — `vendor_bill`, whose
 `rematchAfterBillLineDelete` calls `markOrRematchBill` on the dying bill once per line, and the
 existing `invoices`/`orders` guards. Do **not** suppress when it lands on a **surviving** record —
-`part`, `build` and `purchase_order`, where the post-delete settle of the surviving parts
+`part` and `purchase_order`, where the post-delete settle of the surviving parts
 (`inventory/movements/settle-after-delete.ts`) is the entire integration and suppressing it reproduces the stale-rolled-cost bug the part guard exists to fix.
 Nothing at the call site distinguishes the two cases.
 
@@ -803,7 +803,7 @@ estimate is edited there, so its feedback belongs there.
 
 ## 8. The Make Side — the build event
 
-`packages/lib/src/inventory/builds/`. A `build` records: consume the components, produce the
+`packages/lib/src/inventory/builds/`. A build records: consume the components, produce the
 finished good, at a cost that sticks. The standard cost it values both legs at is resolved from
 `packages/lib/src/inventory/costing/`, which owns all three costs (§7.1).
 
@@ -816,21 +816,62 @@ completeBuild()  —— ONE transaction ——▶  −20  400Lbs Motor Assembly 
   ledger never holds an intermediate state. `1320 WIP` exists in the GL entry — where the
   variance becomes visible — and nets to zero on every completed build.
 - **A build is reversed, never edited.** Same rule as the movement it writes.
-- **`build_status` is guarded** on the field chain, for `['in_progress', 'completed', 'canceled']`.
-  `planned` is excluded *structurally*: it is the field's `defaultValue` and `applyDefaults`
-  injects it into every create before the field chain, which has no create exemption — guarding
-  it would refuse every build create.
-- 🛑 **The guard is registered on the field chain ONLY**, unlike quote/invoice/PO. See §11.
-- **Residual:** `completed → planned` by hand stays reachable. Closing it needs a *transition*
-  guard, which the field chain cannot express (`existingValue` is hardcoded `undefined` on the
-  single-field path), so writing one would produce an inert guard.
+
+**A build is a row of `Build`** (`packages/database/src/db/schema/build.ts`), a plain Drizzle
+table since plans/mrp/23: not an `EntityInstance`, not a registered resource, no `FieldValue`s,
+no custom fields, no records page. Same reasons as the ledger (§6): it grows with sales (the order
+trigger, backfill and backflush raise most builds), every column but `notes` has one code writer,
+and the double-reversal guard needs a constraint `FieldValue` cannot carry. A build opens as a
+sheet from where it is used: the part's stock tab, the order, the batch-run card, the ledger's
+source link. The field-chain guards (`build-status-guard`, `build-delete-guard`, `build-hooks`)
+and the quiet write lane (`write-lane.ts`) went with the entity.
+
+- **Only the builds module writes it.** `build-writes.ts` (`insertBuilds`, `updateBuild`) is the
+  primitive layer and checks nothing. The writers on top of it
+  (`build-mutations.ts`, `complete-build.ts`, `record-completed-builds.ts`, `price-build.ts`,
+  `reverse-build.ts`, and the batch, undo and order-reconcile paths that call them) own every
+  rule. A writer puts the build row and its movements in ONE transaction; after the commit it
+  settles the movements (`settleStockMovements`, §6) and announces the builds
+  (`publishBuildsChanged`).
+- **Status is the transition matrix in `client.ts`, checked on a locked row.** `lockBuild`
+  (`SELECT … FOR UPDATE`), then `assertBuildStatus` with the action's predicate: start from
+  `planned`; complete or cancel from `planned` or `in_progress`; amend the planned quantity from
+  `planned` only; reverse from `completed`. A refusal is a `ConflictError`. The lock is what
+  serialises two completions of one build: the loser reads the winner's status. There is no other
+  status door; the one column a person edits freely is `notes` (`updateBuildNotes`).
+- **Write-once columns.** `BuildPatch` cannot name `number`, `partId`, `source`, `orderId`,
+  `periodStart` / `periodEnd`, `batchRun` or `reversalOfBuildId`: they are set on insert or never.
+  `orderRevision` is re-stamped only by `amendPlannedBuildQuantity`, in the same update as the
+  quantity.
+- **A double reversal is a constraint.** `Build_reversalOfBuildId_key` is a unique partial index on
+  `reversalOfBuildId`, and `insertBuilds` rethrows its violation as a `ConflictError`. The
+  violation aborts the transaction, so `reverseBuild` inserts the reversing build **before** its
+  movements. `hasBuildReversal` is a friendly pre-check only. A reversal is never itself reversed.
+- **Numbers.** `B-0001` from the org's `build` `RecordSequence`, unique per org
+  (`Build_org_number_key`). `insertBuilds` takes one `createRange` per call on its own connection,
+  so a rolled-back transaction burns its numbers. A batch or backflush run is the integer
+  `batchRun`, one `build_batch` sequence number per run.
+- **Money columns are `numeric(20,3)` minor units**, null until priced; quantities are
+  `numeric(20,6)`. A reversing build carries its original's produced and scrapped
+  quantities and its five costs, negated, and plans nothing.
+- **There is no build delete.** A planned or in-progress run is cancelled, a completed one
+  reversed. Part delete refuses while any build names the part (`guardPartDelete`); an order
+  delete nulls `orderId` (`set null`).
+- 🛑 **`StockMovement.buildId` has no foreign key in this release.** The schema migration (drizzle
+  `0411`) runs before data migration 202 deletes the old builds, so an FK to `Build` would fail
+  wherever build movements still hold `EntityInstance` ids. It stays an indexed plain column; the
+  FK follows once 202 has run everywhere.
+- **Realtime is `build:changed`** on the org channel (`build-realtime.ts`): ids only, builds,
+  parts, orders and runs, 500 builds per frame. The parts' QoH frames still come from the settle.
+- **Permissions** are the MRP area: `mrp.view` to read (list, get, the sheet), `mrp.manage` for
+  every build action; the cost operations keep `assertEditEntity(part)`. The module checks nothing.
 
 ### 8.1 An order-raised build tracks its order
 
 An order raises the builds needed to fulfil it, through **one** raise door. The build is a
 **projection** of the order, not a snapshot: the order controls the build, a reconcile overwrites
 a human's edit, and coverage is the full ordered quantity. Divergence is stamped
-(`order_build_revision` / `build_order_revision`) and *shown* — drift is `true` only when both
+(`order_build_revision` on the order, `Build.orderRevision` on the build) and *shown* — drift is `true` only when both
 stamps exist and differ; a missing stamp is *unknown*, never *drifted*.
 
 `reconcile-policy.ts` decides and `reconcile-order-builds.ts` executes; the stamp ignores the
@@ -849,7 +890,7 @@ a `true` row.
 `backflush.ts` (111 D23/D24). With `inventory.backflush` on, the nightly `backflushJob` writes
 **one completed build per made part per local day** whose on hand ended that day below zero:
 quantity = the shortfall, `completedAt` = 23:59:59.999 of the day in `accounting.bookTimeZone`,
-`source: 'backflush'`, notes `Backflush for YYYY-MM-DD`, one `build_batch_run` per run so
+`source: 'backflush'`, notes `Backflush for YYYY-MM-DD`, one `batchRun` number per run so
 `undoBatchRun` undoes it. On demand over a range from `builds.runBackflush`, previewed by
 `previewBackflush` (same walk, nothing written). The order is parents first (reverse DFS
 post-order over the subpart graph, `backflush-planner.ts`), so a parent's consume legs land
@@ -863,9 +904,9 @@ nothing. `inventory.backflush` and `inventory.autoBuildFromOrders` are mutually 
 Backfill writes each `completed` build through `recordCompletedBuild`: raise, start and complete
 in ONE transaction, legs through `writeStockMovements`. Backflush walks a slice first and
 writes its builds through `recordCompletedBuilds`: every build of a batch (the slice, or
-`batchBuilds` cut at a day) in ONE transaction through the batched create
-(`resources/crud/create-entities-batch.ts`), `B-` numbers from one `createRange`, one QoH
-recalculation and one frame per def after the commit. A refused build refuses its batch; the
+`batchBuilds` cut at a day) in ONE transaction: one `insertBuilds` (one `B-` number range, 500-row
+inserts), one `writeStockMovements` for every leg, then one settle and one `build:changed`
+announcement after the commit. A refused build refuses its batch; the
 rest of the slice is then walked again build by build, so the refusal is one `failed` row and
 the rest land. Manual create → start → complete is unchanged.
 
@@ -1192,7 +1233,7 @@ an organization's books hostage.
 The rules a movement is checked against:
 
 🛑 **Period boundaries are INSTANTS derived from wall-clock midnights in
-`accounting.bookTimeZone`.** Membership is `StockMovement.effectiveAt` and `build_completed_at`
+`accounting.bookTimeZone`.** Membership is `StockMovement.effectiveAt` and `Build.completedAt`
 — never `createdAt`, which records when auxx.ai learned of a row. A receipt logged at 7pm on
 January 31 in `America/New_York` is already February 1 in UTC, so a UTC-derived boundary puts
 month-edge activity in the wrong month: invisible except at a close, uncorrectable once the
@@ -1213,7 +1254,7 @@ hold one). The BOM CHILDREN are not excluded — `writeStockMovements` writes th
 all, so they correctly trip the rule above.
 
 **Build reversals are NOT filtered out.** `inventory/builds/reverse-build.ts` writes a *negated*
-`build_labor_cost` on a second build row, so any cumulative sum nets a reversal out on its own.
+`laborCost` on a second `Build` row, so any cumulative sum nets a reversal out on its own.
 Filtering would leave the original's absorption in the total and remove the correction that
 cancels it.
 
@@ -1270,11 +1311,11 @@ dispatches the native rules from it.
 **For a deliberately silent ledger write, use `quietSession(reason)`** — not `seedSession` (the
 reason string would be a lie), not `absorbedSession` (it needs a real named aggregator), and not
 a bare `publishEvents: false` (`silent-write-conformance.test.ts` scans for it and fails).
-`inventory/builds/write-lane.ts` is the reference. Add `{ coveredBy: '<publisher>' }` only when
-that publisher sends `records:changed` after commit for the rows AND their parts, builds and lines
-(the inverse lists); it then also shuts the display-column and inverse frames (realtime guide §5).
+`returns/salvage-writer.ts` (`salvageWriteSession`) is the reference. Add
+`{ coveredBy: '<publisher>' }` only when that publisher sends `records:changed` after commit for
+the rows AND the records at the other end of their relations (the inverse lists); it then also shuts the display-column and inverse frames (realtime guide §5).
 
-⚠️ **Movements fire no rule at all.** QoH and the line roll-ups move only because the caller runs
+⚠️ **Movements and builds fire no rule at all.** QoH and the line roll-ups move only because the caller runs
 `settleStockMovements(organizationId, touched)` after its commit; a writer that skips it leaves
 them stale.
 
@@ -1462,8 +1503,8 @@ Recorded because both documents still exist and a reader will otherwise trust th
 | Gap E §4.2 recommends `GlPosting` as a **real Drizzle table**, for a Postgres-enforced unique index and a three-line `INSERT … ON CONFLICT` claim step. | ✅ **Gap E was right, and the claim then moved.** `GlPosting` / `GlPostingLine` / `GlPostingSource` are tables and the superseded entity defs were **deleted** by entity migration 114 — but the claim is no longer a unique on `GlPosting`. It is `GlPostingSource_claim_key`: one live `subject` row per `(org, sourceKind, sourceId, occurrence)`. `gl_account` stays an `EntityInstance`, which is not an inconsistency: `RecordIdentity` is keyed on an instance and has no other addressing mode. |
 | Gap C §6.1's `rollStandardCost` formula (`standardMaterialCost = round(part_cost)`). | ❌ Superseded — see §7.2. The shipped roll sums children's `standardCost`, bottom-up, gated on `partKind`. |
 | Gap D §8 "purchase orders — later". | ❌ Stale. The buy side shipped ahead of it. |
-| `EntityTypeValues` / `EntityType` in `packages/database/src/enums.ts` | ⚠️ **Stale by thirteen types** — missing `order`, `purchase_order`, `vendor_bill`, `gl_account`, `build` and more. Its only consumer is a `z.enum` that system-seeded defs never reach, so nothing is broken. ⚠️ That file has a **destructive generator**; hand-edit it. |
-| `EntityRefKind` in `packages/sdk/src/root/tools/types.ts` | ⚠️ Stale — never gained `purchase_order` / `vendor_bill` / `gl_account` / `order` / `build`. **This one blocks work**: an installed app cannot declare a field against a kind not in the union, and hanging provider account ids off `gl_account` needs it. Different union from the one above; confusing them wastes a pass. |
+| `EntityTypeValues` / `EntityType` in `packages/database/src/enums.ts` | ⚠️ **Stale by thirteen types** — missing `order`, `purchase_order`, `vendor_bill`, `gl_account` and more. Its only consumer is a `z.enum` that system-seeded defs never reach, so nothing is broken. ⚠️ That file has a **destructive generator**; hand-edit it. |
+| `EntityRefKind` in `packages/sdk/src/root/tools/types.ts` | ⚠️ Stale — never gained `purchase_order` / `vendor_bill` / `gl_account` / `order`. **This one blocks work**: an installed app cannot declare a field against a kind not in the union, and hanging provider account ids off `gl_account` needs it. Different union from the one above; confusing them wastes a pass. |
 | `vendor_bill_balance` "computed from total and amountPaid" | ✅ **Closed.** `accounting/purchasing/vendor-bill-balance.ts` is the writer and the figure is `total − paid − credited − discounted` (74 D3), so a filter or sort on Balance now agrees with the payment card. |
 
 ---
@@ -1478,24 +1519,24 @@ Recorded because both documents still exist and a reader will otherwise trust th
 | `packages/lib/src/inventory/movements/` | `write-movements.ts` (`writeStockMovements`, the ONE writer, and `settleStockMovements`), `row.ts` (`toStockMovementRow`), `reads.ts` (the shared selects), `update-movements.ts` (the three in-place edits), `delete-movements.ts` (`deleteMovementsFor`), `settle-after-delete.ts`, `list-movements.ts` (the part inventory list), `fill-pending-cost.ts` (the one lane that prices a `pending` row), `initial-queries.ts` (`readPartInitials`), `reverse-movement.ts`, `client.ts` (`computeExtendedCost`, `resolveInventoryRoleForPartKind`), `types.ts` (`MovementRecord`) |
 | `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, and the writer of its revaluation), `revalue.ts` (the cost-only movement), `provisional-standard.ts` (`replaceProvisionalStandard`), `price-pending-movements.ts` (the pricer: `pending` rows valued and their documents posted), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages, now a report), `qoh.ts` (`batchRecalculateQoH`, the one QoH owner), `reanchor-initials.ts` (the count anchor re-derived), `dated-reads.ts` (`readPartNetThrough`, `readEarliestMovementAt`), `client.ts` (`absorbedRate`, `resolvePartKind`) |
 | `packages/lib/src/inventory/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `accruals.ts` (the pure receipt split), `adjust-stock.ts`, `set-count.ts` (the one count door), `set-count-preflight.ts`, `open-stock-balance.ts` and `bulk-opening-stock.ts` (its two callers), `opening-stock-subledger.ts`, `receipt-queries.ts`, `client.ts`, `guard.ts` |
-| `packages/lib/src/inventory/builds/` | `complete-build.ts` (the only movement writer in the module), `price-build.ts` (a pending build's last leg priced: stamp and post), `reverse-build.ts`, `build-mutations.ts`, `build-now.ts`, `build-queries.ts`, `reconcile-order-builds.ts`, `reconcile-policy.ts`, `drift-*.ts`, `auto-build-*.ts`, `backfill-*.ts`, `write-lane.ts`, `guard.ts` |
+| `packages/lib/src/inventory/builds/` | `build-writes.ts` (`insertBuilds` / `updateBuild`, the `Build` primitives, no checks), `build-queries.ts` (reads, `lockBuild`, `hasBuildReversal`), `build-row.ts` (`toBuildRecord`), `build-realtime.ts` (`publishBuildsChanged`), `client.ts` (the status matrix), `complete-build.ts` and `record-completed-builds.ts` (the completion writers), `price-build.ts` (a pending build's last leg priced: stamp and post), `reverse-build.ts`, `build-mutations.ts`, `build-now.ts`, `batch-run-queries.ts`, `reconcile-order-builds.ts`, `reconcile-policy.ts`, `drift-*.ts`, `auto-build-*.ts`, `backfill-*.ts`, `backflush*.ts`, `undo-*.ts`, `guard.ts` |
 | `packages/lib/src/inventory/relief/` | `relieve.ts` (`relieveFulfillmentLines`, the `sale` movement), `cogs-split.ts` (the three-way COGS debit), `relief-sweep.ts` (the stage-`price` handler), `backfill.ts` |
 | `packages/lib/src/inventory/bom/` | `subpart-graph.ts` (`loadSubpartGraph`, `MAX_BOM_DEPTH`) |
 | `packages/lib/src/inventory/tariffs/` | `tariff-schedule.ts`, `tariff-starters.ts`, `tariff-hts-general.ts`, `tariff-301-memberships.ts`, `adopt-tariff-starters.ts`, `resync-tariff-starters.ts`, `apply-tariff-schedule.ts`, `client.ts` |
 | `packages/lib/src/accounting/ledger/` | `builders/entry.ts` (`ACCOUNT_ROLES` / `ROLE_ACCOUNT_TYPES` / `ACCOUNT_ROLE_LABELS` — the ONLY role vocabulary), `builders/inventory-movement.ts`, `builders/doc-number.ts`, `post/post-entry.ts`, `post/post-inventory-movement.ts` (the one door for an inventory document), `post/post-inventory-document.ts` (a document from its valued rows), `post/sweep-unposted-inventory.ts` (the catch-up), `roles/resolve-roles.ts` (role → account, fails closed), `roles/regime.ts`, `chart/default-chart.ts`, `periods/`, `setup/book-time-zone.ts` |
 
 **Field hooks** — `recalculateStockStatus` (`field-hooks/post/inventory-triggers.ts`) and the
-four delete guards plus `findRelatedInstanceIds` (`field-hooks/pre/`) live outside `inventory/`
+three delete guards plus `findRelatedInstanceIds` (`field-hooks/pre/`) live outside `inventory/`
 because they are hooks, not module exports.
 
 **Registry & seed**
 
 - `packages/lib/src/seed/entity-seeder/constants.ts` — `SYSTEM_ENTITIES`
 - `packages/lib/src/resources/registry/resources/` — `purchase-order-fields.ts`,
-  `vendor-bill-fields.ts`, `build-fields.ts`, `gl-*-fields.ts`,
-  `vendor-payment*-fields.ts`
-- `packages/lib/src/data-migrations/migrations/` — 108 purchasing, 109 build (inert),
-  110 build-visible, 111 build drift, 112 record-documents
+  `vendor-bill-fields.ts`, `gl-*-fields.ts`, `vendor-payment*-fields.ts`
+- `packages/database/src/db/schema/` — `stock-movement.ts`, `build.ts` (the two tables)
+- `packages/lib/src/data-migrations/migrations/` — 201 stock-movement table, 202 reset builds
+  (every EAV build, its movements and postings deleted; plans/mrp/23 §5). 108–112 are retired.
 
 **Surfaces**
 

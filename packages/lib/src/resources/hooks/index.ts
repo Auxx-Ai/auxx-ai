@@ -1,7 +1,6 @@
 // packages/lib/src/resources/hooks/index.ts
 
 export { BANK_DEPOSIT_HOOKS } from './bank-deposit-hooks'
-export { BUILD_HOOKS } from './build-hooks'
 export { autoSetCreatedBy, COMMON_HOOKS } from './common-hooks'
 export { CONTACT_HOOKS } from './contact-hooks'
 export { CREDIT_MEMO_HOOKS } from './credit-memo-hooks'

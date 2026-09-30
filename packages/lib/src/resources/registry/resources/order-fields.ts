@@ -796,37 +796,6 @@ export const ORDER_FIELDS = defineResourceFields({
     description: 'Work orders raised off this order — linked by hand (D4 defers the conversion)',
   },
 
-  // Reverse relationship: builds (from build.order). The `build` side lands
-  // with entity migration 109; both halves are created in that one pass, so
-  // `linkNewRelationships` resolves this immediately.
-  builds: {
-    id: toFieldId('builds'),
-    key: 'builds',
-    label: 'Builds',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'order_builds',
-    systemSortOrder: 'aK',
-    showInPanel: false, // has_many inverse; surfaced from the build side
-    showInDialogs: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'build:order' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'unlink',
-      isInverse: true,
-    },
-    description:
-      'Builds raised to satisfy this order — what "cancel the builds for this order" looks up',
-  },
-
   /**
    * The shipment records: one `fulfillment` per dispatch `money.fulfillOrder`
    * (or a channel connector) creates (plans/money/tasks/55-shipment-lines.md).
@@ -885,8 +854,8 @@ export const ORDER_FIELDS = defineResourceFields({
   /**
    * The order's CURRENT production-demand fingerprint (plans/products/13 Model A+).
    *
-   * Maintained by `builds/drift-reconciler.ts` and compared against a build's
-   * `build_order_revision` to answer "has this order changed since its builds
+   * Maintained by `builds/drift-reconciler.ts` and compared against the revision a
+   * build stores to answer "has this order changed since its builds
    * were raised". Opaque — a SHA-256 hex string, never parsed, only compared.
    *
    * `updatable: false` and `creatable: false`: the reconciler is the only writer,
