@@ -16,6 +16,7 @@ import { publishLinesUpdated } from './realtime'
 import {
   createStoredLine,
   deleteStoredLine,
+  type LineStore,
   readInvoiceStatus,
   readStoredLines,
   writeStoredLine,
@@ -40,17 +41,18 @@ const RECOMPUTE_AFTER_DELETE = {
   purchase_order: 'purchase_order',
 } as const satisfies Partial<Record<LineDocumentType, string>>
 
-function handlerFor(
+function storeFor(
   db: Database,
   organizationId: string,
   userId: string,
   options: LineWriteOptions
-): UnifiedCrudHandler {
+): LineStore {
   // No socket: the acting tab's other line readers (field store, record lists) still need
   // the per-field frames; only `lines:updated` excludes it.
-  return new UnifiedCrudHandler(organizationId, userId, db, undefined, {
+  const handler = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
     enforceRecordLimit: options.enforceRecordLimit,
   })
+  return { db, organizationId, handler }
 }
 
 function parsePatch(documentType: LineDocumentType, patch: unknown): LinePatch {
@@ -109,14 +111,14 @@ async function readAllOwned(db: Database, organizationId: string, ref: LineDocum
 
 /** Rewrite `sortOrder = index` for every line whose stored position differs. */
 async function writePositions(
-  handler: UnifiedCrudHandler,
+  store: LineStore,
   documentType: LineDocumentType,
   ordered: Array<Pick<Line, 'id' | 'sortOrder'>>
 ): Promise<string[]> {
   const moved: string[] = []
   for (const [index, line] of ordered.entries()) {
     if (line.sortOrder === index) continue
-    await writeStoredSortOrder(handler, documentType, line.id, index)
+    await writeStoredSortOrder(store, documentType, line.id, index)
     moved.push(line.id)
   }
   return moved
@@ -148,18 +150,16 @@ export async function createLines(
       }
       const tail = existing.reduce((max, line) => Math.max(max, line.sortOrder ?? -1), -1) + 1
 
-      const handler = handlerFor(db, organizationId, userId, options)
+      const store = storeFor(db, organizationId, userId, options)
       const created: string[] = []
       try {
         for (const [index, patch] of patches.entries()) {
-          created.push(
-            await createStoredLine(handler, documentType, documentId, patch, tail + index)
-          )
+          created.push(await createStoredLine(store, documentType, documentId, patch, tail + index))
         }
       } catch (error) {
         // Best effort: a failed cleanup must not mask the original error.
         for (const id of [...created].reverse()) {
-          await deleteStoredLine(handler, documentType, id).catch(() => {})
+          await deleteStoredLine(store, documentType, id).catch(() => {})
         }
         throw error
       }
@@ -171,7 +171,7 @@ export async function createLines(
         const at = list.indexOf(anchor) + 1
         if (at < list.length) {
           const createdRows = created.map((id, index) => ({ id, sortOrder: tail + index }))
-          moved = await writePositions(handler, documentType, [
+          moved = await writePositions(store, documentType, [
             ...list.slice(0, at),
             ...createdRows,
             ...list.slice(at),
@@ -242,9 +242,9 @@ async function writeUpdates(
   const ids = [...new Set(parsed.map((update) => update.lineId))]
   await assertOnDocument(db, organizationId, ref, ids)
 
-  const handler = handlerFor(db, organizationId, userId, options)
+  const store = storeFor(db, organizationId, userId, options)
   for (const update of parsed) {
-    await writeStoredLine(handler, ref.documentType, update.lineId, update.patch)
+    await writeStoredLine(store, ref.documentType, update.lineId, update.patch)
   }
 
   const lines = await readLines(db, organizationId, { documentType: ref.documentType, ids })
@@ -272,8 +272,8 @@ export async function reorderLines(
       await assertOnDocument(db, organizationId, input, orderedIds)
 
       const current = await readLines(db, organizationId, { documentType, ids: orderedIds })
-      const handler = handlerFor(db, organizationId, userId, options)
-      const moved = await writePositions(handler, documentType, current)
+      const store = storeFor(db, organizationId, userId, options)
+      const moved = await writePositions(store, documentType, current)
 
       const lines = await readLines(db, organizationId, { documentType, ids: orderedIds })
       const movedSet = new Set(moved)
@@ -319,7 +319,7 @@ export async function deleteLines(
         }
       }
 
-      const handler = handlerFor(db, organizationId, userId, options)
+      const store = storeFor(db, organizationId, userId, options)
       const deleted: string[] = []
       let failure: unknown
       for (const id of ids) {
@@ -327,9 +327,9 @@ export async function deleteLines(
           if (isInvoice) {
             await releaseLineAllocations(db, organizationId, { invoiceLineItemId: id })
             // This command runs the recompute and the projection sync itself, below.
-            await deleteStoredLine(handler, documentType, id, { suppressPostDeleteHooks: true })
+            await deleteStoredLine(store, documentType, id, { suppressPostDeleteHooks: true })
           } else {
-            await deleteStoredLine(handler, documentType, id)
+            await deleteStoredLine(store, documentType, id)
           }
           deleted.push(id)
         } catch (error) {

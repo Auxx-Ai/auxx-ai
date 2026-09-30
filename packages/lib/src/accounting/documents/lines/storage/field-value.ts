@@ -5,6 +5,7 @@
 import type { Database, Transaction } from '@auxx/database'
 import type { RecordId } from '@auxx/types/resource'
 import { toRecordId } from '@auxx/types/resource'
+import { UnprocessableEntityError } from '../../../../errors'
 import type { FileValue } from '../../../../field-values/converters/json'
 import type { UnifiedCrudHandler } from '../../../../resources/crud/unified-handler'
 import { CREDIT_MEMO_LINE_FIELDS } from '../../../../resources/registry/resources/credit-memo-line-fields'
@@ -16,6 +17,7 @@ import { pickSystemAttributes } from '../../../../resources/registry/system-attr
 import {
   readSystemRecords,
   type SystemRecord,
+  systemDefId,
   systemFields,
 } from '../../../../resources/system-records'
 import {
@@ -386,9 +388,30 @@ function readCell(record: SystemRecord<string>, column: Column<string>): unknown
   }
 }
 
-/** The line's `RecordId`, as the crud layer and the field-value service take it. */
-export function lineRecordId(documentType: LineDocumentType, lineId: string): RecordId {
-  return toRecordId(KIND_STORAGE[documentType].entity.lineEntityType, lineId)
+/** The crud handler plus what resolving a line's canonical `RecordId` takes. */
+export interface LineStore {
+  db: Database
+  organizationId: string
+  handler: UnifiedCrudHandler
+}
+
+/**
+ * The line's `RecordId` under its `EntityDefinition` id. The field-value layer resolves hooks by
+ * that id; a `line_item:<id>` alias finds no resource and skips every pre-hook and derive hook.
+ */
+export async function lineRecordId(
+  store: Pick<LineStore, 'db' | 'organizationId'>,
+  documentType: LineDocumentType,
+  lineId: string
+): Promise<RecordId> {
+  const { lineEntityType } = KIND_STORAGE[documentType].entity
+  const defId = await systemDefId(store.db, store.organizationId, lineEntityType)
+  if (!defId) {
+    throw new UnprocessableEntityError(
+      `The ${lineEntityType} entity is not provisioned for this organization`
+    )
+  }
+  return toRecordId(defId, lineId)
 }
 
 /** A patch as `{ attr: value }`, relationships as `RecordId`s. Keys the kind lacks are refused upstream. */
@@ -412,7 +435,7 @@ export function patchToValues(
 
 /** Create one line through the crud handler, so pre-create guards and derive hooks fire. */
 export async function createStoredLine(
-  handler: UnifiedCrudHandler,
+  { handler }: LineStore,
   documentType: LineDocumentType,
   documentId: string,
   patch: LinePatch,
@@ -433,26 +456,26 @@ export async function createStoredLine(
  * into a `failed` result; this path throws it, as `fieldValue.set` always has.
  */
 export async function writeStoredLine(
-  handler: UnifiedCrudHandler,
+  store: LineStore,
   documentType: LineDocumentType,
   lineId: string,
   patch: LinePatch
 ): Promise<void> {
-  const recordId = lineRecordId(documentType, lineId)
+  const recordId = await lineRecordId(store, documentType, lineId)
   for (const [fieldId, value] of Object.entries(patchToValues(documentType, patch))) {
-    await handler.fieldValueService.setValueWithBuiltIn({ recordId, fieldId, value })
+    await store.handler.fieldValueService.setValueWithBuiltIn({ recordId, fieldId, value })
   }
 }
 
 /** Write one line's sort order. */
 export async function writeStoredSortOrder(
-  handler: UnifiedCrudHandler,
+  store: LineStore,
   documentType: LineDocumentType,
   lineId: string,
   sortOrder: number
 ): Promise<void> {
-  await handler.fieldValueService.setValueWithBuiltIn({
-    recordId: lineRecordId(documentType, lineId),
+  await store.handler.fieldValueService.setValueWithBuiltIn({
+    recordId: await lineRecordId(store, documentType, lineId),
     fieldId: KIND_STORAGE[documentType].entity.sortAttr,
     value: sortOrder,
   })
@@ -460,12 +483,12 @@ export async function writeStoredSortOrder(
 
 /** Delete one line through the crud handler, so pre-delete guards and post-delete marks fire. */
 export async function deleteStoredLine(
-  handler: UnifiedCrudHandler,
+  store: LineStore,
   documentType: LineDocumentType,
   lineId: string,
   options: { suppressPostDeleteHooks?: boolean } = {}
 ): Promise<void> {
-  await handler.delete(lineRecordId(documentType, lineId), options)
+  await store.handler.delete(await lineRecordId(store, documentType, lineId), options)
 }
 
 /** The invoice's lifecycle status, for the delete arm's draft check. */
