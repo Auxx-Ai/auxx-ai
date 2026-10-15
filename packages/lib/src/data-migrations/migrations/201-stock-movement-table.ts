@@ -100,6 +100,8 @@ async function moveOrg(
   organizationId: string,
   movementDefId: string
 ): Promise<{ copied: number; orphans: number; partIds: string[] }> {
+  // The def's cascade FK-checks every deleted instance; 237k of them outrun the pool's 30s timeout.
+  await tx.execute(sql`SET LOCAL statement_timeout = 0`)
   const f = await movementFieldIds(tx, organizationId, movementDefId)
   const field = (key: MovementKey) => sql`${f[key] ?? null}::text`
   const rel = (key: MovementKey) =>
