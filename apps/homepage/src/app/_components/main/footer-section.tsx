@@ -16,6 +16,10 @@ const links = [
         href: '/platform/messaging',
       },
       {
+        title: 'Auxx Builder',
+        href: '/builder',
+      },
+      {
         title: 'Dispatch',
         href: '/platform/dispatch',
       },

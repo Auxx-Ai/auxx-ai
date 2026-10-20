@@ -1,30 +1,5 @@
 'use client'
-import {
-  BarChart3,
-  BookOpen,
-  Bot,
-  Bug,
-  Cloud,
-  Code,
-  Database,
-  Fan,
-  GitBranch,
-  Headset,
-  HelpCircle,
-  Library,
-  Menu,
-  MessagesSquare,
-  Newspaper,
-  Plug,
-  Send,
-  Shield,
-  ShoppingBag,
-  Sparkles,
-  Truck,
-  Users,
-  Wrench,
-  X,
-} from 'lucide-react'
+import { Menu, X } from 'lucide-react'
 import Link from 'next/link'
 import React from 'react'
 import { Logo } from '~/components/logo'
@@ -46,212 +21,23 @@ import {
 } from '~/components/ui/navigation-menu'
 import { useConfig } from '~/lib/config-context'
 import { cn } from '~/lib/utils'
+import {
+  BUILDER_APP_URL,
+  getResourceLinks,
+  industryLinks,
+  type MobileLink,
+  platformGroups,
+  platformLinks,
+  productLinks,
+  singlePlatformGroups,
+  useCases,
+} from './header-links'
 
-interface FeatureLink {
-  href: string
-  name: string
-  description?: string
-  icon: React.ReactElement
-}
-
-interface PlatformGroup {
-  name: string
-  links: FeatureLink[]
-}
-
-interface MobileLink {
-  groupName?: string
-  links?: FeatureLink[]
-  name?: string
-  href?: string
-}
-
-const platformGroups: PlatformGroup[] = [
-  {
-    name: 'AI CRM',
-    links: [
-      {
-        href: '/platform/crm',
-        name: 'CRM',
-        description: 'Contacts, companies & history',
-        icon: <Users className='stroke-foreground fill-green-500/15' />,
-      },
-      {
-        href: '/platform/ai/kopilot',
-        name: 'Kopilot',
-        description: 'AI grounded in your data',
-        icon: <Sparkles className='stroke-foreground fill-amber-500/15' />,
-      },
-      {
-        href: '/platform/ai/agents',
-        name: 'Agents',
-        description: 'AI workers that follow your playbook',
-        icon: <Bot className='stroke-foreground fill-violet-500/15' />,
-      },
-      {
-        href: '/platform/data-model',
-        name: 'Knowledge base',
-        description: 'Self-serve help articles',
-        icon: <Library className='stroke-foreground fill-yellow-500/15' />,
-      },
-      {
-        href: '/platform/data-model',
-        name: 'Datasets',
-        description: 'Docs & PDFs for AI',
-        icon: <Database className='stroke-foreground fill-cyan-500/15' />,
-      },
-    ],
-  },
-  {
-    name: 'Automation',
-    links: [
-      {
-        href: '/platform/workflow',
-        name: 'Workflow',
-        description: 'Automate your processes',
-        icon: <GitBranch className='stroke-foreground fill-purple-500/15' />,
-      },
-      {
-        href: '/platform/sequences',
-        name: 'Sequences',
-        description: 'Reminders & follow-ups on autopilot',
-        icon: <Send className='stroke-foreground fill-blue-500/15' />,
-      },
-      {
-        href: '/platform/integration',
-        name: 'Integration',
-        description: 'Connect your business tools',
-        icon: <Plug className='stroke-foreground fill-orange-500/15' />,
-      },
-    ],
-  },
-  {
-    name: 'Operations',
-    links: [
-      {
-        href: '/platform/ticketing',
-        name: 'Ticketing',
-        description: 'Resolve tickets at volume',
-        icon: <Cloud className='stroke-foreground fill-teal-500/15' />,
-      },
-      {
-        href: '/platform/manufacturing',
-        name: 'Manufacturing',
-        description: 'Parts, vendors & production',
-        icon: <Shield className='stroke-foreground fill-blue-500/15' />,
-      },
-      {
-        href: '/platform/dispatch',
-        name: 'Dispatch',
-        description: 'Field service scheduling & jobs',
-        icon: <Truck className='stroke-foreground fill-orange-500/15' />,
-      },
-    ],
-  },
-  {
-    name: 'Communication',
-    links: [
-      {
-        href: '/platform/messaging',
-        name: 'Messaging',
-        description: 'Shared inbox with AI replies',
-        icon: <MessagesSquare className='stroke-foreground fill-blue-500/15' />,
-      },
-      // {
-      //   href: '/platform/live-chat',
-      //   name: 'Live chat',
-      //   description: 'Real-time chat for your site',
-      //   icon: <Rocket className='stroke-foreground fill-orange-500/15' />,
-      // },
-    ],
-  },
-  {
-    name: 'Insights',
-    links: [
-      {
-        href: '/platform/reporting',
-        name: 'Reporting',
-        description: 'Live dashboards & analytics',
-        icon: <BarChart3 className='stroke-foreground fill-sky-500/15' />,
-      },
-    ],
-  },
-]
-
-const platformLinks: FeatureLink[] = platformGroups.flatMap((group) => group.links)
-
-// Single-item groups (e.g. Communication, Insights) are paired side by side
-// in the mega-menu while keeping their own section titles.
-const singlePlatformGroups: PlatformGroup[] = platformGroups.filter(
-  (group) => group.links.length === 1
-)
-
-const useCases: FeatureLink[] = [
-  {
-    href: '/solutions/shopify-stores',
-    name: 'For Shopify Stores',
-    description: 'Automate e-commerce support',
-    icon: <ShoppingBag className='stroke-foreground fill-emerald-500/25' />,
-  },
-  {
-    href: '/solutions/small-business',
-    name: 'For Small Businesses',
-    description: 'Automate e-commerce support',
-    icon: <ShoppingBag className='stroke-foreground fill-emerald-500/25' />,
-  },
-  {
-    href: '/solutions/customer-support-teams',
-    name: 'For Support Teams',
-    description: 'Reduce workload by 70%',
-    icon: <Headset className='stroke-foreground fill-indigo-500/15' />,
-  },
-]
-
-const industryLinks: FeatureLink[] = [
-  {
-    href: '/industries/hvac',
-    name: 'HVAC',
-    description: 'Dispatch & equipment records',
-    icon: <Fan className='stroke-foreground fill-orange-500/15' />,
-  },
-  {
-    href: '/industries/plumbing',
-    name: 'Plumbing',
-    description: 'Same-day dispatch & invoicing',
-    icon: <Wrench className='stroke-foreground fill-sky-500/15' />,
-  },
-  {
-    href: '/industries/pest-control',
-    name: 'Pest Control',
-    description: 'Recurring treatments & routes',
-    icon: <Bug className='stroke-foreground fill-emerald-500/15' />,
-  },
-]
-
-const getResourceLinks = (docsUrl: string): FeatureLink[] => [
-  {
-    name: 'Documentation',
-    href: docsUrl,
-    icon: <BookOpen className='stroke-foreground fill-purple-500/15' />,
-  },
-  {
-    name: 'Developer Docs',
-    href: `${docsUrl}/developer`,
-    icon: <Code className='stroke-foreground fill-blue-500/15' />,
-  },
-  {
-    name: 'FAQ',
-    href: '/faq',
-    icon: <HelpCircle className='stroke-foreground fill-amber-500/15' />,
-  },
-  {
-    name: 'Blog',
-    href: '/blog',
-    icon: <Newspaper className='stroke-foreground fill-rose-500/15' />,
-  },
-]
-
-export default function Header() {
+/**
+ * The site header. On a product's page (`product`), "builder" follows the wordmark in the hand
+ * script and the buttons open that product.
+ */
+export default function Header({ product }: { product?: 'builder' } = {}) {
   const { urls } = useConfig()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false)
   const [isScrolled, setIsScrolled] = React.useState(false)
@@ -319,6 +105,7 @@ export default function Header() {
                 <div className='flex flex-row gap-1.5'>
                   <Logo className='h-7' />
                   <span className='font-bold text-xl'>auxx.Ai</span>
+                  {product === 'builder' && <ProductScript>builder</ProductScript>}
                 </div>
                 {/* <Stripe className="h-7 w-14" /> */}
               </Link>
@@ -341,27 +128,38 @@ export default function Header() {
                 signupUrl={urls.signup}
                 demoUrl={urls.demo}
                 docsUrl={urls.docs}
+                product={product}
               />
             )}
 
             <div className='max-lg:in-data-[state=active]:mt-6 max-lg:hidden max-lg:in-data-[state=active]:flex w-full flex-wrap items-center justify-end space-y-8 md:flex-nowrap lg:m-0 lg:flex lg:w-fit lg:gap-6 lg:space-y-0'>
-              <div className='flex w-full flex-col space-y-3 sm:flex-row sm:gap-3 sm:space-y-0 md:w-fit'>
-                <Button asChild variant='ghost' size='sm'>
-                  <Link href={urls.login}>
-                    <span>Login</span>
-                  </Link>
-                </Button>
-                <Button asChild variant='outline' size='sm'>
-                  <Link href={urls.demo}>
-                    <span>Try Demo</span>
-                  </Link>
-                </Button>
-                <Button asChild variant='default' size='sm'>
-                  <Link href={urls.signup}>
-                    <span>Start Free Trial</span>
-                  </Link>
-                </Button>
-              </div>
+              {product === 'builder' ? (
+                <div className='flex w-full flex-col space-y-3 sm:flex-row sm:gap-3 sm:space-y-0 md:w-fit'>
+                  <Button asChild variant='default' size='sm'>
+                    <Link href={BUILDER_APP_URL}>
+                      <span>Open Auxx Builder</span>
+                    </Link>
+                  </Button>
+                </div>
+              ) : (
+                <div className='flex w-full flex-col space-y-3 sm:flex-row sm:gap-3 sm:space-y-0 md:w-fit'>
+                  <Button asChild variant='ghost' size='sm'>
+                    <Link href={urls.login}>
+                      <span>Login</span>
+                    </Link>
+                  </Button>
+                  <Button asChild variant='outline' size='sm'>
+                    <Link href={urls.demo}>
+                      <span>Try Demo</span>
+                    </Link>
+                  </Button>
+                  <Button asChild variant='default' size='sm'>
+                    <Link href={urls.signup}>
+                      <span>Start Free Trial</span>
+                    </Link>
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -375,16 +173,22 @@ const MobileMenu = ({
   signupUrl,
   demoUrl,
   docsUrl,
+  product,
 }: {
   closeMenu: () => void
   signupUrl: string
   demoUrl: string
   docsUrl: string
+  product?: 'builder'
 }) => {
   const mobileLinks: MobileLink[] = [
     {
       groupName: 'Platform',
       links: platformLinks,
+    },
+    {
+      groupName: 'Products',
+      links: productLinks,
     },
     {
       groupName: 'Solutions',
@@ -402,8 +206,13 @@ const MobileMenu = ({
     { name: 'Solutions', href: '/solutions/shopify-stores' },
     { name: 'Pricing', href: '/pricing' },
     // { name: 'Company', href: '/company' },
-    { name: 'Try Demo', href: demoUrl },
-    { name: 'Get Started', href: signupUrl },
+    // The product's own button follows the list; the auxx.ai sign-up links stay off its page.
+    ...(product === 'builder'
+      ? []
+      : [
+          { name: 'Try Demo', href: demoUrl },
+          { name: 'Get Started', href: signupUrl },
+        ]),
   ]
 
   return (
@@ -550,7 +359,21 @@ const NavMenu = ({ docsUrl }: { docsUrl: string }) => {
             <Link href='/solutions/shopify-stores'>Solutions</Link>
           </NavigationMenuTrigger>
           <NavigationMenuContent className='origin-top pb-1.5 pl-1 pr-4 pt-1 backdrop-blur '>
-            <div className='min-w-3xl w-full grid grid-cols-3 gap-1'>
+            <div className='min-w-4xl w-full grid grid-cols-4 gap-1'>
+              <div className='bg-card col-span-1 row-span-2 grid grid-rows-subgrid gap-1 rounded-xl border p-1 pt-3'>
+                <span className='text-muted-foreground ml-2 text-xs'>Products</span>
+                <ul className=''>
+                  {productLinks.map((productLink) => (
+                    <ListItem
+                      key={productLink.href}
+                      href={productLink.href}
+                      title={productLink.name}
+                      description={productLink.description}>
+                      {productLink.icon}
+                    </ListItem>
+                  ))}
+                </ul>
+              </div>
               <div className='bg-card col-span-1 row-span-2 grid grid-rows-subgrid gap-1 rounded-xl border p-1 pt-3'>
                 <span className='text-muted-foreground ml-2 text-xs'>Use Cases</span>
                 <ul className=''>
@@ -799,5 +622,20 @@ function GithubIcon({ className }: { className?: string }) {
         d='M512 0C229.12 0 0 229.12 0 512c0 226.56 146.56 417.92 350.08 485.76 25.6 4.48 35.2-10.88 35.2-24.32 0-12.16-.64-52.48-.64-95.36-128.64 23.68-161.92-31.36-172.16-60.16-5.76-14.72-30.72-60.16-52.48-72.32-17.92-9.6-43.52-33.28-.64-33.92 40.32-.64 69.12 37.12 78.72 52.48 46.08 77.44 119.68 55.68 149.12 42.24 4.48-33.28 17.92-55.68 32.64-68.48-113.92-12.8-232.96-56.96-232.96-252.8 0-55.68 19.84-101.76 52.48-137.6-5.12-12.8-23.04-65.28 5.12-135.68 0 0 42.88-13.44 140.8 52.48 40.96-11.52 84.48-17.28 128-17.28s87.04 5.76 128 17.28c97.92-66.56 140.8-52.48 140.8-52.48 28.16 70.4 10.24 122.88 5.12 135.68 32.64 35.84 52.48 81.28 52.48 137.6 0 196.48-119.68 240-233.6 252.8 18.56 16 34.56 46.72 34.56 94.72 0 68.48-.64 123.52-.64 140.8 0 13.44 9.6 29.44 35.2 24.32C877.44 929.92 1024 737.92 1024 512 1024 229.12 794.88 0 512 0'
       />
     </svg>
+  )
+}
+
+/**
+ * A product's name in the hand script after the wordmark, as auxx-lift.com sets Rack "Air" and
+ * "Pro": Yellowtail (`--font-script`, loaded by the product's page), skewed, filled with the first
+ * three bands of the Builder ramp.
+ */
+function ProductScript({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      className='-ml-0.5 inline-block skew-x-[12deg] bg-clip-text pr-[0.12em] pb-[0.08em] pl-[0.04em] font-[family-name:var(--font-script),cursive] text-[1.6rem] leading-[1.1] text-transparent'
+      style={{ backgroundImage: 'linear-gradient(100deg, #e0a92e 0%, #2bb3a3 50%, #3b82f6 100%)' }}>
+      {children}
+    </span>
   )
 }

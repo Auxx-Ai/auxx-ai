@@ -94,6 +94,26 @@ The platform is open source under the AGPL-3.0 license. Teams can self-host with
 - Filtering and views
 - Integration with tickets and workflows
 
+## Auxx Builder
+
+Auxx Builder (https://auxx.ai/builder, app at https://builder.auxx.ai) is a free product of three apps that work as one. It runs in the browser, with a desktop app for Mac and Windows. A project's design, drawings and estimate open together in one set.
+
+### Builder
+
+A building editor: walls, doors and windows, floors, roofs, levels and gridlines; a 3D view with a section box; sections; sheets with title blocks and PDF export; schedules and quantities; tracing a scanned plan. Auxx-Lift storage lifts are placed with live travel height and clearance checks, and their kit parts are counted.
+
+### PDF
+
+Open PDF drawings, mark them up (clouds, callouts, text, stamps, comments with statuses), measure lengths, areas and counts to scale with snapping to the drawing's lines, and take off quantities by condition, zone and category. Bluebeam markups import as editable markups; exports write standard PDF annotations. Compare two versions of a sheet.
+
+### Estimator
+
+Cost books with items, assemblies, crews and rate tables, imported from Excel, CSV or WinEst. Estimate lines are bound to the PDF takeoff or the design model and show what changed when the drawings change. Options, alternates and scenarios, revisions and change orders, proposal PDFs, and an Auxx-Lift quote straight from a garage design.
+
+### AI agents
+
+An AI assistant connected over MCP can read and edit designs, PDF takeoff and estimates.
+
 ## Target Audience
 
 ### Shopify Store Owners
