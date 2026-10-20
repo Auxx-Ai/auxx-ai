@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.242](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.241...auxx-v0.1.242) (2026-10-20)
+
+
+### Features
+
+* **homepage:** auxx builder page at /builder with a products column in solutions ([#2470](https://github.com/Auxx-Ai/auxx-ai/issues/2470)) ([551696b](https://github.com/Auxx-Ai/auxx-ai/commit/551696bebf1a9a441a4f1b9387ac04f1774bfac5))
+
 ## [0.1.241](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.240...auxx-v0.1.241) (2026-10-15)
 
 
