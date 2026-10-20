@@ -34,6 +34,14 @@
 - 14-day free trial on paid plans
 - No credit card required to start
 
+## Auxx Builder
+
+Auxx Builder (https://auxx.ai/builder, app at https://builder.auxx.ai) is a free product of three apps that work as one, in the browser or on desktop:
+
+- Builder: design buildings and garages in plan and 3D (walls, floors, roofs, levels, sections, sheets, schedules), with Auxx-Lift storage lift placement and height and clearance checks
+- PDF: open PDF drawings, mark them up, measure to scale and take off quantities by condition; Bluebeam markups in and out
+- Estimator: cost books, assemblies and rate tables; estimates priced from the PDF takeoff or the design model; revisions, change orders and proposals
+
 ## Links
 
 - Website: https://auxx.ai
