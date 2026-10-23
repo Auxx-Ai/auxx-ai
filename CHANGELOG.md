@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.243](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.242...auxx-v0.1.243) (2026-10-23)
+
+
+### Bug Fixes
+
+* **docker:** pin Node to 22.23.4 for the October 2026 security release ([#2472](https://github.com/Auxx-Ai/auxx-ai/issues/2472)) ([96c8f40](https://github.com/Auxx-Ai/auxx-ai/commit/96c8f40c3c113aba2272a4d54827ee79030f5f6f))
+
 ## [0.1.242](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.241...auxx-v0.1.242) (2026-10-20)
 
 
