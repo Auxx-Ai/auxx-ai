@@ -2,7 +2,7 @@
 ARG PROJECT="@auxx/docs"
 ARG PROJECT_PATH="apps/docs"
 
-FROM node:22.22-bookworm-slim AS slim
+FROM node:22.23.4-bookworm-slim AS slim
 
 FROM slim AS base
 

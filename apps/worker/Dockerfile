@@ -1,4 +1,4 @@
-ARG NODE_VERSION=22.22
+ARG NODE_VERSION=22.23.4
 
 # ──────────────────────────────────────────────
 # Stage 1: PRUNER — extract only worker-relevant packages
